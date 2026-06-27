@@ -13,12 +13,17 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
+            $table->string('name', 30);
+            $table->string('email', 100)->unique();
+            // $table->timestamp('email_verified_at')->nullable();
+            $table->string('phone', 11)->nullable();
             $table->string('password');
-            $table->rememberToken();
+            $table->string('avatar')->nullable();
+            // 0 = Bị khóa (Inactive) 1 = Hoạt động (Active)
+            $table->tinyInteger('status')->default(1)->check('status in (0,1)');
+            //$table->rememberToken();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
