@@ -14,17 +14,21 @@ class ChangePasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'current_password' => 'required',
-            'password' => 'required|min:8|confirmed',
+            'current_password' => 'required|string|min:8|max:255',
+            'password' => 'required|string|min:8|max:255|confirmed',
         ];
     }
-    
+
     public function messages(): array
     {
         return [
             'current_password.required' => 'Mật khẩu hiện tại không được để trống.',
+            'current_password.min' => 'Mật khẩu hiện tại tối thiểu 8 ký tự.',
+            'current_password.max' => 'Mật khẩu hiện tại tối đa 255 ký tự.',
+
             'password.required' => 'Mật khẩu mới không được để trống.',
             'password.min' => 'Mật khẩu mới tối thiểu 8 ký tự.',
+            'password.max' => 'Mật khẩu mới tối đa 255 ký tự.',
             'password.confirmed' => 'Mật khẩu xác nhận không khớp.',
         ];
     }

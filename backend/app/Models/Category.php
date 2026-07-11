@@ -37,4 +37,17 @@ class Category extends Model
     {
         return $this->hasMany(Product::class);
     }
+
+    public function activeChildren()
+    {
+        return $this->hasMany(Category::class, 'parent_id')
+            ->where('status', 1);
+    }
+
+    public function scopeVisible($query)
+    {
+        return $query
+            ->where('status', 1)
+            ->whereNull('deleted_at');
+    }
 }

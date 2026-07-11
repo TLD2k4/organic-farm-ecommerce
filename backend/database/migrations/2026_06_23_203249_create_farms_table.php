@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('farms', function (Blueprint $table) {
             $table->id();
             $table->foreignId('seller_id')->unique()->constrained('users')->restrictOnDelete();
-
+            $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete(); // thêm ở đây
             $table->string('name', 100)->unique();
             $table->string('slug')->unique();
             $table->text('description')->nullable();
@@ -25,6 +25,8 @@ return new class extends Migration
             // 0 = Chờ duyệt (Pending) 1 = Đã duyệt / hoạt động (Approved / Active) 
             // 2 = Bị từ chối (Rejected) 3 = Bị khóa / tạm ngưng (Suspended / Inactive)
             $table->tinyInteger('status')->default(0)->check('status in (0,1,2,3)');
+            $table->timestamp('approved_at')->nullable(); // thêm ở đây
+            $table->text('rejection_reason')->nullable(); // thêm ở đây
 
             $table->timestamps();
             $table->softDeletes();

@@ -40,4 +40,13 @@ class OrderItem extends Model
     {
         return $this->hasOne(Review::class);
     }
+
+    public function harvestLots()
+    {
+        return $this->hasMany(OrderItemLot::class);
+    }
+    public function orderItemLots()
+    {
+        return $this->hasMany(OrderItemLot::class);
+    }
 }

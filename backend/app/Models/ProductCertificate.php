@@ -44,9 +44,9 @@ class ProductCertificate extends Model
     {
         return $this->belongsTo(User::class, 'approved_by');
     }
-
+    
     public function harvestLots()
     {
-        return $this->hasMany(HarvestLot::class);
+        return $this->hasMany(HarvestLot::class, 'product_certificate_id');
     }
 }

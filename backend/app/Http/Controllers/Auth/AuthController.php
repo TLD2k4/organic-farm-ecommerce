@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\ChangePasswordRequest;
-use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Services\Auth\AuthService;
 use Illuminate\Http\Request;
 
@@ -16,134 +15,62 @@ class AuthController extends Controller
         private AuthService $authService
     ) {}
 
-    public function login(LoginRequest $request)
-    {
-        try {
-
-            $data = $this->authService->login(
-                $request->validated()
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Đăng nhập thành công.',
-                'data' => $data,
-            ], 200);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Đã xảy ra lỗi hệ thống.',
-            ], 500);
-        }
-    }
-
     public function register(RegisterRequest $request)
     {
-        try {
+        $data = $this->authService->register(
+            $request->validated()
+        );
 
-            $data = $this->authService->register(
-                $request->validated()
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Đăng ký thành công.',
-                'data' => $data,
-            ], 201);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Đã xảy ra lỗi hệ thống.',
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Đăng ký thành công.',
+            'data' => $data,
+        ], 201);
     }
 
-    public function profile(Request $request)
+    public function login(LoginRequest $request)
     {
-        try {
+        $data = $this->authService->login(
+            $request->validated()
+        );
 
-            return response()->json([
-                'success' => true,
-                'data' => $this->authService->formatUser($request->user()),
-            ], 200);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Đã xảy ra lỗi hệ thống.'
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Đăng nhập thành công.',
+            'data' => $data,
+        ], 200);
     }
-
-    public function updateProfile(UpdateProfileRequest $request)
-    {
-        try {
-
-            $data = $this->authService->updateProfile(
-                $request->user(),
-                $request->validated()
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Cập nhật thông tin thành công.',
-                'data' => $data,
-            ], 200);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Đã xảy ra lỗi hệ thống.'
-            ], 500);
-        }
-    }	
 
     public function changePassword(ChangePasswordRequest $request)
     {
-        try {
+        $this->authService->changePassword(
+            $request->user(),
+            $request->validated()
+        );
 
-            $this->authService->changePassword(
-                $request->user(),
-                $request->validated()
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Đổi mật khẩu thành công.',
-            ], 200);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Đã xảy ra lỗi hệ thống.'
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Đổi mật khẩu thành công.',
+        ], 200);
     }
 
-    public function logout(Request $request)
+    public function logoutCurrent(Request $request)
     {
-        try {
+        $request->user()->currentAccessToken()?->delete();
 
-            $request->user()->currentAccessToken()->delete();
+        return response()->json([
+            'success' => true,
+            'message' => 'Đăng xuất thiết bị hiện tại thành công.',
+        ]);
+    }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Đăng xuất thành công.',
-            ], 200);
+    public function logoutAll(Request $request)
+    {
+        $request->user()->tokens()->delete();
 
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Đã xảy ra lỗi hệ thống.',
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Đăng xuất tất cả thiết bị thành công.',
+        ]);
     }
 }

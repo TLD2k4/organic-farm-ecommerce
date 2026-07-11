@@ -22,6 +22,11 @@ return new class extends Migration
                 ->constrained('categories')
                 ->restrictOnDelete();
 
+            $table->foreignId('approved_by') // thêm ở đây
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+
             $table->string('name', 150);
             $table->string('slug')->unique();
             $table->text('description')->nullable();
@@ -37,6 +42,8 @@ return new class extends Migration
             // 0 = Chờ duyệt (Pending) 1 = Đang bán (Active)
             // 2 = Bị từ chối (Rejected) 3 = Tạm ẩn (Hidden)
             $table->tinyInteger('status')->default(0)->check('status in (0,1,2,3)');
+            $table->timestamp('approved_at')->nullable(); // thêm ở đây
+            $table->text('rejection_reason')->nullable(); // thêm ở đây
 
             $table->timestamps();
             $table->softDeletes();

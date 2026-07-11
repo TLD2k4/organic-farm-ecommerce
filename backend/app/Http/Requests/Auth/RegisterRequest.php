@@ -3,8 +3,6 @@
 namespace App\Http\Requests\Auth;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Contracts\Validation\Validator;
-use Illuminate\Http\Exceptions\HttpResponseException;
 
 class RegisterRequest extends FormRequest
 {
@@ -18,9 +16,9 @@ class RegisterRequest extends FormRequest
         return [
             'name' => 'required|string|max:30',
             'email' => 'required|email|max:100|unique:users,email',
-            'phone' => 'nullable|digits_between:10,11',
-            'password' => 'required|min:8|confirmed',
-            'avatar' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'phone' => 'nullable|regex:/^(0[0-9]{9,10})$/',
+            'password' => 'required|string|min:8|max:255|confirmed',
+            'avatar' => ['nullable', 'url', 'max:255'],
         ];
     }
 
@@ -35,15 +33,15 @@ class RegisterRequest extends FormRequest
             'email.unique' => 'Email đã tồn tại.',
             'email.max' => 'Email tối đa 100 ký tự.',
 
-            'phone.digits_between' => 'Số điện thoại phải từ 10-11 số.',
+            'phone.regex' => 'Số điện thoại phải bắt đầu bằng số 0 và có 10-11 chữ số.',
 
             'password.required' => 'Mật khẩu không được để trống.',
             'password.min' => 'Mật khẩu tối thiểu 8 ký tự.',
+            'password.max' => 'Mật khẩu tối đa 255 ký tự.',
             'password.confirmed' => 'Mật khẩu xác nhận không khớp.',
 
-            'avatar.image' => 'Avatar phải là hình ảnh.',
-            'avatar.mimes' => 'Avatar chỉ hỗ trợ jpg, jpeg, png, webp.',
-            'avatar.max' => 'Avatar tối đa 2MB.',
+            'avatar.url' => 'Avatar phải là một URL hợp lệ.',
+            'avatar.max' => 'Đường dẫn avatar tối đa 255 ký tự.',
         ];
     }
 }

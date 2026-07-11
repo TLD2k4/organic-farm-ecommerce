@@ -33,7 +33,7 @@ class HarvestLot extends Model
 
     public function productCertificate()
     {
-        return $this->belongsTo(ProductCertificate::class);
+        return $this->belongsTo(ProductCertificate::class, 'product_certificate_id');
     }
 
     // public function getProductAttribute()
@@ -45,4 +45,8 @@ class HarvestLot extends Model
     // {
     //     return $this->productCertificate?->certification;
     // }
+    public function orderItemLots()
+    {
+        return $this->hasMany(OrderItemLot::class);
+    }
 }

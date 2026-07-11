@@ -25,6 +25,20 @@ class Address extends Model
         'is_default' => 'boolean',
     ];
 
+    protected $appends = [
+        'full_address',
+    ];
+
+    public function getFullAddressAttribute(): string
+    {
+        return collect([
+            $this->address_line,
+            $this->ward,
+            $this->district,
+            $this->province,
+        ])->filter()->join(', ');
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

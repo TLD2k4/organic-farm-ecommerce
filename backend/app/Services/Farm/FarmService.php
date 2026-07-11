@@ -1,0 +1,1279 @@
+<?php
+
+namespace App\Services\Farm;
+
+use App\Models\Farm;
+use App\Models\Product;
+use App\Models\SubOrder;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+class FarmService
+{
+    // =====================================================
+    // PUBLIC FARM
+    // =====================================================
+
+    public function getAll(array $filters)
+    {
+        return Farm::query()
+            ->with([
+                'seller:id,name,avatar',
+            ])
+            ->withCount([
+                'products as product_count' => function ($query) {
+                    $query->where('status', 1);
+                },
+            ])
+            ->where(
+                'status',
+                Farm::STATUS_ACTIVE
+            )
+
+            ->when(
+                !empty($filters['keyword']),
+                function ($query) use ($filters) {
+                    $keyword = trim(
+                        $filters['keyword']
+                    );
+
+                    $query->where(
+                        function ($subQuery) use ($keyword) {
+                            $subQuery
+                                ->where(
+                                    'name',
+                                    'like',
+                                    "%{$keyword}%"
+                                )
+                                ->orWhere(
+                                    'address',
+                                    'like',
+                                    "%{$keyword}%"
+                                )
+                                ->orWhere(
+                                    'description',
+                                    'like',
+                                    "%{$keyword}%"
+                                );
+                        }
+                    );
+                }
+            )
+
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(
+                $filters['limit'] ?? 12
+            );
+    }
+
+    public function getBySlug(string $slug): Farm
+    {
+        $farm = Farm::query()
+            ->where('slug', $slug)
+            ->where(
+                'status',
+                Farm::STATUS_ACTIVE
+            )
+            ->with([
+                'seller:id,name,email,avatar',
+
+                'products' => function ($query) {
+                    $query
+                        ->where('status', 1)
+                        ->with([
+                            'category:id,name,slug',
+
+                            'certificates' => function ($certificateQuery) {
+                                $certificateQuery
+                                    ->where('status', 1)
+                                    ->whereDate(
+                                        'expiry_date',
+                                        '>=',
+                                        today()
+                                    )
+                                    ->with([
+                                        'certification:id,name',
+                                    ]);
+                            },
+
+                            'reviews' => function ($reviewQuery) {
+                                $reviewQuery->where(
+                                    'status',
+                                    1
+                                );
+                            },
+                        ])
+                        ->orderByDesc('created_at');
+                },
+            ])
+            ->withCount([
+                'products as product_count' => function ($query) {
+                    $query->where('status', 1);
+                },
+            ])
+            ->firstOrFail();
+
+        return $this->appendRatingAndCertifications(
+            $farm
+        );
+    }
+
+    // =====================================================
+    // OWNER FARM
+    // =====================================================
+
+    /**
+     * Lấy Farm của tài khoản hiện tại.
+     *
+     * Bao gồm cả Farm đã xóa mềm để tài khoản
+     * không được đăng ký Farm mới.
+     */
+    public function getMyFarm(User $user): ?Farm
+    {
+        $farm = Farm::withTrashed()
+            ->where(
+                'seller_id',
+                $user->id
+            )
+            ->with([
+                'seller:id,name,email,phone,avatar,status,deleted_at',
+
+                'approver:id,name,email',
+
+                'products' => function ($query) {
+                    $query
+                        ->withoutGlobalScope(
+                            'farm_not_deleted'
+                        )
+                        ->withTrashed()
+                        ->with([
+                            'category:id,name,slug',
+
+                            'certificates' => function ($certificateQuery) {
+                                $certificateQuery
+                                    ->where('status', 1)
+                                    ->whereDate(
+                                        'expiry_date',
+                                        '>=',
+                                        today()
+                                    )
+                                    ->with([
+                                        'certification:id,name',
+                                    ]);
+                            },
+
+                            'reviews' => function ($reviewQuery) {
+                                $reviewQuery->where(
+                                    'status',
+                                    1
+                                );
+                            },
+                        ])
+                        ->orderByDesc('created_at');
+                },
+            ])
+            ->withCount([
+                'products as product_count' => function ($query) {
+                    $query
+                        ->withoutGlobalScope(
+                            'farm_not_deleted'
+                        )
+                        ->withTrashed();
+                },
+
+                'subOrders as sub_order_count' => function ($query) {
+                    $query->withTrashed();
+                },
+            ])
+            ->first();
+
+        if (!$farm) {
+            return null;
+        }
+
+        return $this->appendRatingAndCertifications(
+            $farm
+        );
+    }
+
+    public function register(
+        User $user,
+        array $data
+    ): Farm {
+        return DB::transaction(
+            function () use ($user, $data) {
+                /*
+                 * Khóa User trong lúc kiểm tra và tạo Farm,
+                 * tránh hai request đăng ký chạy cùng lúc.
+                 */
+                $lockedUser = User::query()
+                    ->whereKey($user->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $existingFarm = Farm::withTrashed()
+                    ->where(
+                        'seller_id',
+                        $lockedUser->id
+                    )
+                    ->first();
+
+                if ($existingFarm) {
+                    if ($existingFarm->trashed()) {
+                        throw ValidationException::withMessages([
+                            'farm' => [
+                                'Nông trại của tài khoản đã bị xóa mềm. Vui lòng khôi phục hoặc nhờ quản trị viên xóa vĩnh viễn trước khi đăng ký mới.',
+                            ],
+                        ]);
+                    }
+
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Mỗi tài khoản chỉ được sở hữu duy nhất một nông trại.',
+                        ],
+                    ]);
+                }
+
+                /*
+                 * Chỉ Customer và Admin được đăng ký Farm.
+                 */
+                if (
+                    !$lockedUser->hasRole('customer') &&
+                    !$lockedUser->hasRole('admin')
+                ) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Vai trò tài khoản hiện tại không được phép đăng ký nông trại.',
+                        ],
+                    ]);
+                }
+
+                $isAdmin = $lockedUser->hasRole(
+                    'admin'
+                );
+
+                return Farm::create([
+                    'seller_id' => $lockedUser->id,
+
+                    'approved_by' => $isAdmin
+                        ? $lockedUser->id
+                        : null,
+
+                    'name' => $data['name'],
+
+                    'slug' => $this->generateUniqueSlug(
+                        $data['name']
+                    ),
+
+                    'description' =>
+                    $data['description'] ?? null,
+
+                    'logo' =>
+                    $data['logo'] ?? null,
+
+                    'cover_image' =>
+                    $data['cover_image'] ?? null,
+
+                    'phone' =>
+                    $data['phone'] ?? null,
+
+                    'address' =>
+                    $data['address'],
+
+                    'status' => $isAdmin
+                        ? Farm::STATUS_ACTIVE
+                        : Farm::STATUS_PENDING,
+
+                    'approved_at' => $isAdmin
+                        ? now()
+                        : null,
+
+                    'rejection_reason' => null,
+                ]);
+            }
+        );
+    }
+
+    public function updateOwnedFarm(
+        User $user,
+        int $farmId,
+        array $data
+    ): Farm {
+        /*
+         * Farm::query() không lấy Farm đã xóa mềm.
+         */
+        $farm = Farm::query()
+            ->whereKey($farmId)
+            ->where(
+                'seller_id',
+                $user->id
+            )
+            ->firstOrFail();
+
+        if ($farm->isSuspended()) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Nông trại đang bị đình chỉ. Không thể cập nhật thông tin.',
+                ],
+            ]);
+        }
+
+        if (
+            array_key_exists('name', $data) &&
+            $data['name'] !== $farm->name
+        ) {
+            $data['slug'] =
+                $this->generateUniqueSlug(
+                    $data['name'],
+                    $farm->id
+                );
+        }
+
+        /*
+         * Farm bị từ chối sửa xong vẫn giữ status = 2.
+         * Chủ Farm phải gọi API resubmit riêng.
+         */
+        $farm->update($data);
+
+        return $farm->fresh([
+            'seller:id,name,email,phone,avatar,status,deleted_at',
+            'approver:id,name,email',
+        ]);
+    }
+
+    public function resubmit(
+        User $user,
+        int $farmId
+    ): Farm {
+        return DB::transaction(
+            function () use ($user, $farmId) {
+                $farm = Farm::query()
+                    ->whereKey($farmId)
+                    ->where(
+                        'seller_id',
+                        $user->id
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$farm->isRejected()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Chỉ nông trại bị từ chối mới được gửi duyệt lại.',
+                        ],
+                    ]);
+                }
+
+                $farm->update([
+                    'status' => Farm::STATUS_PENDING,
+                    'approved_by' => null,
+                    'approved_at' => null,
+                    'rejection_reason' => null,
+                ]);
+
+                return $farm->fresh([
+                    'seller:id,name,email,phone,avatar,status,deleted_at',
+                    'approver:id,name,email',
+                ]);
+            }
+        );
+    }
+
+    /**
+     * Chủ Farm xóa cứng trực tiếp.
+     *
+     * Chỉ cho phép khi:
+     * - status = 0 hoặc 2;
+     * - không còn sản phẩm;
+     * - không còn đơn hàng.
+     */
+    public function ownerForceDelete(
+        User $user,
+        int $farmId
+    ): Farm {
+        return DB::transaction(
+            function () use ($user, $farmId) {
+                $farm = Farm::query()
+                    ->whereKey($farmId)
+                    ->where(
+                        'seller_id',
+                        $user->id
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (
+                    !in_array(
+                        $farm->status,
+                        [
+                            Farm::STATUS_PENDING,
+                            Farm::STATUS_REJECTED,
+                        ],
+                        true
+                    )
+                ) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Chỉ được xóa vĩnh viễn hồ sơ nông trại đang chờ duyệt hoặc bị từ chối.',
+                        ],
+                    ]);
+                }
+
+                $this->ensureNoRelatedData(
+                    $farm->id
+                );
+
+                $farm->forceDelete();
+
+                /*
+                 * Trường hợp dữ liệu role bị lệch.
+                 * Admin không bị đổi role.
+                 */
+                if ($user->hasRole('seller')) {
+                    $user->syncRoles([
+                        'customer',
+                    ]);
+                }
+
+                return $farm;
+            }
+        );
+    }
+
+    // =====================================================
+    // ADMIN FARM
+    // =====================================================
+
+    public function adminGetAll(array $filters)
+    {
+        return Farm::withTrashed()
+            ->with([
+                'seller:id,name,email,phone,avatar,status,deleted_at',
+                'approver:id,name,email',
+            ])
+            ->withCount([
+                'products as product_count' => function ($query) {
+                    $query
+                        ->withoutGlobalScope(
+                            'farm_not_deleted'
+                        )
+                        ->withTrashed();
+                },
+
+                'subOrders as sub_order_count' => function ($query) {
+                    $query->withTrashed();
+                },
+            ])
+
+            ->when(
+                !empty($filters['keyword']),
+                function ($query) use ($filters) {
+                    $keyword = trim(
+                        $filters['keyword']
+                    );
+
+                    $query->where(
+                        function (Builder $subQuery) use ($keyword) {
+                            $subQuery
+                                ->where(
+                                    'name',
+                                    'like',
+                                    "%{$keyword}%"
+                                )
+                                ->orWhere(
+                                    'slug',
+                                    'like',
+                                    "%{$keyword}%"
+                                )
+                                ->orWhere(
+                                    'phone',
+                                    'like',
+                                    "%{$keyword}%"
+                                )
+                                ->orWhere(
+                                    'address',
+                                    'like',
+                                    "%{$keyword}%"
+                                )
+                                ->orWhereHas(
+                                    'seller',
+                                    function ($sellerQuery) use ($keyword) {
+                                        $sellerQuery->where(
+                                            function ($userQuery) use ($keyword) {
+                                                $userQuery
+                                                    ->where(
+                                                        'name',
+                                                        'like',
+                                                        "%{$keyword}%"
+                                                    )
+                                                    ->orWhere(
+                                                        'email',
+                                                        'like',
+                                                        "%{$keyword}%"
+                                                    )
+                                                    ->orWhere(
+                                                        'phone',
+                                                        'like',
+                                                        "%{$keyword}%"
+                                                    );
+                                            }
+                                        );
+                                    }
+                                );
+                        }
+                    );
+                }
+            )
+
+            ->when(
+                array_key_exists('status', $filters) &&
+                    $filters['status'] !== null &&
+                    $filters['status'] !== '',
+                function ($query) use ($filters) {
+                    $query->where(
+                        'status',
+                        (int) $filters['status']
+                    );
+                }
+            )
+
+            ->when(
+                array_key_exists('deleted', $filters) &&
+                    $filters['deleted'] !== null &&
+                    $filters['deleted'] !== '',
+                function ($query) use ($filters) {
+                    if (
+                        (int) $filters['deleted'] === 1
+                    ) {
+                        $query->onlyTrashed();
+                    } else {
+                        $query->withoutTrashed();
+                    }
+                }
+            )
+
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(
+                $filters['limit'] ?? 10
+            );
+    }
+
+    public function adminGetById(
+        int $farmId
+    ): Farm {
+        $farm = Farm::withTrashed()
+            ->with([
+                'seller:id,name,email,phone,avatar,status,created_at,deleted_at',
+
+                'approver:id,name,email',
+
+                'products' => function ($query) {
+                    $query
+                        ->withoutGlobalScope(
+                            'farm_not_deleted'
+                        )
+                        ->withTrashed()
+                        ->with([
+                            'category:id,name,slug',
+
+                            'certificates' => function ($certificateQuery) {
+                                $certificateQuery->with([
+                                    'certification:id,name',
+                                    'approver:id,name,email',
+                                ]);
+                            },
+
+                            'reviews',
+                        ])
+                        ->orderByDesc('created_at');
+                },
+            ])
+            ->withCount([
+                'products as product_count' => function ($query) {
+                    $query
+                        ->withoutGlobalScope(
+                            'farm_not_deleted'
+                        )
+                        ->withTrashed();
+                },
+
+                'subOrders as sub_order_count' => function ($query) {
+                    $query->withTrashed();
+                },
+            ])
+            ->findOrFail($farmId);
+
+        return $this->appendRatingAndCertifications(
+            $farm
+        );
+    }
+
+    public function approve(
+        User $admin,
+        int $farmId
+    ): Farm {
+        return DB::transaction(
+            function () use ($admin, $farmId) {
+                $farm = Farm::query()
+                    ->with('seller')
+                    ->whereKey($farmId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$farm->isPending()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Chỉ nông trại đang chờ duyệt mới được duyệt.',
+                        ],
+                    ]);
+                }
+
+                $seller = $farm->seller;
+
+                if (!$seller) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Không tìm thấy tài khoản chủ nông trại.',
+                        ],
+                    ]);
+                }
+
+                if ($seller->trashed()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Không thể duyệt vì tài khoản chủ nông trại đã bị xóa.',
+                        ],
+                    ]);
+                }
+
+                if ((int) $seller->status !== 1) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Không thể duyệt vì tài khoản chủ nông trại đang bị khóa.',
+                        ],
+                    ]);
+                }
+
+                $farm->update([
+                    'status' => Farm::STATUS_ACTIVE,
+
+                    'approved_by' => $admin->id,
+                    'approved_at' => now(),
+
+                    'rejection_reason' => null,
+                ]);
+
+                /*
+                 * Một tài khoản chỉ có một role.
+                 *
+                 * Customer:
+                 * customer → seller.
+                 *
+                 * Admin:
+                 * vẫn giữ admin.
+                 */
+                if ($seller->hasRole('customer')) {
+                    $seller->syncRoles([
+                        'seller',
+                    ]);
+                } elseif (
+                    !$seller->hasRole('seller') &&
+                    !$seller->hasRole('admin')
+                ) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Vai trò của chủ nông trại không hợp lệ.',
+                        ],
+                    ]);
+                }
+
+                return $farm->fresh([
+                    'seller:id,name,email,phone,avatar,status,deleted_at',
+                    'approver:id,name,email',
+                ]);
+            }
+        );
+    }
+
+    public function reject(
+        int $farmId,
+        string $reason
+    ): Farm {
+        return DB::transaction(
+            function () use ($farmId, $reason) {
+                $farm = Farm::query()
+                    ->whereKey($farmId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$farm->isPending()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Chỉ nông trại đang chờ duyệt mới được từ chối.',
+                        ],
+                    ]);
+                }
+
+                /*
+                 * approved_by chỉ lưu người thực sự duyệt.
+                 * Không dùng để lưu người từ chối.
+                 */
+                $farm->update([
+                    'status' => Farm::STATUS_REJECTED,
+
+                    'approved_by' => null,
+                    'approved_at' => null,
+
+                    'rejection_reason' => $reason,
+                ]);
+
+                return $farm->fresh([
+                    'seller:id,name,email,phone,avatar,status,deleted_at',
+                    'approver:id,name,email',
+                ]);
+            }
+        );
+    }
+
+    public function suspend(
+        int $farmId
+    ): Farm {
+        $farm = Farm::query()
+            ->findOrFail($farmId);
+
+        if (!$farm->isActive()) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Chỉ nông trại đang hoạt động mới được đình chỉ.',
+                ],
+            ]);
+        }
+
+        $farm->update([
+            'status' => Farm::STATUS_SUSPENDED,
+        ]);
+
+        /*
+         * Không xóa sản phẩm, đơn hàng hoặc role.
+         * Seller vẫn được xử lý đơn cũ.
+         */
+        return $farm->fresh([
+            'seller:id,name,email,phone,avatar,status,deleted_at',
+            'approver:id,name,email',
+        ]);
+    }
+
+    public function reopen(
+        int $farmId
+    ): Farm {
+        $farm = Farm::query()
+            ->with('seller')
+            ->findOrFail($farmId);
+
+        if (!$farm->isSuspended()) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Chỉ nông trại đang bị đình chỉ mới được mở lại.',
+                ],
+            ]);
+        }
+
+        if (
+            !$farm->seller ||
+            $farm->seller->trashed() ||
+            (int) $farm->seller->status !== 1
+        ) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Không thể mở lại vì tài khoản chủ nông trại không hoạt động.',
+                ],
+            ]);
+        }
+
+        $farm->update([
+            'status' => Farm::STATUS_ACTIVE,
+        ]);
+
+        return $farm->fresh([
+            'seller:id,name,email,phone,avatar,status,deleted_at',
+            'approver:id,name,email',
+        ]);
+    }
+
+    // =====================================================
+    // ADMIN DELETE / RESTORE
+    // =====================================================
+
+    /**
+     * Admin xóa mềm.
+     *
+     * Điều kiện:
+     * - không được là Farm đang hoạt động;
+     * - không còn sản phẩm;
+     * - không còn đơn hàng.
+     */
+    public function adminSoftDelete(
+        int $farmId
+    ): Farm {
+        return DB::transaction(
+            function () use ($farmId) {
+                $farm = Farm::query()
+                    ->whereKey($farmId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($farm->isActive()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Nông trại đang hoạt động. Vui lòng đình chỉ trước khi xóa.',
+                        ],
+                    ]);
+                }
+
+                if (
+                    !in_array(
+                        $farm->status,
+                        [
+                            Farm::STATUS_PENDING,
+                            Farm::STATUS_REJECTED,
+                            Farm::STATUS_SUSPENDED,
+                        ],
+                        true
+                    )
+                ) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Trạng thái hiện tại không cho phép xóa nông trại.',
+                        ],
+                    ]);
+                }
+
+                /*
+                 * Theo nghiệp vụ đã chốt:
+                 * xóa mềm cũng phải không còn dữ liệu liên quan.
+                 */
+                $this->ensureNoRelatedData(
+                    $farm->id
+                );
+
+                $farm->delete();
+
+                return $farm;
+            }
+        );
+    }
+
+    public function restore(
+        int $farmId
+    ): Farm {
+        return DB::transaction(
+            function () use ($farmId) {
+                $farm = Farm::withTrashed()
+                    ->with('seller')
+                    ->whereKey($farmId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$farm->trashed()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Nông trại chưa bị xóa mềm.',
+                        ],
+                    ]);
+                }
+
+                if (
+                    !$farm->seller ||
+                    $farm->seller->trashed()
+                ) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Vui lòng khôi phục tài khoản chủ nông trại trước.',
+                        ],
+                    ]);
+                }
+
+                $farm->restore();
+
+                /*
+                 * Giữ nguyên status cũ.
+                 * Farm active không được xóa mềm,
+                 * nên status khôi phục chỉ là 0, 2 hoặc 3.
+                 */
+                return $farm->fresh([
+                    'seller:id,name,email,phone,avatar,status,deleted_at',
+                    'approver:id,name,email',
+                ]);
+            }
+        );
+    }
+
+    /**
+     * Admin xóa vĩnh viễn.
+     *
+     * Điều kiện:
+     * - Farm phải xóa mềm trước;
+     * - không còn sản phẩm;
+     * - không còn đơn hàng.
+     */
+    public function forceDelete(
+        int $farmId
+    ): Farm {
+        return DB::transaction(
+            function () use ($farmId) {
+                $farm = Farm::withTrashed()
+                    ->with('seller')
+                    ->whereKey($farmId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$farm->trashed()) {
+                    throw ValidationException::withMessages([
+                        'farm' => [
+                            'Vui lòng xóa mềm nông trại trước khi xóa vĩnh viễn.',
+                        ],
+                    ]);
+                }
+
+                /*
+                 * Kiểm tra lại để bảo vệ dữ liệu,
+                 * dù trước đó lúc xóa mềm đã kiểm tra.
+                 */
+                $this->ensureNoRelatedData(
+                    $farm->id
+                );
+
+                $seller = $farm->seller;
+
+                $farm->forceDelete();
+
+                /*
+                 * Seller mất Farm vĩnh viễn:
+                 * seller → customer.
+                 *
+                 * Admin vẫn giữ admin.
+                 */
+                if (
+                    $seller &&
+                    $seller->hasRole('seller')
+                ) {
+                    $seller->syncRoles([
+                        'customer',
+                    ]);
+                }
+
+                return $farm;
+            }
+        );
+    }
+
+    // =====================================================
+    // KIỂM TRA FARM CHO CÁC SERVICE KHÁC
+    // =====================================================
+
+    /**
+     * Lấy Farm chưa bị xóa mềm của User.
+     */
+    public function getOwnedFarm(
+        User $user
+    ): Farm {
+        $farm = Farm::query()
+            ->where(
+                'seller_id',
+                $user->id
+            )
+            ->first();
+
+        if (!$farm) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Tài khoản chưa có nông trại hoặc nông trại đã bị xóa.',
+                ],
+            ]);
+        }
+
+        return $farm;
+    }
+
+    /**
+     * Chỉ Farm active mới được làm nghiệp vụ bán hàng mới.
+     *
+     * ProductService, HarvestLotService,
+     * ProductCertificateService gọi hàm này.
+     */
+    public function getActiveFarm(
+        User $user
+    ): Farm {
+        $farm = $this->getOwnedFarm(
+            $user
+        );
+
+        if (!$farm->isActive()) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    match ($farm->status) {
+                        Farm::STATUS_PENDING =>
+                        'Nông trại đang chờ quản trị viên duyệt.',
+
+                        Farm::STATUS_REJECTED =>
+                        'Nông trại đã bị từ chối. Vui lòng sửa thông tin và gửi duyệt lại.',
+
+                        Farm::STATUS_SUSPENDED =>
+                        'Nông trại đang bị đình chỉ, không được thực hiện nghiệp vụ bán hàng mới.',
+
+                        default =>
+                        'Nông trại hiện không hoạt động.',
+                    },
+                ],
+            ]);
+        }
+
+        return $farm;
+    }
+
+    /**
+     * Farm active hoặc suspended được xử lý đơn cũ.
+     */
+    public function getOrderManageableFarm(
+        User $user
+    ): Farm {
+        $farm = $this->getOwnedFarm(
+            $user
+        );
+
+        if (
+            !in_array(
+                $farm->status,
+                [
+                    Farm::STATUS_ACTIVE,
+                    Farm::STATUS_SUSPENDED,
+                ],
+                true
+            )
+        ) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    match ($farm->status) {
+                        Farm::STATUS_PENDING =>
+                        'Nông trại đang chờ duyệt, chưa được phép xử lý đơn hàng.',
+
+                        Farm::STATUS_REJECTED =>
+                        'Nông trại đã bị từ chối, chưa được phép xử lý đơn hàng.',
+
+                        default =>
+                        'Nông trại không được phép xử lý đơn hàng.',
+                    },
+                ],
+            ]);
+        }
+
+        return $farm;
+    }
+
+    /**
+     * Kiểm tra sản phẩm có thuộc đúng Farm không.
+     */
+    public function ensureProductBelongsToFarm(
+        Product $product,
+        Farm $farm
+    ): void {
+        if (
+            (int) $product->farm_id !==
+            (int) $farm->id
+        ) {
+            throw ValidationException::withMessages([
+                'product' => [
+                    'Bạn không có quyền thao tác với sản phẩm này.',
+                ],
+            ]);
+        }
+    }
+
+    /**
+     * Checkout gọi để kiểm tra Farm có nhận đơn mới không.
+     */
+    public function ensureFarmCanSell(
+        Farm $farm
+    ): void {
+        if ($farm->trashed()) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Nông trại đã bị xóa.',
+                ],
+            ]);
+        }
+
+        if (!$farm->isActive()) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    match ($farm->status) {
+                        Farm::STATUS_PENDING =>
+                        'Nông trại đang chờ duyệt.',
+
+                        Farm::STATUS_REJECTED =>
+                        'Nông trại đã bị từ chối.',
+
+                        Farm::STATUS_SUSPENDED =>
+                        'Nông trại đang bị đình chỉ và không nhận đơn hàng mới.',
+
+                        default =>
+                        'Nông trại hiện không nhận đơn hàng mới.',
+                    },
+                ],
+            ]);
+        }
+    }
+
+    // =====================================================
+    // PRIVATE HELPERS
+    // =====================================================
+
+    private function ensureNoRelatedData(
+        int $farmId
+    ): void {
+        if ($this->hasAnyProducts($farmId)) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Không thể xóa vì nông trại vẫn còn dữ liệu sản phẩm, kể cả sản phẩm đã xóa mềm.',
+                ],
+            ]);
+        }
+
+        if ($this->hasAnySubOrders($farmId)) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Không thể xóa vì nông trại vẫn còn dữ liệu đơn hàng.',
+                ],
+            ]);
+        }
+    }
+
+    private function hasAnyProducts(
+        int $farmId
+    ): bool {
+        return Product::withoutGlobalScope(
+            'farm_not_deleted'
+        )
+            ->withTrashed()
+            ->where(
+                'farm_id',
+                $farmId
+            )
+            ->exists();
+    }
+
+    private function hasAnySubOrders(
+        int $farmId
+    ): bool {
+        return SubOrder::withTrashed()
+            ->where(
+                'farm_id',
+                $farmId
+            )
+            ->exists();
+    }
+
+    private function appendRatingAndCertifications(
+        Farm $farm
+    ): Farm {
+        $reviews = $farm->products
+            ->flatMap(function ($product) {
+                return $product->reviews;
+            });
+
+        $farm->setAttribute(
+            'rating',
+            [
+                'average' => round(
+                    $reviews->avg('rating') ?? 0,
+                    1
+                ),
+
+                'total' => $reviews->count(),
+            ]
+        );
+
+        $farm->products->each(
+            function ($product) {
+                $product->setAttribute(
+                    'rating',
+                    [
+                        'average' => round(
+                            $product->reviews
+                                ->avg('rating') ?? 0,
+                            1
+                        ),
+
+                        'total' =>
+                        $product->reviews
+                            ->count(),
+                    ]
+                );
+
+                unset($product->reviews);
+            }
+        );
+
+        $certifications = $farm->products
+            ->flatMap(function ($product) {
+                return $product->certificates;
+            })
+            ->pluck('certification.name')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $farm->setAttribute(
+            'certifications',
+            $certifications
+        );
+
+        return $farm;
+    }
+
+    private function generateUniqueSlug(
+        string $name,
+        ?int $ignoreId = null
+    ): string {
+        $baseSlug = Str::slug(
+            $name
+        );
+
+        if ($baseSlug === '') {
+            $baseSlug = 'nong-trai';
+        }
+
+        $slug = $baseSlug;
+        $counter = 2;
+
+        while (
+            Farm::withTrashed()
+            ->when(
+                $ignoreId,
+                fn($query) => $query->where(
+                    'id',
+                    '!=',
+                    $ignoreId
+                )
+            )
+            ->where(
+                'slug',
+                $slug
+            )
+            ->exists()
+        ) {
+            $slug = $baseSlug
+                . '-'
+                . $counter;
+
+            $counter++;
+        }
+
+        return $slug;
+    }
+}
