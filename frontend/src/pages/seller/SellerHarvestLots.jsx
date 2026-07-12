@@ -92,14 +92,14 @@ function SellerHarvestLots() {
     if (path.startsWith("http")) return path;
 
     if (path.startsWith("/storage/")) {
-      return `http://localhost:8000${path}`;
+      return `${import.meta.env.VITE_API_BASE_URL}${path}`;
     }
 
     if (path.startsWith("storage/")) {
-      return `http://localhost:8000/${path}`;
+      return `${import.meta.env.VITE_API_BASE_URL}/${path}`;
     }
 
-    return `http://localhost:8000/storage/${path}`;
+    return `${import.meta.env.VITE_API_BASE_URL}/storage/${path}`;
   };
 
   const getErrorMessage = (err, fallback = "Có lỗi xảy ra.") => {
