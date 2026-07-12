@@ -5,5 +5,5 @@ export function getImageUrl(path) {
 
   return path.startsWith("http")
     ? path
-    : `http://localhost:8000/storage/${path}`;
+    : `${import.meta.env.VITE_API_BASE_URL}/storage/${path}`;
 }
