@@ -378,7 +378,7 @@ function SidebarContent({ user, mobile = false, onClose, onOpenLogout }) {
               {user?.name || "Quản trị viên"}
             </h3>
 
-            <p className="mt-1 max-w-[210px] truncate text-sm font-medium text-slate-500">
+            <p className="mt-1 max-w-52.5 truncate text-sm font-medium text-slate-500">
               {user?.email}
             </p>
 
@@ -611,7 +611,7 @@ export default function AdminLayout() {
             z-50
 
             w-[86vw]
-            max-w-[310px]
+            max-w-77.5
 
             bg-white
 
@@ -643,7 +643,7 @@ export default function AdminLayout() {
             z-30
 
             hidden
-            w-[280px]
+            w-70
 
             border-r
             border-slate-100
@@ -666,7 +666,7 @@ export default function AdminLayout() {
             min-h-[calc(100vh-64px)]
             min-w-0
 
-            lg:ml-[280px]
+            lg:ml-70
             lg:min-h-screen
           "
         >

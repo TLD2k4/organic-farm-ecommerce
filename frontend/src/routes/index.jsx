@@ -33,6 +33,8 @@ import AdminUsers from "../pages/admin/UsersPage";
 import AdminCategories from "../pages/admin/CategoriesPage";
 import AdminCertifications from "../pages/admin/CertificationsPage";
 import AdminFarms from "../pages/admin/FarmsPage";
+import AdminProductsPage from "../pages/admin/AdminProductsPage";
+import AdminOrdersPage from "../pages/admin/AdminOrdersPage";
 import AdminReports from "../pages/admin/ReportsPage";
 
 import ProtectedRoute from "./ProtectedRoute";
@@ -56,13 +58,15 @@ export default function AppRoutes() {
 
         {/* AUTH */}
         <Route path="/login" element={<LoginPage />} />
-
         <Route path="/register" element={<RegisterPage />} />
 
         {/* PUBLIC FARMS */}
         <Route path="/farms" element={<FarmsPage />} />
-
         <Route path="/farms/:slug" element={<FarmDetailPage />} />
+
+        {/* PUBLIC PRODUCTS */}
+        <Route path="/products" element={<ProductsPage />} />
+        <Route path="/products/:slug" element={<ProductDetailPage />} />
 
         {/* FARM APPLICATION */}
         <Route
@@ -82,8 +86,6 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
-                <Route path="/products" element={<ProductsPage />} />
-                  <Route path="/products/:id" element={<ProductDetailPage />} />
 
         <Route
           path="/checkout"
@@ -93,7 +95,8 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
-                <Route
+
+        <Route
           path="/order-success"
           element={
             <ProtectedRoute>
@@ -124,11 +127,8 @@ export default function AppRoutes() {
         <Route index element={<Navigate to="dashboard" replace />} />
 
         <Route path="dashboard" element={<SellerDashboard />} />
-
         <Route path="products" element={<SellerProducts />} />
-
         <Route path="orders" element={<SellerOrders />} />
-
         <Route path="harvest-lots" element={<SellerHarvestLots />} />
         <Route path="reviews" element={<SellerReviews />} />
         <Route path="revenue" element={<SellerRevenue />} />
@@ -157,15 +157,12 @@ export default function AppRoutes() {
         <Route index element={<Navigate to="dashboard" replace />} />
 
         <Route path="dashboard" element={<AdminDashboardPage />} />
-
         <Route path="users" element={<AdminUsers />} />
-
-        <Route path="categories" element={<AdminCategories />} />
-
-        <Route path="certifications" element={<AdminCertifications />} />
-
         <Route path="farms" element={<AdminFarms />} />
-
+        <Route path="products" element={<AdminProductsPage />} />
+        <Route path="orders" element={<AdminOrdersPage />} />
+        <Route path="categories" element={<AdminCategories />} />
+        <Route path="certifications" element={<AdminCertifications />} />
         <Route path="reports" element={<AdminReports />} />
       </Route>
 

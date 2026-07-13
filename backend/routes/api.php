@@ -12,8 +12,10 @@ use App\Http\Controllers\Farm\FarmController;
 use App\Http\Controllers\Order\BuyerOrderController;
 use App\Http\Controllers\Order\CheckoutController;
 use App\Http\Controllers\Order\SellerOrderController;
+use App\Http\Controllers\Order\AdminOrderController;
 use App\Http\Controllers\Product\HarvestLotController;
 use App\Http\Controllers\Product\ProductController;
+use App\Http\Controllers\Product\AdminProductController;
 use App\Http\Controllers\Report\AdminReportController;
 use App\Http\Controllers\Upload\UploadController;
 use App\Http\Controllers\User\UserController;
@@ -53,7 +55,7 @@ Route::get('/farms', [FarmController::class, 'index']);
 Route::get('/products/filters', [ProductController::class, 'filters']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{id}/reviews', [ProductController::class, 'reviews']);
-Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::get('/products/{slug}', [ProductController::class, 'show']);
 
 
 // UPLOAD FILE REGISTER
@@ -69,7 +71,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [UserController::class, 'profile']);
     Route::put('/profile', [UserController::class, 'updateProfile']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
-   
+
     // ĐÁNH GIÁ SẢN PHẨM
     Route::get('/my-reviews', [ReviewController::class, 'myReviews']);
     Route::get('/my-reviews/reviewable-items', [ReviewController::class, 'reviewableItems']);
@@ -79,13 +81,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/reviews/{review}', [ReviewController::class, 'update']);
     Route::delete('/reviews/{review}', [ReviewController::class, 'destroy']);
 
-        // ĐỊA CHỈ
+    // ĐỊA CHỈ
     Route::get('/addresses', [AddressController::class, 'index']);
     Route::post('/addresses', [AddressController::class, 'store']);
     Route::put('/addresses/{address}', [AddressController::class, 'update']);
     Route::delete('/addresses/{address}', [AddressController::class, 'destroy']);
     Route::patch('/addresses/{address}/default', [AddressController::class, 'setDefault']);
-    
+
     // LOGOUT
     Route::post('/logout', [AuthController::class, 'logoutCurrent']);
     Route::post('/logout-all', [AuthController::class, 'logoutAll']);
@@ -267,6 +269,76 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch(
             '/admin/users/{id}/restore',
             [UserController::class, 'restore']
+        );
+
+
+        // ADMIN ORDERS
+        // Đặt options trước /{id} để Laravel không hiểu "options" là id.
+        Route::get(
+            '/admin/orders/options',
+            [AdminOrderController::class, 'options']
+        );
+
+        Route::get(
+            '/admin/orders',
+            [AdminOrderController::class, 'index']
+        );
+
+        Route::get(
+            '/admin/orders/{id}',
+            [AdminOrderController::class, 'show']
+        );
+
+        Route::get(
+            '/admin/sub-orders',
+            [AdminOrderController::class, 'subOrderIndex']
+        );
+
+        Route::get(
+            '/admin/sub-orders/{id}',
+            [AdminOrderController::class, 'subOrderShow']
+        );
+
+        Route::patch(
+            '/admin/sub-orders/{id}/status',
+            [AdminOrderController::class, 'updateSubOrderStatus']
+        );
+
+
+        // ADMIN PRODUCTS
+        Route::get(
+            '/admin/products/options',
+            [AdminProductController::class, 'options']
+        );
+
+        Route::get(
+            '/admin/products',
+            [AdminProductController::class, 'index']
+        );
+
+        Route::get(
+            '/admin/products/{id}',
+            [AdminProductController::class, 'show']
+        );
+
+        Route::patch(
+            '/admin/products/{id}/approve',
+            [AdminProductController::class, 'approve']
+        );
+
+        Route::patch(
+            '/admin/products/{id}/reject',
+            [AdminProductController::class, 'reject']
+        );
+
+        Route::patch(
+            '/admin/products/{productId}/certificates/{certificateId}/approve',
+            [AdminProductController::class, 'approveCertificate']
+        );
+
+        Route::patch(
+            '/admin/products/{productId}/certificates/{certificateId}/reject',
+            [AdminProductController::class, 'rejectCertificate']
         );
 
 
