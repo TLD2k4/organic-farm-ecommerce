@@ -82,7 +82,7 @@ export default function CertificationsTable({
       "
     >
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[850px]">
+        <table className="w-full min-w-212.5">
           <thead className="bg-slate-100">
             <tr>
               <th className="whitespace-nowrap px-4 py-4 text-left text-sm font-bold">
@@ -118,13 +118,13 @@ export default function CertificationsTable({
                 </td>
 
                 <td className="px-4 py-4 font-semibold">
-                  <div className="max-w-[220px]">
+                  <div className="max-w-55">
                     {highlight(certification.name, params.keyword)}
                   </div>
                 </td>
 
                 <td className="px-4 py-4 text-slate-600">
-                  <div className="max-w-[380px] wrap-break-word">
+                  <div className="max-w-95 wrap-break-word">
                     {highlight(
                       certification.description || "—",
                       params.keyword,
