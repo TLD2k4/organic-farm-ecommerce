@@ -4,12 +4,15 @@ namespace Database\Seeders;
 
 use App\Models\OrderItem;
 use App\Models\Review;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 
 class ReviewSeeder extends Seeder
 {
     public function run(): void
     {
+        $adminId = User::role('admin')->value('id');
+
         $comments = [
             'Sản phẩm rất tươi, đóng gói cẩn thận.',
             'Giao hàng nhanh, chất lượng đúng mô tả.',
@@ -47,6 +50,7 @@ class ReviewSeeder extends Seeder
 
         foreach ($orderItems as $index => $orderItem) {
             $order = $orderItem->subOrder->order;
+            $isHidden = $index > 0 && $index % 6 === 0;
 
             // Review tạo sau khi đơn đã giao
             $reviewDate = $order->updated_at->copy()->addHours($index + 1);
@@ -54,9 +58,15 @@ class ReviewSeeder extends Seeder
             Review::create([
                 'user_id' => $order->user_id,
                 'order_item_id' => $orderItem->id,
+                'product_id' => $orderItem->product_id,
                 'rating' => $index % 2 === 0 ? 5 : 4,
                 'comment' => $comments[$index],
-                'status' => 1,
+                'status' => $isHidden ? 0 : 1,
+                'moderated_by' => $isHidden ? $adminId : null,
+                'moderated_at' => $isHidden ? $reviewDate->copy()->addHour() : null,
+                'moderation_reason' => $isHidden
+                    ? 'Nội dung mẫu được ẩn để kiểm thử chức năng kiểm duyệt.'
+                    : null,
 
                 'created_at' => $reviewDate,
                 'updated_at' => $reviewDate,

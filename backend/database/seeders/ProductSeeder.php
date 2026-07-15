@@ -9,7 +9,7 @@ class ProductSeeder extends Seeder
 {
     public function run(): void
     {
-         $products =[
+        $products = [
             [
                 'farm_id' => 1,
                 'category_id' => 7,
@@ -18,7 +18,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Rau muống được trồng theo quy trình hữu cơ, không sử dụng hóa chất độc hại.',
                 'price' => 18000,
                 'sale_price' => 15000,
-                'stock_quantity' => 150,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411003/rau-muong-huu-co_kzlhwn.jpg',
                 'is_hot' => 1,
@@ -32,7 +32,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Cải xanh tươi sạch đạt tiêu chuẩn VietGAP.',
                 'price' => 25000,
                 'sale_price' => 22000,
-                'stock_quantity' => 120,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411001/cai-xanh-vietgap_gjbwc8.webp',
                 'is_hot' => 1,
@@ -46,7 +46,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Xà lách thủy canh giòn ngọt, phù hợp ăn salad.',
                 'price' => 32000,
                 'sale_price' => 29000,
-                'stock_quantity' => 100,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411004/xa-lach-thuy-canh_o9uhvf.jpg',
                 'is_hot' => 0,
@@ -60,7 +60,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Rau dền đỏ tươi, được thu hoạch trong ngày.',
                 'price' => 22000,
                 'sale_price' => 20000,
-                'stock_quantity' => 90,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411003/rau-den-sach_swtb66.jpg',
                 'is_hot' => 0,
@@ -75,7 +75,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Cà rốt Đà Lạt tươi ngon, vị ngọt tự nhiên.',
                 'price' => 35000,
                 'sale_price' => 30000,
-                'stock_quantity' => 100,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411002/ca-rot-da-lat_fty4u7.jpg',
                 'is_hot' => 1,
@@ -89,7 +89,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Khoai lang Nhật ruột vàng, dẻo ngọt.',
                 'price' => 40000,
                 'sale_price' => 35000,
-                'stock_quantity' => 130,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411003/khoai-lang-nhat_pclfoy.jpg',
                 'is_hot' => 1,
@@ -103,7 +103,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Bí đỏ hồ lô sạch, thích hợp nấu canh và làm sữa hạt.',
                 'price' => 30000,
                 'sale_price' => 27000,
-                'stock_quantity' => 80,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411001/bi-do-ho-lo_uhnkfu.jpg',
                 'is_hot' => 0,
@@ -117,7 +117,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Dưa leo hữu cơ giòn, mọng nước, không dư lượng thuốc bảo vệ thực vật.',
                 'price' => 28000,
                 'sale_price' => 25000,
-                'stock_quantity' => 110,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411002/dua-leo-huu-co_ddw2ib.jpg',
                 'is_hot' => 0,
@@ -132,7 +132,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Xoài Cát Hòa Lộc đặc sản Tiền Giang, thịt vàng thơm ngọt.',
                 'price' => 75000,
                 'sale_price' => 68000,
-                'stock_quantity' => 90,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411004/xoai-cat-hoa-loc_bxphnc.jpg',
                 'is_hot' => 1,
@@ -146,7 +146,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Bưởi da xanh ruột hồng, vị ngọt thanh, mọng nước.',
                 'price' => 70000,
                 'sale_price' => 65000,
-                'stock_quantity' => 120,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411001/buoi-da-xanh_p3f3xv.jpg',
                 'is_hot' => 1,
@@ -160,7 +160,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Cam sành mọng nước, vị chua ngọt tự nhiên.',
                 'price' => 45000,
                 'sale_price' => 40000,
-                'stock_quantity' => 140,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411001/cam-sanh-mien-tay_o3pvfr.jpg',
                 'is_hot' => 0,
@@ -174,7 +174,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Thanh long ruột đỏ tươi, giàu dinh dưỡng.',
                 'price' => 50000,
                 'sale_price' => 45000,
-                'stock_quantity' => 100,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411004/thanh-long-ruot-do_oyf4av.png',
                 'is_hot' => 0,
@@ -189,7 +189,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Gạo ST25 thơm dẻo, hạt dài, phù hợp bữa cơm gia đình.',
                 'price' => 42000,
                 'sale_price' => 39000,
-                'stock_quantity' => 300,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411002/gao-st25-soc-trang_r4dowq.webp',
                 'is_hot' => 1,
@@ -203,7 +203,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Gạo lứt hữu cơ giàu chất xơ, phù hợp chế độ ăn lành mạnh.',
                 'price' => 48000,
                 'sale_price' => 45000,
-                'stock_quantity' => 250,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411002/gao-lut-huu-co_dlmu9n.jpg',
                 'is_hot' => 0,
@@ -217,7 +217,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Yến mạch nguyên hạt dùng cho bữa sáng, làm bánh hoặc pha sữa.',
                 'price' => 65000,
                 'sale_price' => 59000,
-                'stock_quantity' => 160,
+
                 'unit' => 'gói',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411005/yen-mach-nguyen-hat_yvvvb0.webp',
                 'is_hot' => 0,
@@ -231,7 +231,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Bắp Mỹ ngọt, hạt vàng đều, thích hợp luộc hoặc nấu súp.',
                 'price' => 30000,
                 'sale_price' => 27000,
-                'stock_quantity' => 180,
+
                 'unit' => 'kg',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411001/bap-my-ngot_pgi8tb.jpg',
                 'is_hot' => 0,
@@ -246,7 +246,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Hạt điều rang mộc, không tẩm gia vị, giữ vị béo tự nhiên.',
                 'price' => 120000,
                 'sale_price' => 110000,
-                'stock_quantity' => 60,
+
                 'unit' => 'hộp',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411003/hat-dieu-rang-moc_xlne75.jpg',
                 'is_hot' => 1,
@@ -260,7 +260,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Hạnh nhân nhập khẩu, đóng gói sạch, phù hợp ăn vặt lành mạnh.',
                 'price' => 220000,
                 'sale_price' => 200000,
-                'stock_quantity' => 50,
+
                 'unit' => 'hộp',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411002/hanh-nhan-my_nytksg.jpg',
                 'is_hot' => 0,
@@ -274,7 +274,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Tinh bột nghệ nguyên chất, màu vàng tự nhiên, đóng gói an toàn.',
                 'price' => 95000,
                 'sale_price' => 85000,
-                'stock_quantity' => 70,
+
                 'unit' => 'hộp',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411005/tinh-bot-nghe_bqiw4h.webp',
                 'is_hot' => 1,
@@ -288,7 +288,7 @@ class ProductSeeder extends Seeder
                 'description' => 'Bột gạo nguyên chất dùng làm bánh, nấu cháo hoặc chế biến món ăn.',
                 'price' => 35000,
                 'sale_price' => 32000,
-                'stock_quantity' => 120,
+
                 'unit' => 'gói',
                 'thumbnail' => 'https://res.cloudinary.com/dumydknz7/image/upload/v1782411002/bot-gao-nguyen-chat_xpxhgp.jpg',
                 'is_hot' => 0,

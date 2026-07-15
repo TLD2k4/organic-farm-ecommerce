@@ -38,6 +38,9 @@ return new class extends Migration
             // 3 = Đã giao (Delivered) 
             // 4 = Đã hủy (Cancelled)
             $table->tinyInteger('status')->default(0)->check('status in (0,1,2,3,4)');
+            $table->foreignId('cancelled_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('cancelled_at')->nullable();
+            $table->string('cancel_reason', 500)->nullable();
 
             $table->timestamps();
             $table->softDeletes();

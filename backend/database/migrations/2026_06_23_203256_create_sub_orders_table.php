@@ -41,6 +41,9 @@ return new class extends Migration
             // 3 = Hoàn tiền (Refunded)
             $table->tinyInteger('payment_status')->default(0)->check('payment_status in (0,1,2,3)');
             $table->text('seller_note')->nullable();
+            $table->foreignId('cancelled_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('cancelled_at')->nullable();
+            $table->string('cancel_reason', 500)->nullable();
 
             $table->timestamps();
             $table->softDeletes();
