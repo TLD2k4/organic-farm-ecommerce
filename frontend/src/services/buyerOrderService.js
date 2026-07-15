@@ -30,6 +30,9 @@ const buyerOrderService = {
 
     return unwrapResponse(response);
   },
+
+  retryMomo: async (id) => unwrapResponse(await axiosClient.post(`/orders/${id}/retry-momo`)),
+  changePaymentMethod: async (id, paymentMethod) => unwrapResponse(await axiosClient.patch(`/orders/${id}/payment-method`, { payment_method: paymentMethod })),
 };
 
 function removeEmptyParams(params) {

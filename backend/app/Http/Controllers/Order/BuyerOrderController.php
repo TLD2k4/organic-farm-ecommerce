@@ -117,4 +117,25 @@ class BuyerOrderController extends Controller
             'data' => $data,
         ]);
     }
+
+    public function retryMomo(Request $request, int $id)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã tạo phiên thanh toán MoMo mới.',
+            'data' => $this->buyerOrderService->retryMomoPayment((int) $request->user()->id, $id),
+        ]);
+    }
+
+    public function changePaymentMethod(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'payment_method' => ['required', 'string', 'in:COD,MOMO'],
+        ]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã đổi phương thức thanh toán.',
+            'data' => $this->buyerOrderService->changePendingPaymentMethod((int) $request->user()->id, $id, $validated['payment_method']),
+        ]);
+    }
 }

@@ -28,6 +28,7 @@ class SellerOrderService
             'order.payment',
             'farm',
             'items',
+            'cancelledBy',
         ])
             ->where('farm_id', $farm->id);
 
@@ -167,6 +168,9 @@ class SellerOrderService
                 foreach ($subOrder->items as $orderItem) {
                     $this->inventoryService->restoreLots($orderItem);
                 }
+                $subOrder->cancelled_by = $sellerId;
+                $subOrder->cancelled_at = now();
+                $subOrder->cancel_reason = $sellerNote;
             }
 
             $subOrder->status = $newStatus;
@@ -396,6 +400,11 @@ class SellerOrderService
             'status' => (int) $subOrder->status,
             'status_text' => $this->getStatusText((int) $subOrder->status),
             'status_class' => $this->getStatusClass((int) $subOrder->status),
+            'cancellation' => $subOrder->cancelled_at ? [
+                'reason' => $subOrder->cancel_reason,
+                'at' => optional($subOrder->cancelled_at)->format('d/m/Y H:i'),
+                'by' => $subOrder->cancelledBy ? ['id' => $subOrder->cancelledBy->id, 'name' => $subOrder->cancelledBy->name] : null,
+            ] : null,
             
             'payment_method' => $subOrder->order?->payment?->payment_method,
             'payment_status' => (int) $subOrder->payment_status,
@@ -439,6 +448,7 @@ class SellerOrderService
                     'product' => $item->product ? [
                         'id' => $item->product->id,
                         'name' => $item->product->name,
+                        'slug' => $item->product->slug,
                         'thumbnail' => $item->product->thumbnail,
                         'status' => (int) $item->product->status,
                     ] : null,
