@@ -56,7 +56,7 @@ export default function RecentOrders({ orders = [], loading = false }) {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full min-w-180">
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm">Mã đơn</th>
@@ -86,7 +86,7 @@ export default function RecentOrders({ orders = [], loading = false }) {
                     </td>
 
                     <td className="px-4 py-4">
-                      <div className="max-w-[220px]">
+                      <div className="max-w-55">
                         <p className="truncate font-medium">
                           {order.user?.name || "Không xác định"}
                         </p>

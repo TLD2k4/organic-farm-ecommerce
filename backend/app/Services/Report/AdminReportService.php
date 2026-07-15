@@ -74,6 +74,13 @@ class AdminReportService
 
         $totalOrders = (clone $orderQuery)->count();
 
+        $totalSubOrders = DB::table('sub_orders as so')
+            ->join('orders as o', 'o.id', '=', 'so.order_id')
+            ->whereNull('so.deleted_at')
+            ->whereNull('o.deleted_at')
+            ->whereBetween('o.created_at', [$startDate, $endDate])
+            ->count();
+
         $completedOrders = (clone $orderQuery)
             ->where('status', 3)
             ->count();
@@ -137,6 +144,8 @@ class AdminReportService
             'revenue' => $revenue,
 
             'total_orders' => $totalOrders,
+
+            'total_sub_orders' => $totalSubOrders,
 
             'paid_orders' => $paidOrders,
 
@@ -249,6 +258,21 @@ class AdminReportService
 
             if ((int) $order->status === 4) {
                 $series[$key]['cancelled_orders']++;
+            }
+        }
+
+        $subOrders = DB::table('sub_orders as so')
+            ->join('orders as o', 'o.id', '=', 'so.order_id')
+            ->select(['o.created_at'])
+            ->whereNull('so.deleted_at')
+            ->whereNull('o.deleted_at')
+            ->whereBetween('o.created_at', [$startDate, $endDate])
+            ->get();
+
+        foreach ($subOrders as $subOrder) {
+            $key = $this->periodKey(Carbon::parse($subOrder->created_at), $groupBy);
+            if (isset($series[$key])) {
+                $series[$key]['sub_orders']++;
             }
         }
 
@@ -552,6 +576,7 @@ class AdminReportService
                 'revenue' => 0,
                 'paid_orders' => 0,
                 'orders' => 0,
+                'sub_orders' => 0,
                 'completed_orders' => 0,
                 'cancelled_orders' => 0,
                 'new_users' => 0,

@@ -177,6 +177,11 @@ class SellerDashboardService
             ->where('status', 2)
             ->count();
 
+        $processing = DB::table('sub_orders')
+            ->where('farm_id', $farm->id)
+            ->where('status', 1)
+            ->count();
+
         $completed = DB::table('sub_orders')
             ->where('farm_id', $farm->id)
             ->where('status', 3)
@@ -188,8 +193,9 @@ class SellerDashboardService
             ->count();
 
         return [
-            'total' => $pending + $shipping + $completed + $cancelled,
+            'total' => $pending + $processing + $shipping + $completed + $cancelled,
             'pending' => $pending,
+            'processing' => $processing,
             'shipping' => $shipping,
             'completed' => $completed,
             'cancelled' => $cancelled,

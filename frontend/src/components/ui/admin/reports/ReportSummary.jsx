@@ -8,6 +8,7 @@ import {
   Percent,
   ReceiptText,
   ShoppingCart,
+  Boxes,
   UserPlus,
 } from "lucide-react";
 
@@ -38,10 +39,16 @@ export default function ReportSummary({ summary = {}, loading = false }) {
       iconClass: "bg-green-100 text-green-700",
     },
     {
-      label: "Tổng đơn hàng",
+      label: "Đơn hàng cha",
       value: formatNumber(summary.total_orders),
       icon: ShoppingCart,
       iconClass: "bg-blue-100 text-blue-700",
+    },
+    {
+      label: "Đơn con theo gian hàng",
+      value: formatNumber(summary.total_sub_orders),
+      icon: Boxes,
+      iconClass: "bg-fuchsia-100 text-fuchsia-700",
     },
     {
       label: "Đơn đã thanh toán",
@@ -95,8 +102,8 @@ export default function ReportSummary({ summary = {}, loading = false }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {[...Array(10)].map((_, index) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+        {[...Array(11)].map((_, index) => (
           <div
             key={index}
             className="h-32 animate-pulse rounded-2xl bg-slate-200"
@@ -107,30 +114,14 @@ export default function ReportSummary({ summary = {}, loading = false }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
       {items.map((item) => {
         const Icon = item.icon;
 
         return (
           <div
             key={item.label}
-            className="
-              rounded-2xl
-
-              border
-              border-slate-200
-
-              bg-white
-
-              p-5
-
-              shadow-sm
-
-              transition
-
-              hover:-translate-y-0.5
-              hover:shadow-md
-            "
+            className="group relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -138,11 +129,12 @@ export default function ReportSummary({ summary = {}, loading = false }) {
                   {item.label}
                 </p>
 
-                <p className="mt-3 break-words text-2xl font-bold text-slate-900">
+                <p className="mt-3 wrap-break-word text-2xl font-bold text-slate-900">
                   {item.value}
                 </p>
               </div>
 
+              <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-slate-100/70 transition group-hover:scale-125" />
               <div
                 className={`
                   flex
@@ -152,7 +144,7 @@ export default function ReportSummary({ summary = {}, loading = false }) {
                   items-center
                   justify-center
 
-                  rounded-xl
+                  relative rounded-2xl shadow-sm
 
                   ${item.iconClass}
                 `}

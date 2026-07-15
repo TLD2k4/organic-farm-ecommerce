@@ -43,7 +43,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px]">
+          <table className="w-full min-w-212.5">
             <thead className="bg-slate-50">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3 text-left text-sm font-bold">
@@ -106,7 +106,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="flex min-w-[230px] items-center gap-3">
+                    <div className="flex min-w-57.5 items-center gap-3">
                       {product.product_image ? (
                         <img
                           src={getImageUrl(product.product_image)}
@@ -120,7 +120,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
                       )}
 
                       <div className="min-w-0">
-                        <p className="max-w-[260px] break-words font-semibold text-slate-900">
+                        <p className="max-w-65 wrap-break-word font-semibold text-slate-900">
                           {product.product_name}
                         </p>
 

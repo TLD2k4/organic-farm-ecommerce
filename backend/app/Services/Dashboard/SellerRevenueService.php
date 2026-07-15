@@ -130,7 +130,9 @@ class SellerRevenueService
             ->join('products', 'products.id', '=', 'order_items.product_id')
             ->join('sub_orders', 'sub_orders.id', '=', 'order_items.sub_order_id')
             ->join('orders', 'orders.id', '=', 'sub_orders.order_id')
-            ->where('products.farm_id', $farmId)
+            // Dùng farm được chốt trên đơn con để số liệu lịch sử không mất
+            // khi sản phẩm bị ẩn, xóa hoặc thay đổi thông tin sau khi bán.
+            ->where('sub_orders.farm_id', $farmId)
             ->where('sub_orders.status', 3)
             ->whereBetween($dateColumn, [
                 $from->copy()->startOfDay(),
