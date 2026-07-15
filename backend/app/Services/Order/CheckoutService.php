@@ -4,6 +4,8 @@ namespace App\Services\Order;
 
 use App\Models\Address;
 use App\Models\Cart;
+use App\Models\User;
+use App\Notifications\MarketplaceNotification;
 use App\Services\Payment\MomoPaymentService;
 use Illuminate\Validation\ValidationException;
 
@@ -17,7 +19,8 @@ class CheckoutService
     public function checkout(
         int $userId,
         int $addressId,
-        string $paymentMethod
+        string $paymentMethod,
+        array $cartItemIds,
     ): array {
         $cart = Cart::with([
             'items.product.farm',
@@ -37,6 +40,16 @@ class CheckoutService
                 'cart' => ['Giỏ hàng đang trống.'],
             ]);
         }
+
+        $selectedItems = $cart->items
+            ->whereIn('id', array_map('intval', $cartItemIds))
+            ->values();
+        if ($selectedItems->count() !== count(array_unique($cartItemIds))) {
+            throw ValidationException::withMessages([
+                'cart_item_ids' => ['Có sản phẩm không thuộc giỏ hàng của bạn.'],
+            ]);
+        }
+        $cart->setRelation('items', $selectedItems);
 
         $address = Address::where('id', $addressId)
             ->where('user_id', $userId)
@@ -59,6 +72,30 @@ class CheckoutService
         if ($paymentMethod === 'MOMO') {
             $momoPayment = $this->momoPaymentService->createPayment($order);
         }
+
+        foreach ($order->subOrders as $subOrder) {
+            $subOrder->farm?->seller?->notify(new MarketplaceNotification(
+                'order.created',
+                'Có đơn hàng mới',
+                'Đơn ' . $subOrder->sub_order_code
+                    . ' vừa được tạo với tổng tiền '
+                    . number_format((float) $subOrder->total, 0, ',', '.') . ' đ.',
+                '/seller/orders',
+                null,
+                ['order_id' => $order->id, 'sub_order_id' => $subOrder->id]
+            ));
+        }
+
+        User::role('admin')->each(function (User $admin) use ($order) {
+            $admin->notify(new MarketplaceNotification(
+                'order.created',
+                'Hệ thống có đơn hàng mới',
+                'Đơn ' . $order->order_code . ' vừa được tạo.',
+                '/admin/orders',
+                null,
+                ['order_id' => $order->id]
+            ));
+        });
 
         return [
             'order' => $order,

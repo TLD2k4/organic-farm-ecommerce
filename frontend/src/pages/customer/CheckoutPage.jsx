@@ -16,6 +16,7 @@ import {
 import addressService from "../../services/addressService";
 import buyerCartService from "../../services/buyerCartService";
 import checkoutService from "../../services/checkoutService";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 
 const DEFAULT_SHIPPING_FEE = 30000;
 
@@ -60,8 +61,9 @@ export default function CheckoutPage() {
 
       const response = await buyerCartService.getCart();
       const payload = response.data ?? response;
-
-      setCart(normalizeCart(payload.cart || payload));
+      const normalized = normalizeCart(payload.cart || payload);
+      const selectedIds = JSON.parse(sessionStorage.getItem("checkout_cart_item_ids") || "[]").map(Number);
+      setCart({ ...normalized, items: selectedIds.length ? normalized.items.filter((item) => selectedIds.includes(Number(item.id))) : [] });
     } catch (error) {
       toast.error(error?.response?.data?.message || "Không thể tải giỏ hàng.");
     } finally {
@@ -167,6 +169,7 @@ export default function CheckoutPage() {
         shipping_address: shippingForm.shipping_address,
         note: shippingForm.note || null,
         payment_method: paymentMethod,
+        cart_item_ids: cart.items.map((item) => item.id),
 
         split_orders: groups.map((group) => ({
           farm_id: group.farmId,
@@ -187,6 +190,8 @@ export default function CheckoutPage() {
       const data = payloadData.data ?? payloadData;
 
       toast.success(payloadData.message || "Tạo đơn hàng thành công.");
+      sessionStorage.removeItem("checkout_cart_item_ids");
+      window.dispatchEvent(new Event("cart:updated"));
 
       const momoUrl =
         data.payment_url ||
@@ -335,18 +340,16 @@ function ShippingInfo({
               Chọn địa chỉ đã lưu
             </label>
 
-        <select
+        <ResponsiveSelect
           value={selectedAddressId}
-          onChange={(e) => onSelectAddress(e.target.value)}
-          className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50"
-        >
-          {addresses.map((address) => (
-            <option key={address.id} value={address.id}>
-              {address.receiver_name} - {address.phone} - {getFullAddress(address)}
-              {address.is_default ? " (Mặc định)" : ""}
-            </option>
-          ))}
-        </select>
+          onChange={onSelectAddress}
+          options={addresses.map((address) => ({
+            value: address.id,
+            label: `${address.receiver_name} - ${address.phone} - ${getFullAddress(address)}${
+              address.is_default ? " (Mặc định)" : ""
+            }`,
+          }))}
+        />
           </div>
         )}
 
@@ -710,7 +713,7 @@ function PaymentMethodInSummary({ value, onChange }) {
         <button
           type="button"
           onClick={() => onChange("MOMO")}
-          className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
+          className={`payment-option-momo flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
             value === "MOMO"
               ? "border-pink-500 bg-pink-50"
               : "border-slate-200 bg-white hover:bg-slate-50"
@@ -729,10 +732,12 @@ function PaymentMethodInSummary({ value, onChange }) {
           <Wallet size={22} className="text-pink-500" />
 
           <div>
-            <p className="font-extrabold text-slate-900">Ví MoMo</p>
+            <p className="font-extrabold text-slate-900">
+              MoMo Sandbox · Thẻ ATM nội địa
+            </p>
 
             <p className="text-xs font-semibold text-slate-500">
-              Thanh toán online qua cổng MoMo.
+              Chuyển sang cổng MoMo payWithATM để thanh toán online.
             </p>
           </div>
         </button>

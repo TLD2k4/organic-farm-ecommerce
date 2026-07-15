@@ -18,6 +18,7 @@ class CheckoutController extends Controller
             userId: (int) $request->user()->id,
             addressId: (int) $request->address_id,
             paymentMethod: $request->payment_method,
+            cartItemIds: $request->validated('cart_item_ids'),
         );
 
         $order = $result['order'];
