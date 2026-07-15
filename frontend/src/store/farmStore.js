@@ -1,7 +1,10 @@
+// src\store\farmStore.js
+
 import { create } from "zustand";
 
 import farmService from "../services/farmService";
 import { useAuthStore } from "./authStore";
+
 function getFarmFromResponse(res) {
   return (
     res?.data?.farm ??
@@ -10,6 +13,7 @@ function getFarmFromResponse(res) {
     null
   );
 }
+
 async function refreshProfileSilently() {
   const authStore = useAuthStore.getState();
 
@@ -36,13 +40,17 @@ async function refreshProfileWhenOwnFarm(farmId) {
   }
 }
 
-export const useFarmStore = create((set) => ({
+export const useFarmStore = create((set, get) => ({
   // PUBLIC
   publicFarms: [],
   publicFarm: null,
   publicMeta: null,
   publicLoading: false,
   publicDetailLoading: false,
+
+  publicFarmProducts: [],
+  publicFarmProductsMeta: null,
+  publicFarmProductsLoading: false,
 
   // OWNER
   myFarm: null,
@@ -83,132 +91,157 @@ export const useFarmStore = create((set) => ({
     }
   },
 
-  getBySlug: async (slug) => {
+  getBySlug: async (
+    slug,
+    params = {},
+  ) => {
+    const hasLoadedFarm = Boolean(
+      get().publicFarm,
+    );
+
     set({
-      publicDetailLoading: true,
-      publicFarm: null,
+      publicDetailLoading:
+        !hasLoadedFarm,
+
+      publicFarmProductsLoading:
+        hasLoadedFarm,
     });
 
     try {
       const res =
-        await farmService.getBySlug(slug);
+        await farmService.getBySlug(
+          slug,
+          params,
+        );
+
+      const farm = res.data ?? null;
 
       set({
-        publicFarm: res.data ?? null,
+        publicFarm: farm,
+
+        publicFarmProducts:
+          Array.isArray(farm?.products)
+            ? farm.products
+            : [],
+
+        publicFarmProductsMeta:
+          farm?.products_meta ?? null,
       });
 
       return res;
     } finally {
       set({
         publicDetailLoading: false,
+        publicFarmProductsLoading: false,
       });
     }
   },
 
   // OWNER ACTIONS
- // OWNER ACTIONS
-
-getMyFarm: async () => {
-  set({
-    ownerLoading: true,
-  });
-
-  try {
-    const res =
-      await farmService.getMyFarm();
-
-    const farm =
-      getFarmFromResponse(res);
-
+  getMyFarm: async () => {
     set({
-      myFarm: farm,
+      ownerLoading: true,
     });
 
-    return res;
-  } finally {
+    try {
+      const res =
+        await farmService.getMyFarm();
+
+      const farm =
+        getFarmFromResponse(res);
+
+      set({
+        myFarm: farm,
+      });
+
+      return res;
+    } finally {
+      set({
+        ownerLoading: false,
+      });
+    }
+  },
+
+  registerFarm: async (data) => {
     set({
-      ownerLoading: false,
-    });
-  }
-},
-
-registerFarm: async (data) => {
-  set({
-    ownerActionLoading: true,
-  });
-
-  try {
-    const res =
-      await farmService.register(data);
-
-    const farm =
-      getFarmFromResponse(res);
-
-    set({
-      myFarm: farm,
-    });
-
-    await refreshProfileSilently();
-
-    return res;
-  } finally {
-    set({
-      ownerActionLoading: false,
-    });
-  }
-},
-
-updateFarm: async (id, data) => {
-  set({
-    ownerActionLoading: true,
-  });
-
-  try {
-    const res =
-      await farmService.update(id, data);
-
-    const farm =
-      getFarmFromResponse(res);
-
-    set({
-      myFarm: farm,
+      ownerActionLoading: true,
     });
 
-    await refreshProfileSilently();
+    try {
+      const res =
+        await farmService.register(data);
 
-    return res;
-  } finally {
+      const farm =
+        getFarmFromResponse(res);
+
+      set({
+        myFarm: farm,
+      });
+
+      await refreshProfileSilently();
+
+      return res;
+    } finally {
+      set({
+        ownerActionLoading: false,
+      });
+    }
+  },
+
+  updateFarm: async (id, data) => {
     set({
-      ownerActionLoading: false,
+      ownerActionLoading: true,
     });
-  }
-},
 
-resubmitFarm: async (id) => {
-  set({
-    ownerActionLoading: true,
-  });
+    try {
+      const res =
+        await farmService.update(
+          id,
+          data,
+        );
 
-  try {
-    const res =
-      await farmService.resubmit(id);
+      const farm =
+        getFarmFromResponse(res);
 
-    const farm =
-      getFarmFromResponse(res);
+      set({
+        myFarm: farm,
+      });
 
+      await refreshProfileSilently();
+
+      return res;
+    } finally {
+      set({
+        ownerActionLoading: false,
+      });
+    }
+  },
+
+  resubmitFarm: async (id) => {
     set({
-      myFarm: farm,
+      ownerActionLoading: true,
     });
 
-    await refreshProfileSilently();
+    try {
+      const res =
+        await farmService.resubmit(id);
 
-    return res;
-  } finally {
-    set({
-      ownerActionLoading: false,
-    });
-  }
-},
+      const farm =
+        getFarmFromResponse(res);
+
+      set({
+        myFarm: farm,
+      });
+
+      await refreshProfileSilently();
+
+      return res;
+    } finally {
+      set({
+        ownerActionLoading: false,
+      });
+    }
+  },
 
   ownerForceDeleteFarm: async (id) => {
     set({
@@ -300,7 +333,10 @@ resubmitFarm: async (id) => {
     }
   },
 
-  reject: async (id, rejectionReason) => {
+  reject: async (
+    id,
+    rejectionReason,
+  ) => {
     set({
       actionLoading: true,
     });
@@ -322,14 +358,14 @@ resubmitFarm: async (id) => {
     }
   },
 
-  suspend: async (id) => {
+  suspend: async (id, reason) => {
     set({
       actionLoading: true,
     });
 
     try {
       const res =
-        await farmService.suspend(id);
+        await farmService.suspend(id, reason);
 
       await refreshProfileWhenOwnFarm(id);
 
@@ -360,14 +396,14 @@ resubmitFarm: async (id) => {
     }
   },
 
-  deleteFarm: async (id) => {
+  deleteFarm: async (id, reason) => {
     set({
       actionLoading: true,
     });
 
     try {
       const res =
-        await farmService.delete(id);
+        await farmService.delete(id, reason);
 
       await refreshProfileWhenOwnFarm(id);
 
@@ -420,6 +456,9 @@ resubmitFarm: async (id) => {
   clearPublicFarm: () => {
     set({
       publicFarm: null,
+      publicFarmProducts: [],
+      publicFarmProductsMeta: null,
+      publicFarmProductsLoading: false,
     });
   },
 

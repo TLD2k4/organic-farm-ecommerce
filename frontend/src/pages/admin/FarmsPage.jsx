@@ -1,3 +1,5 @@
+//src\pages\admin\FarmsPage.jsx
+
 import { useEffect, useState } from "react";
 
 import { Building2 } from "lucide-react";
@@ -11,6 +13,7 @@ import FarmsTable from "@/components/ui/admin/farms/FarmsTable";
 import FarmDrawer from "@/components/ui/admin/farms/FarmDrawer";
 import FarmRejectModal from "@/components/ui/admin/farms/FarmRejectModal";
 import Pagination from "@/components/common/Pagination";
+import { requestReason } from "@/utils/actionDialog";
 
 import { handleApi } from "@/utils/api";
 
@@ -125,9 +128,15 @@ export default function FarmsPage() {
         onView={handleView}
         onReject={setRejectingFarm}
         onApprove={(farm) => runAction(() => approve(farm.id))}
-        onSuspend={(farm) => runAction(() => suspend(farm.id))}
+        onSuspend={async (farm) => {
+          const reason = await requestReason({ title: `Đình chỉ ${farm.name}`, description: "Người bán sẽ nhìn thấy người thao tác, thời gian và lý do đình chỉ.", placeholder: "Nhập lý do đình chỉ...", confirmLabel: "Đình chỉ" });
+          if (reason) runAction(() => suspend(farm.id, reason));
+        }}
         onReopen={(farm) => runAction(() => reopen(farm.id))}
-        onDelete={(farm) => runAction(() => deleteFarm(farm.id))}
+        onDelete={async (farm) => {
+          const reason = await requestReason({ title: `Xóa ${farm.name}`, description: "Nông trại sẽ được xóa mềm và có thể khôi phục.", placeholder: "Nhập lý do xóa...", confirmLabel: "Xóa nông trại" });
+          if (reason) runAction(() => deleteFarm(farm.id, reason));
+        }}
         onRestore={(farm) => runAction(() => restore(farm.id))}
         onForceDelete={(farm) => runAction(() => forceDelete(farm.id))}
       />
