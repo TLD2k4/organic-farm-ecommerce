@@ -28,7 +28,7 @@ class OrderBuilderService
         Address $address,
         string $paymentMethod
     ): Order {
-        $cart->load([
+        $cart->loadMissing([
             'items.product.certificate',
         ]);
 
@@ -167,7 +167,7 @@ class OrderBuilderService
             |--------------------------------------------------------------------------
             */
 
-            $cart->items()->delete();
+            $cart->items()->whereIn('id', $cart->items->pluck('id'))->delete();
 
             return $order->fresh([
                 'address',

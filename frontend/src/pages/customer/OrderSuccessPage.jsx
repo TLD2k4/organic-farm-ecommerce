@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Copy,
-  Gift,
   Headphones,
   Leaf,
   MapPin,
@@ -100,7 +99,7 @@ export default function OrderSuccessPage() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-180px)] overflow-hidden bg-gradient-to-b from-[#f3fbef] via-white to-[#f8fff5] py-8">
+    <div className="relative min-h-[calc(100vh-180px)] overflow-hidden bg-linear-to-b from-[#f3fbef] via-white to-[#f8fff5] py-8">
       <div className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full bg-green-100/60 blur-3xl" />
       <div className="pointer-events-none absolute -right-24 top-44 h-80 w-80 rounded-full bg-lime-100/70 blur-3xl" />
       <div className="pointer-events-none absolute bottom-10 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-emerald-50 blur-3xl" />
@@ -177,7 +176,7 @@ export default function OrderSuccessPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Link
                   to="/profile?tab=orders"
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#168f2e] to-[#55b83a] px-6 text-sm font-black text-white shadow-lg shadow-green-100 transition hover:-translate-y-0.5 hover:shadow-xl"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-[#168f2e] to-[#55b83a] px-6 text-sm font-black text-white shadow-lg shadow-green-100 transition hover:-translate-y-0.5 hover:shadow-xl"
                 >
                   <PackageSearch size={19} />
                   Xem đơn hàng
@@ -203,7 +202,7 @@ export default function OrderSuccessPage() {
 
 function SuccessHero({ orderCode, onCopy }) {
   return (
-    <div className="relative overflow-hidden bg-gradient-to-r from-[#168f2e] via-[#40bd31] to-[#94df00] px-6 py-8 text-white md:px-12">
+    <div className="relative overflow-hidden bg-linear-to-r from-[#168f2e] via-[#40bd31] to-[#94df00] px-6 py-8 text-white md:px-12">
       <div className="absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
       <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/15 blur-3xl" />
 
@@ -339,7 +338,7 @@ function OrderTimeline({ isPaid }) {
         {steps.map((step, index) => (
           <div key={step.title} className="relative">
             {index < steps.length - 1 && (
-              <div className="absolute left-12 top-6 hidden h-[2px] w-[calc(100%-40px)] border-t border-dashed border-slate-300 md:block" />
+              <div className="absolute left-12 top-6 hidden h-0.5 w-[calc(100%-40px)] border-t border-dashed border-slate-300 md:block" />
             )}
 
             <div className="relative z-10 flex gap-3 md:block">

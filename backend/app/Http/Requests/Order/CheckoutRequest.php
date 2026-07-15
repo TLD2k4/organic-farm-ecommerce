@@ -25,6 +25,8 @@ class CheckoutRequest extends FormRequest
                 'string',
                 'in:COD,MOMO',
             ],
+            'cart_item_ids' => ['required', 'array', 'min:1'],
+            'cart_item_ids.*' => ['required', 'integer', 'distinct', 'exists:cart_items,id'],
         ];
     }
 
@@ -37,6 +39,7 @@ class CheckoutRequest extends FormRequest
 
             'payment_method.required' => 'Vui lòng chọn phương thức thanh toán.',
             'payment_method.in' => 'Phương thức thanh toán không hợp lệ.',
+            'cart_item_ids.required' => 'Vui lòng chọn ít nhất một sản phẩm để thanh toán.',
         ];
     }
 }
