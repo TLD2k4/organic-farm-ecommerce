@@ -21,6 +21,9 @@ class Order extends Model
         'items_total',
         'grand_total',
         'status',
+        'cancelled_by',
+        'cancelled_at',
+        'cancel_reason',
     ];
 
     protected $casts = [
@@ -28,6 +31,7 @@ class Order extends Model
         'items_total' => 'decimal:2',
         'grand_total' => 'decimal:2',
         'status' => 'integer',
+        'cancelled_at' => 'datetime',
     ];
 
     public function user()
@@ -48,5 +52,10 @@ class Order extends Model
     public function payment()
     {
         return $this->hasOne(Payment::class);
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by')->withTrashed();
     }
 }

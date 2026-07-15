@@ -13,7 +13,6 @@ class PaymentSeeder extends Seeder
         $methods = [
             'COD',
             'MOMO',
-            'VNPAY',
         ];
 
         $orders = Order::orderBy('id')->get();
@@ -21,28 +20,32 @@ class PaymentSeeder extends Seeder
         foreach ($orders as $order) {
             $method = $methods[($order->id - 1) % count($methods)];
 
-            $paymentStatus = match ($order->status) {
-                3 => 1, // Delivered => Paid
-                4 => 3, // Cancelled => Refunded
-                default => 0, // Pending
+            $paymentStatus = match ((int) $order->status) {
+                3 => 1,
+                2, 1 => $method === 'MOMO' ? 1 : 0,
+                4 => $method === 'MOMO' ? 3 : 2,
+                default => 0,
             };
 
             // Payment được tạo sau khi khách đặt hàng 10 phút
             $paymentDate = $order->created_at->copy()->addMinutes(10);
 
             // Nếu đơn đã giao thì xem như thanh toán hoàn tất tại thời điểm order hoàn tất
-            $paidAt = $paymentStatus === 1
-                ? $order->updated_at
-                : null;
+            $paidAt = match ($paymentStatus) {
+                1 => $order->updated_at,
+                3 => $order->created_at->copy()->addMinutes(20),
+                default => null,
+            };
 
             // Nếu đã paid/refunded thì updated_at theo thời điểm trạng thái cuối của order
             $paymentUpdatedAt = in_array($paymentStatus, [1, 3])
                 ? $order->updated_at
                 : $paymentDate;
 
-            Payment::create([
+            $payment = Payment::create([
                 'order_id' => $order->id,
-                'transaction_code' => 'TXN' . str_pad($order->id, 8, '0', STR_PAD_LEFT),
+                'transaction_code' => ($method === 'MOMO' ? 'MOMO-SANDBOX-' : 'COD-')
+                    . str_pad($order->id, 8, '0', STR_PAD_LEFT),
                 'payment_method' => $method,
                 'amount' => $order->grand_total,
                 'status' => $paymentStatus,
@@ -50,6 +53,10 @@ class PaymentSeeder extends Seeder
 
                 'created_at' => $paymentDate,
                 'updated_at' => $paymentUpdatedAt,
+            ]);
+
+            $order->subOrders()->update([
+                'payment_status' => $payment->status,
             ]);
         }
     }

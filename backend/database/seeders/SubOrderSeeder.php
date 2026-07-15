@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Order;
+use App\Models\Farm;
 use App\Models\SubOrder;
 use Illuminate\Database\Seeder;
 
@@ -10,20 +11,18 @@ class SubOrderSeeder extends Seeder
 {
     public function run(): void
     {
-        $subOrderIndex = 1;
+        $orders = Order::query()->orderBy('created_at')->orderBy('id')->get();
+        $farmIds = Farm::query()->where('status', 1)->orderBy('id')->pluck('id')->values();
 
-        for ($orderId = 1; $orderId <= 30; $orderId++) {
-            $order = Order::find($orderId);
+        if ($orders->isEmpty() || $farmIds->isEmpty()) return;
 
-            if (!$order) {
-                continue;
-            }
+        foreach ($orders as $orderIndex => $order) {
 
             // Order lẻ có 1 sub_order, order chẵn có 2 sub_orders
-            $numberOfSubOrders = $orderId % 2 === 0 ? 2 : 1;
+            $numberOfSubOrders = $orderIndex % 2 === 0 ? 1 : min(2, $farmIds->count());
 
             for ($j = 1; $j <= $numberOfSubOrders; $j++) {
-                $farmId = (($orderId + $j - 2) % 5) + 1;
+                $farmId = (int) $farmIds[($orderIndex + $j - 1) % $farmIds->count()];
 
                 // Sub order lấy trạng thái theo order cha
                 $status = $order->status;
@@ -37,10 +36,11 @@ class SubOrderSeeder extends Seeder
                 // Sub order được tạo sau order cha vài phút
                 $subOrderDate = $order->created_at->copy()->addMinutes($j);
 
-                SubOrder::create([
-                    'order_id' => $orderId,
+                SubOrder::updateOrCreate([
+                    'sub_order_code' => 'SUB-' . $order->order_code . '-' . $j,
+                ], [
+                    'order_id' => $order->id,
                     'farm_id' => $farmId,
-                    'sub_order_code' => 'SUB' . str_pad($subOrderIndex, 6, '0', STR_PAD_LEFT),
 
                     // Ban đầu chưa tính item, OrderItemSeeder sẽ cập nhật lại
                     'items_total' => 0,
@@ -55,7 +55,6 @@ class SubOrderSeeder extends Seeder
                     'updated_at' => $subOrderDate,
                 ]);
 
-                $subOrderIndex++;
             }
         }
     }

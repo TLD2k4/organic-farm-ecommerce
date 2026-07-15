@@ -44,6 +44,12 @@ return new class extends Migration
             $table->tinyInteger('status')->default(0)->check('status in (0,1,2,3)');
             $table->timestamp('approved_at')->nullable(); // thêm ở đây
             $table->text('rejection_reason')->nullable(); // thêm ở đây
+            $table->foreignId('admin_locked_by')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+            $table->timestamp('admin_locked_at')->nullable();
+            $table->text('admin_lock_reason')->nullable();
 
             $table->timestamps();
             $table->softDeletes();

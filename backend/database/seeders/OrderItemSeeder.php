@@ -86,7 +86,7 @@ class OrderItemSeeder extends Seeder
 
     private function getStatusUpdatedAt($createdAt, int $status)
     {
-        return match ($status) {
+        $updatedAt = match ($status) {
             0 => $createdAt->copy()->addMinutes(30), // Pending
             1 => $createdAt->copy()->addHours(2),    // Processing
             2 => $createdAt->copy()->addDay(),       // Shipping
@@ -94,5 +94,7 @@ class OrderItemSeeder extends Seeder
             4 => $createdAt->copy()->addHours(4),    // Cancelled
             default => $createdAt->copy()->addMinutes(10),
         };
+
+        return $updatedAt->isFuture() ? now() : $updatedAt;
     }
 }
