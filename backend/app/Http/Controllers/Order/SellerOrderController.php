@@ -7,11 +7,15 @@ use App\Http\Requests\Order\UpdateSellerOrderStatusRequest;
 use App\Services\Order\SellerOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Services\Audit\AuditLogService;
+use App\Models\SubOrder;
+use App\Notifications\MarketplaceNotification;
 
 class SellerOrderController extends Controller
 {
     public function __construct(
         private SellerOrderService $sellerOrderService,
+        private AuditLogService $auditLogService,
     ) {
     }
 
@@ -98,12 +102,43 @@ class SellerOrderController extends Controller
      */
     public function updateStatus(UpdateSellerOrderStatusRequest $request, int $id)
     {
+        $subOrder = SubOrder::query()
+            ->with('order.user')
+            ->findOrFail($id);
+        $currentStatus = (int) $subOrder->status;
+
         $data = $this->sellerOrderService->updateVendorOrderStatus(
             sellerId: (int) Auth::id(),
             subOrderId: $id,
             newStatus: (int) $request->status,
             sellerNote: $request->input('seller_note'),
         );
+
+        $this->auditLogService->record(
+            $request->user(),
+            'sub_order',
+            $id,
+            'status_update',
+            $currentStatus,
+            (int) $request->status,
+            $request->input('seller_note'),
+            [
+                'farm_id' => $subOrder->farm_id,
+                'order_id' => $subOrder->order_id,
+                'buyer_id' => $subOrder->order?->user_id,
+            ]
+        );
+
+        $subOrder->order?->user?->notify(new MarketplaceNotification(
+            'order.status_updated',
+            'Đơn hàng đã cập nhật',
+            'Đơn ' . $subOrder->sub_order_code
+                . ' đã chuyển trạng thái từ ' . $currentStatus
+                . ' sang ' . $request->status . '.',
+            '/profile?tab=orders',
+            $request->user(),
+            ['order_id' => $subOrder->order_id, 'sub_order_id' => $id]
+        ));
 
         return response()->json([
             'success' => true,

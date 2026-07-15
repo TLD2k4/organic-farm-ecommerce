@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import sellerOrderService from "../../services/sellerOrderService";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 
 const STATUS_TABS = [
   { label: "Tất cả", value: "" },
@@ -58,7 +60,7 @@ export default function SellerOrders() {
       console.log("LOAD SELLER ORDERS ERROR:", error);
 
       toast.error(
-        error?.response?.data?.message || "Không thể tải danh sách đơn hàng."
+        error?.response?.data?.message || "Không thể tải danh sách đơn hàng.",
       );
     } finally {
       setLoading(false);
@@ -70,16 +72,15 @@ export default function SellerOrders() {
   }, [fetchOrders]);
 
   useEffect(() => {
-  if (showDetailModal || showActionModal) {
-    document.body.style.overflow = "hidden";
-  } else {
-    document.body.style.overflow = "";
-  }
+    if (!showDetailModal && !showActionModal) return undefined;
 
-  return () => {
-    document.body.style.overflow = "";
-  };
-}, [showDetailModal, showActionModal]);
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = oldOverflow;
+    };
+  }, [showDetailModal, showActionModal]);
 
   const handleFilterChange = (name, value) => {
     setFilters((prev) => ({
@@ -110,23 +111,23 @@ export default function SellerOrders() {
     }));
   };
 
-    const handleViewDetail = async (orderId) => {
+  const handleViewDetail = async (orderId) => {
     try {
-        setSelectedOrder(null);
-        setDetailLoading(true);
-        setShowDetailModal(true);
+      setSelectedOrder(null);
+      setDetailLoading(true);
+      setShowDetailModal(true);
 
-        const response = await sellerOrderService.getOrder(orderId);
-        setSelectedOrder(response.data ?? response);
+      const response = await sellerOrderService.getOrder(orderId);
+      setSelectedOrder(response.data ?? response);
     } catch (error) {
-        toast.error(
-        error?.response?.data?.message || "Không thể tải chi tiết đơn hàng."
-        );
-        setShowDetailModal(false);
+      toast.error(
+        error?.response?.data?.message || "Không thể tải chi tiết đơn hàng.",
+      );
+      setShowDetailModal(false);
     } finally {
-        setDetailLoading(false);
+      setDetailLoading(false);
     }
-    };
+  };
 
   const openActionModal = (order, status) => {
     setActionOrder(order);
@@ -163,21 +164,19 @@ export default function SellerOrders() {
       if (showDetailModal && selectedOrder?.id === updatedOrder.id) {
         setSelectedOrder(updatedOrder);
       }
-      } catch (error) {
-        console.log("UPDATE SELLER ORDER STATUS ERROR:", error);
+    } catch (error) {
+      console.log("UPDATE SELLER ORDER STATUS ERROR:", error);
 
-        const data = error?.response?.data || {};
-        const errors = data.errors || {};
-        const firstError = errors ? Object.values(errors)?.flat()?.[0] : null;
+      const data = error?.response?.data || {};
+      const errors = data.errors || {};
+      const firstError = errors ? Object.values(errors)?.flat()?.[0] : null;
 
-        toast.error(
-          firstError ||
-            data.message ||
-            "Cập nhật trạng thái thất bại."
-        );
-      } finally {
-        setActionLoading(false);
-      }
+      toast.error(
+        firstError || data.message || "Cập nhật trạng thái thất bại.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const getNextActions = (order) => {
@@ -189,9 +188,7 @@ export default function SellerOrders() {
     const isPaid = paymentStatus === 1;
 
     if (status === 0) {
-      const actions = [
-        { status: 1, label: "Xác nhận", variant: "primary" },
-      ];
+      const actions = [{ status: 1, label: "Xác nhận", variant: "primary" }];
 
       if (!isPaid) {
         actions.push({ status: 4, label: "Hủy đơn", variant: "danger" });
@@ -201,9 +198,7 @@ export default function SellerOrders() {
     }
 
     if (status === 1) {
-      const actions = [
-        { status: 2, label: "Giao hàng", variant: "indigo" },
-      ];
+      const actions = [{ status: 2, label: "Giao hàng", variant: "indigo" }];
 
       if (!isPaid) {
         actions.push({ status: 4, label: "Hủy đơn", variant: "danger" });
@@ -219,13 +214,9 @@ export default function SellerOrders() {
     return [];
   };
 
-
-
   return (
-    <div className="min-h-screen bg-[#f6faf7] p-6">
-      <div className="mx-auto max-w-[1500px] space-y-6">
-
-
+    <div className="w-full min-w-0">
+      <div className="mx-auto w-full min-w-0 max-w-375 space-y-5 sm:space-y-6">
         <StatsGrid stats={stats} formatMoney={formatMoney} />
 
         <StatusTabs
@@ -279,7 +270,6 @@ export default function SellerOrders() {
   );
 }
 
-
 function StatsGrid({ stats, formatMoney }) {
   const cards = [
     {
@@ -321,20 +311,20 @@ function StatsGrid({ stats, formatMoney }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+    <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
       {cards.map((card) => (
         <div
           key={card.label}
-          className="group overflow-hidden rounded-3xl border border-white bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+          className="group min-w-0 overflow-hidden rounded-3xl border border-white bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
         >
           <div
-            className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${card.color} text-xl shadow-lg`}
+            className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br ${card.color} text-xl shadow-lg`}
           >
             {card.icon}
           </div>
 
           <p className="text-sm font-medium text-gray-500">{card.label}</p>
-          <p className="mt-2 text-2xl font-black text-gray-900">
+          <p className="mt-2 break-words text-xl font-black text-gray-900 sm:text-2xl">
             {card.value}
           </p>
         </div>
@@ -343,37 +333,37 @@ function StatsGrid({ stats, formatMoney }) {
   );
 }
 
-    function StatusTabs({ value, onChange }) {
-    return (
-        <div className="rounded-3xl border border-gray-100 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap gap-3">
-            {STATUS_TABS.map((tab) => {
-            const active = String(value) === String(tab.value);
+function StatusTabs({ value, onChange }) {
+  return (
+    <div className="min-w-0 overflow-x-auto rounded-3xl border border-gray-100 bg-white p-3 shadow-sm">
+      <div className="flex w-max min-w-full gap-2 pb-1 sm:w-auto sm:flex-wrap sm:gap-3">
+        {STATUS_TABS.map((tab) => {
+          const active = String(value) === String(tab.value);
 
-            return (
-                <button
-                key={tab.label}
-                onClick={() => onChange(tab.value)}
-                className={`rounded-2xl px-5 py-3 text-sm font-black transition-all duration-200 ${
-                    active
-                    ? "bg-emerald-600 text-white shadow-lg shadow-emerald-100"
-                    : "bg-gray-50 text-gray-600 hover:bg-emerald-50 hover:text-emerald-700"
-                }`}
-                >
-                {tab.label}
-                </button>
-            );
-            })}
-        </div>
-        </div>
-    );
-    }
+          return (
+            <button
+              key={tab.label}
+              onClick={() => onChange(tab.value)}
+              className={`shrink-0 whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-black transition-all duration-200 sm:px-5 ${
+                active
+                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-100"
+                  : "bg-gray-50 text-gray-600 hover:bg-emerald-50 hover:text-emerald-700"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function FilterPanel({ filters, onChange, onReset }) {
   return (
-    <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-4">
+    <div className="min-w-0 rounded-3xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
+        <div className="sm:col-span-2 xl:col-span-4">
           <label className="mb-1.5 block text-xs font-bold uppercase text-gray-400">
             Tìm kiếm
           </label>
@@ -381,28 +371,28 @@ function FilterPanel({ filters, onChange, onReset }) {
             value={filters.keyword}
             onChange={(e) => onChange("keyword", e.target.value)}
             placeholder="Mã đơn, tên khách, số điện thoại..."
-            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
+            className="w-full min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
           />
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2">
           <label className="mb-1.5 block text-xs font-bold uppercase text-gray-400">
             Thanh toán
           </label>
-          <select
+          <ResponsiveSelect
             value={filters.payment_status}
-            onChange={(e) => onChange("payment_status", e.target.value)}
-            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
-          >
-            <option value="">Tất cả</option>
-            <option value="0">Chờ thanh toán</option>
-            <option value="1">Đã thanh toán</option>
-            <option value="2">Thất bại</option>
-            <option value="3">Đã hoàn tiền</option>
-          </select>
+            onChange={(value) => onChange("payment_status", value)}
+            options={[
+              { value: "", label: "Tất cả" },
+              { value: "0", label: "Chờ thanh toán" },
+              { value: "1", label: "Đã thanh toán" },
+              { value: "2", label: "Thất bại" },
+              { value: "3", label: "Đã hoàn tiền" },
+            ]}
+          />
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2">
           <label className="mb-1.5 block text-xs font-bold uppercase text-gray-400">
             Từ ngày
           </label>
@@ -410,11 +400,11 @@ function FilterPanel({ filters, onChange, onReset }) {
             type="date"
             value={filters.date_from}
             onChange={(e) => onChange("date_from", e.target.value)}
-            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
+            className="w-full min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
           />
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2">
           <label className="mb-1.5 block text-xs font-bold uppercase text-gray-400">
             Đến ngày
           </label>
@@ -422,11 +412,11 @@ function FilterPanel({ filters, onChange, onReset }) {
             type="date"
             value={filters.date_to}
             onChange={(e) => onChange("date_to", e.target.value)}
-            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
+            className="w-full min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
           />
         </div>
 
-        <div className="flex items-end lg:col-span-2">
+        <div className="flex items-end sm:col-span-2 xl:col-span-2">
           <button
             onClick={onReset}
             className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
@@ -449,22 +439,53 @@ function OrdersTable({
   openActionModal,
 }) {
   return (
-    <div className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-        <div>
+    <div className="min-w-0 overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between sm:px-5">
+        <div className="min-w-0">
           <h2 className="text-lg font-black text-gray-900">Danh sách đơn</h2>
           <p className="text-sm text-gray-500">
             Tổng cộng {pagination.total || 0} đơn hàng
           </p>
         </div>
 
-        <div className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
+        <div className="w-fit shrink-0 rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
           Trang {pagination.current_page || 1}/{pagination.last_page || 1}
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
+      <div className="grid gap-3 bg-[#f8faf9] p-3 xl:hidden">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-80 animate-pulse rounded-2xl bg-gray-200"
+            />
+          ))
+        ) : orders.length === 0 ? (
+          <div className="rounded-2xl bg-white px-4 py-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gray-100 text-3xl">
+              🧾
+            </div>
+            <p className="font-bold text-gray-900">Chưa có đơn hàng nào</p>
+            <p className="mt-1 text-sm text-gray-500">
+              Khi khách đặt hàng, đơn sẽ hiển thị tại đây.
+            </p>
+          </div>
+        ) : (
+          orders.map((order) => (
+            <OrderMobileCard
+              key={order.id}
+              order={order}
+              onViewDetail={onViewDetail}
+              actions={getNextActions(order)}
+              openActionModal={openActionModal}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto overscroll-x-contain xl:block">
+        <table className="w-full min-w-290">
           <thead>
             <tr className="bg-gray-50 text-left text-xs font-black uppercase tracking-wider text-gray-400">
               <th className="px-5 py-4">Đơn hàng</th>
@@ -503,10 +524,10 @@ function OrdersTable({
                   key={order.id}
                   className="group transition hover:bg-emerald-50/40"
                 >
-                  <td className="px-5 py-4">
-                    <div className="font-black text-gray-900">
+                  <td className="whitespace-nowrap px-5 py-4">
+                    <button type="button" onClick={() => onViewDetail(order.id)} className="font-black text-gray-900 hover:text-emerald-600 hover:underline">
                       {order.sub_order_code}
-                    </div>
+                    </button>
                     <div className="mt-1 text-xs font-medium text-gray-400">
                       {order.order_code}
                     </div>
@@ -548,7 +569,7 @@ function OrdersTable({
 
                   <td className="px-5 py-4">
                     <PaymentBadge
-                      text={order.payment_status_text}
+                      text={`${order.payment_method === "MOMO" ? "MoMo" : "COD"} · ${order.payment_status_text}`}
                       status={order.payment_status}
                     />
                   </td>
@@ -584,12 +605,12 @@ function OrdersTable({
         </table>
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-500">
+      <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <p className="text-center text-sm text-gray-500 sm:text-left">
           Hiển thị {orders.length} / {pagination.total || 0} đơn hàng
         </p>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex">
           <button
             onClick={() => onPageChange((pagination.current_page || 1) - 1)}
             disabled={(pagination.current_page || 1) <= 1}
@@ -613,6 +634,90 @@ function OrdersTable({
   );
 }
 
+function OrderMobileCard({ order, onViewDetail, actions, openActionModal }) {
+  return (
+    <article className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-gray-100 p-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
+        <div className="min-w-0">
+          <button type="button" onClick={() => onViewDetail(order.id)} className="break-words text-left font-black text-gray-900 hover:text-emerald-600 hover:underline">
+            {order.sub_order_code}
+          </button>
+          <p className="mt-1 break-words text-xs font-medium text-gray-400">
+            {order.order_code}
+          </p>
+          <p className="mt-2 break-words text-sm font-bold text-gray-800">
+            {order.customer_name}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">{order.customer_phone}</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 min-[430px]:max-w-40 min-[430px]:justify-end">
+          <StatusBadge
+            text={order.status_text}
+            statusClass={order.status_class}
+          />
+          <PaymentBadge
+            text={`${order.payment_method === "MOMO" ? "MoMo" : "COD"} · ${order.payment_status_text}`}
+            status={order.payment_status}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 p-4 min-[400px]:grid-cols-2">
+        <div className="rounded-2xl bg-gray-50 p-3">
+          <p className="text-xs font-bold uppercase text-gray-400">Sản phẩm</p>
+          <p className="mt-1 font-black text-gray-800">
+            {order.items_count} sản phẩm
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Tổng SL: {order.items_quantity}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-emerald-50 p-3">
+          <p className="text-xs font-bold uppercase text-emerald-600">
+            Tổng tiền
+          </p>
+          <p className="mt-1 break-words font-black text-emerald-700">
+            {formatMoney(order.total)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Ship: {formatMoney(order.shipping_fee)}
+          </p>
+        </div>
+
+        <div className="min-[400px]:col-span-2">
+          <p className="text-xs font-bold uppercase text-gray-400">Ngày tạo</p>
+          <p className="mt-1 text-sm font-semibold text-gray-600">
+            {formatDateTime(order.created_at)}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 border-t border-gray-100 bg-gray-50 p-3 min-[400px]:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onViewDetail(order.id)}
+          className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700"
+        >
+          Chi tiết
+        </button>
+
+        {actions.map((action) => (
+          <ActionButton
+            key={action.status}
+            variant={action.variant}
+            onClick={() => openActionModal(order, action.status)}
+            large
+          >
+            {action.label}
+          </ActionButton>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function DetailDrawer({ order, loading, onClose, actions, onAction }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm">
@@ -623,17 +728,17 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
         aria-label="Close detail drawer"
       />
 
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-[780px] flex-col overflow-hidden bg-white shadow-2xl">
-        <div className="relative flex-none bg-gradient-to-r from-emerald-600 via-green-600 to-lime-500 px-7 py-6 text-white">
+      <div className="absolute right-0 top-0 flex h-full w-full max-w-195 min-w-0 flex-col overflow-hidden bg-white shadow-2xl">
+        <div className="relative flex-none bg-linear-to-r from-emerald-600 via-green-600 to-lime-500 px-4 py-5 text-white sm:px-7 sm:py-6">
           <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/20 blur-2xl" />
 
-          <div className="relative z-10 flex items-start justify-between gap-4">
-            <div>
+          <div className="relative z-10 flex min-w-0 items-start justify-between gap-3 sm:gap-4">
+            <div className="min-w-0">
               <p className="text-sm font-bold text-green-50">
                 Chi tiết đơn hàng
               </p>
 
-              <h2 className="mt-1 text-3xl font-black tracking-tight">
+              <h2 className="mt-1 break-words text-2xl font-black tracking-tight sm:text-3xl">
                 {order?.sub_order_code || "Đang tải..."}
               </h2>
 
@@ -646,14 +751,14 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
 
             <button
               onClick={onClose}
-              className="rounded-2xl bg-white/20 px-4 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-white/30"
+              className="shrink-0 rounded-2xl bg-white/20 px-3 py-2 text-sm font-black text-white backdrop-blur transition hover:bg-white/30 sm:px-4"
             >
               Đóng
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-[#f8faf9] p-6">
+        <div className="flex-1 overflow-y-auto bg-[#f8faf9] p-3 sm:p-6">
           {loading || !order ? (
             <div className="space-y-4">
               <SkeletonBox height="h-28" />
@@ -662,7 +767,7 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <InfoCard title="Khách hàng">
                   <p className="text-lg font-black text-gray-900">
                     {order.customer_name}
@@ -710,6 +815,8 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                 </div>
               )}
 
+              {order.cancellation && <div className="rounded-3xl border border-red-200 bg-red-50 p-5"><p className="text-xs font-black uppercase tracking-wider text-red-600">Thông tin hủy đơn</p><p className="mt-2 text-sm font-bold text-slate-700">Bởi {order.cancellation.by?.name || "Tài khoản đã xóa"} · {order.cancellation.at}</p><p className="mt-1 text-sm text-slate-600">Lý do: {order.cancellation.reason || "Không ghi lý do"}</p></div>}
+
               <div className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
                 <div className="border-b border-gray-100 px-5 py-4">
                   <h3 className="text-base font-black text-gray-900">
@@ -721,7 +828,7 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                   {order.items?.map((item) => (
                     <div
                       key={item.id}
-                      className="flex flex-col gap-4 p-5 md:flex-row md:items-center"
+                      className="flex min-w-0 flex-col gap-4 p-4 sm:p-5 md:flex-row md:items-center"
                     >
                       <img
                         src={
@@ -734,9 +841,11 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                       />
 
                       <div className="min-w-0 flex-1">
-                        <h4 className="line-clamp-2 text-base font-black text-gray-900">
-                          {item.product_name}
-                        </h4>
+                        {item.product?.slug ? (
+                          <Link to={`/products/${item.product.slug}`} className="line-clamp-2 text-base font-black text-gray-900 hover:text-emerald-600 hover:underline">{item.product_name}</Link>
+                        ) : (
+                          <h4 className="line-clamp-2 text-base font-black text-gray-900">{item.product_name}</h4>
+                        )}
 
                         <p className="mt-1 text-sm text-gray-500">
                           {item.quantity} {item.unit} x{" "}
@@ -761,11 +870,11 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                         )}
                       </div>
 
-                      <div className="text-right">
+                      <div className="min-w-0 md:text-right">
                         <p className="text-xs font-bold text-gray-400">
                           Thành tiền
                         </p>
-                        <p className="mt-1 text-xl font-black text-emerald-700">
+                        <p className="mt-1 break-words text-lg font-black text-emerald-700 sm:text-xl">
                           {formatMoney(item.subtotal)}
                         </p>
                       </div>
@@ -774,7 +883,7 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                 </div>
               </div>
 
-              <div className="ml-auto max-w-sm rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="ml-auto w-full max-w-sm rounded-3xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
                 <MoneyRow
                   label="Tiền hàng"
                   value={formatMoney(order.items_total)}
@@ -795,7 +904,7 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
         </div>
 
         {!loading && order && actions.length > 0 && (
-          <div className="flex flex-none flex-wrap justify-end gap-3 border-t border-gray-100 bg-white px-6 py-4">
+          <div className="grid flex-none grid-cols-1 gap-2 border-t border-gray-100 bg-white px-4 py-4 min-[430px]:grid-cols-2 sm:px-6">
             {actions.map((action) => (
               <ActionButton
                 key={action.status}
@@ -826,13 +935,13 @@ function ActionModal({
   const isCancel = Number(status) === 4;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-60 flex items-stretch justify-center overflow-y-auto bg-black/50 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[100dvh] w-full min-w-0 overflow-y-auto bg-white shadow-2xl sm:max-h-[94dvh] sm:max-w-lg sm:rounded-3xl">
         <div
-          className={`px-6 py-5 text-white ${
+          className={`px-4 py-5 text-white sm:px-6 ${
             isCancel
-              ? "bg-gradient-to-r from-red-600 to-rose-500"
-              : "bg-gradient-to-r from-emerald-600 to-lime-500"
+              ? "bg-linear-to-r from-red-600 to-rose-500"
+              : "bg-linear-to-r from-emerald-600 to-lime-500"
           }`}
         >
           <h2 className="text-xl font-black">{title}</h2>
@@ -841,7 +950,7 @@ function ActionModal({
           </p>
         </div>
 
-        <div className="space-y-4 p-6">
+        <div className="space-y-4 p-4 sm:p-6">
           <div className="rounded-3xl bg-gray-50 p-4">
             <p className="text-sm text-gray-500">Tổng tiền</p>
             <p className="mt-1 text-2xl font-black text-gray-900">
@@ -859,26 +968,25 @@ function ActionModal({
               onChange={(e) => setSellerNote(e.target.value)}
               rows="4"
               placeholder={
-                isCancel
-                  ? "Nhập lý do hủy đơn..."
-                  : "Nhập ghi chú nếu có..."
+                isCancel ? "Nhập lý do hủy đơn..." : "Nhập ghi chú nếu có..."
               }
-              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
+              className="w-full min-w-0 resize-y rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
             />
           </div>
 
           {isCancel && (
             <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-700">
-              Bạn có chắc muốn hủy đơn hàng này? Hành động này không thể hoàn tác.
+              Bạn có chắc muốn hủy đơn hàng này? Hành động này không thể hoàn
+              tác.
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+        <div className="flex flex-col-reverse gap-3 border-t border-gray-100 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button
             onClick={onClose}
             disabled={loading}
-            className="rounded-2xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-60"
+            className="w-full rounded-2xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-60 sm:w-auto"
           >
             Đóng
           </button>
@@ -886,7 +994,7 @@ function ActionModal({
           <button
             onClick={onSubmit}
             disabled={loading}
-            className={`rounded-2xl px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-60 ${
+            className={`w-full rounded-2xl px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-60 sm:w-auto ${
               isCancel
                 ? "bg-red-600 shadow-red-100 hover:bg-red-700"
                 : "bg-emerald-600 shadow-emerald-100 hover:bg-emerald-700"
@@ -902,7 +1010,7 @@ function ActionModal({
 
 function InfoCard({ title, children }) {
   return (
-    <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-3xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
       <p className="mb-3 text-xs font-black uppercase tracking-wider text-gray-400">
         {title}
       </p>
@@ -913,13 +1021,15 @@ function InfoCard({ title, children }) {
 
 function MoneyRow({ label, value, bold = false }) {
   return (
-    <div className="flex items-center justify-between py-1">
+    <div className="flex min-w-0 items-start justify-between gap-4 py-1">
       <span className={bold ? "font-black text-gray-900" : "text-gray-500"}>
         {label}
       </span>
       <span
         className={
-          bold ? "text-xl font-black text-emerald-700" : "font-bold text-gray-700"
+          bold
+            ? "break-words text-right text-lg font-black text-emerald-700 sm:text-xl"
+            : "break-words text-right font-bold text-gray-700"
         }
       >
         {value}
@@ -939,7 +1049,7 @@ function StatusBadge({ text, statusClass }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-black ring-1 ${
+      className={`inline-flex max-w-full items-center whitespace-normal rounded-full px-3 py-1.5 text-center text-xs font-black ring-1 ${
         className || "bg-gray-50 text-gray-700 ring-gray-100"
       }`}
     >
@@ -953,19 +1063,26 @@ function PaymentBadge({ text, status }) {
     Number(status) === 1
       ? "bg-emerald-50 text-emerald-700"
       : Number(status) === 2
-      ? "bg-red-50 text-red-700"
-      : Number(status) === 3
-      ? "bg-purple-50 text-purple-700"
-      : "bg-gray-100 text-gray-600";
+        ? "bg-red-50 text-red-700"
+        : Number(status) === 3
+          ? "bg-purple-50 text-purple-700"
+          : "bg-gray-100 text-gray-600";
 
   return (
-    <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ${className}`}>
+    <span
+      className={`inline-flex max-w-full whitespace-normal rounded-full px-3 py-1.5 text-center text-xs font-bold ${className}`}
+    >
       {text}
     </span>
   );
 }
 
-function ActionButton({ children, variant = "primary", onClick, large = false }) {
+function ActionButton({
+  children,
+  variant = "primary",
+  onClick,
+  large = false,
+}) {
   const className = {
     primary: "bg-blue-600 hover:bg-blue-700 shadow-blue-100",
     indigo: "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100",
@@ -976,8 +1093,8 @@ function ActionButton({ children, variant = "primary", onClick, large = false })
   return (
     <button
       onClick={onClick}
-      className={`rounded-xl font-bold text-white shadow-lg transition hover:-translate-y-0.5 ${className} ${
-        large ? "px-5 py-2.5 text-sm" : "px-3 py-2 text-xs"
+      className={`inline-flex items-center justify-center rounded-xl font-bold text-white shadow-lg transition hover:-translate-y-0.5 ${className} ${
+        large ? "min-h-10 px-5 py-2.5 text-sm" : "px-3 py-2 text-xs"
       }`}
     >
       {children}
@@ -1000,12 +1117,10 @@ function TableSkeleton() {
 function SkeletonBox({ height = "h-5" }) {
   return (
     <div
-      className={`${height} w-full animate-pulse rounded-2xl bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100`}
+      className={`${height} w-full animate-pulse rounded-2xl bg-linear-to-r from-gray-100 via-gray-200 to-gray-100`}
     />
   );
 }
-
-
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("vi-VN") + "đ";
