@@ -12,109 +12,137 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\Collection;
+
 class ProductService
 {
-public function getPublicProducts(array $filters = []): LengthAwarePaginator
-{
-    $query = Product::query()
-        ->with(['farm', 'category', 'certificate.certification'])
-        ->withCount([
-            'completedOrderItems as order_count',
-            'visibleReviews as review_count',
-        ])
-        ->withSum('completedOrderItems as sold_quantity', 'quantity')
-        ->withAvg('visibleReviews as rating_avg', 'rating')
-        ->where('status', 1)
-        ->whereHas('certificate');
+    public function getPublicProducts(array $filters = []): LengthAwarePaginator
+    {
+        $query = Product::query()
+            ->with(['farm', 'category', 'certificate.certification'])
+            ->withCount([
+                'completedOrderItems as order_count',
+                'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+            ])
+            ->withSum('completedOrderItems as sold_quantity', 'quantity')
+            ->withAvg('visibleRatingReviews as rating_avg', 'rating')
+            ->where('status', 1)
+            ->whereHas('certificate');
 
-    if (!empty($filters['vendor_id'])) {
-        $query->where('farm_id', $filters['vendor_id']);
+        if (!empty($filters['vendor_id'])) {
+            $query->where('farm_id', $filters['vendor_id']);
+        }
+
+        if (!empty($filters['category_slug'])) {
+            $category = Category::query()
+                ->where('slug', $filters['category_slug'])
+                ->where('status', 1)
+                ->firstOrFail();
+
+            $categoryIds = Category::query()
+                ->where('status', 1)
+                ->where(function ($categoryQuery) use ($category) {
+                    $categoryQuery
+                        ->where('id', $category->id)
+                        ->orWhere('parent_id', $category->id);
+                })
+                ->pluck('id')
+                ->toArray();
+
+            $query->whereIn('category_id', $categoryIds);
+        } elseif (!empty($filters['category_id'])) {
+            $category = Category::query()
+                ->whereKey($filters['category_id'])
+                ->where('status', 1)
+                ->firstOrFail();
+
+            $categoryIds = Category::query()
+                ->where('status', 1)
+                ->where(function ($categoryQuery) use ($category) {
+                    $categoryQuery
+                        ->where('id', $category->id)
+                        ->orWhere('parent_id', $category->id);
+                })
+                ->pluck('id')
+                ->toArray();
+
+            $query->whereIn('category_id', $categoryIds);
+        }
+
+        if (!empty($filters['certification_id'])) {
+            $query->whereHas('certificate', function ($q) use ($filters) {
+                $q->where('certification_id', $filters['certification_id']);
+            });
+        }
+
+        if (!empty($filters['keyword'])) {
+            $keyword = trim($filters['keyword']);
+
+            $query->where(function ($q) use ($keyword) {
+                $q->where('name', 'like', "%{$keyword}%")
+                    ->orWhere('slug', 'like', "%{$keyword}%");
+            });
+        }
+
+        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
+            $query->whereRaw('COALESCE(sale_price, price) >= ?', [$filters['min_price']]);
+        }
+
+        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
+            $query->whereRaw('COALESCE(sale_price, price) <= ?', [$filters['max_price']]);
+        }
+
+        $rawSort = $filters['sort'] ?? 'latest';
+        $type = $filters['type'] ?? null;
+
+        // Hỗ trợ link cũ từ HomePage: /products?sort=featured
+        if (!$type && in_array($rawSort, ['featured', 'sale', 'best_selling', 'latest'], true)) {
+            $type = $rawSort;
+            $rawSort = $rawSort === 'best_selling' ? 'best_selling' : 'latest';
+        }
+
+        $type = $type ?: 'latest';
+
+        match ($type) {
+            'featured' => $query->where('is_hot', 1),
+
+            'sale' => $query
+                ->whereNotNull('sale_price')
+                ->whereColumn('sale_price', '<', 'price'),
+
+            default => null,
+        };
+
+        match ($rawSort) {
+            'best_selling' => $query
+                ->orderByDesc('sold_quantity')
+                ->orderByDesc('id'),
+
+            'price_asc' => $query
+                ->orderByRaw('COALESCE(sale_price, price) ASC')
+                ->orderByDesc('id'),
+
+            'price_desc' => $query
+                ->orderByRaw('COALESCE(sale_price, price) DESC')
+                ->orderByDesc('id'),
+
+            default => $query
+                ->orderByDesc('id'),
+        };
+
+        $limit = $filters['limit'] ?? 24;
+
+        return $query->paginate($limit);
     }
-
-    if (!empty($filters['category_id'])) {
-        $categoryIds = Category::query()
-            ->where('id', $filters['category_id'])
-            ->orWhere('parent_id', $filters['category_id'])
-            ->pluck('id')
-            ->toArray();
-
-        $query->whereIn('category_id', $categoryIds);
-    }
-
-    if (!empty($filters['certification_id'])) {
-        $query->whereHas('certificate', function ($q) use ($filters) {
-            $q->where('certification_id', $filters['certification_id']);
-        });
-    }
-
-    if (!empty($filters['keyword'])) {
-        $keyword = trim($filters['keyword']);
-
-        $query->where(function ($q) use ($keyword) {
-            $q->where('name', 'like', "%{$keyword}%")
-                ->orWhere('slug', 'like', "%{$keyword}%");
-        });
-    }
-
-    if (isset($filters['min_price']) && $filters['min_price'] !== '') {
-        $query->whereRaw('COALESCE(sale_price, price) >= ?', [$filters['min_price']]);
-    }
-
-    if (isset($filters['max_price']) && $filters['max_price'] !== '') {
-        $query->whereRaw('COALESCE(sale_price, price) <= ?', [$filters['max_price']]);
-    }
-
-    $rawSort = $filters['sort'] ?? 'latest';
-    $type = $filters['type'] ?? null;
-
-    // Hỗ trợ link cũ từ HomePage: /products?sort=featured
-    if (!$type && in_array($rawSort, ['featured', 'sale', 'best_selling', 'latest'], true)) {
-        $type = $rawSort;
-        $rawSort = $rawSort === 'best_selling' ? 'best_selling' : 'latest';
-    }
-
-    $type = $type ?: 'latest';
-
-    match ($type) {
-        'featured' => $query->where('is_hot', 1),
-
-        'sale' => $query
-            ->whereNotNull('sale_price')
-            ->whereColumn('sale_price', '<', 'price'),
-
-        default => null,
-    };
-
-    match ($rawSort) {
-        'best_selling' => $query
-            ->orderByDesc('sold_quantity')
-            ->orderByDesc('id'),
-
-        'price_asc' => $query
-            ->orderByRaw('COALESCE(sale_price, price) ASC')
-            ->orderByDesc('id'),
-
-        'price_desc' => $query
-            ->orderByRaw('COALESCE(sale_price, price) DESC')
-            ->orderByDesc('id'),
-
-        default => $query
-            ->orderByDesc('id'),
-    };
-
-    $limit = $filters['limit'] ?? 24;
-
-    return $query->paginate($limit);
-}
     public function getDetail(int $id): Product
     {
         return Product::with(['farm', 'category', 'images', 'certificate.certification'])
             ->withCount([
                 'completedOrderItems as order_count',
-                'visibleReviews as review_count',
+                'visibleRatingReviews as review_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
-            ->withAvg('visibleReviews as rating_avg', 'rating')
+            ->withAvg('visibleRatingReviews as rating_avg', 'rating')
             ->where('status', 1)
             ->whereHas('certificate')
             ->findOrFail($id);
@@ -124,7 +152,14 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
     {
         $farm = $this->getSellerFarm($sellerId);
 
-        $query = Product::with(['category', 'images', 'certificates.certification'])
+        $query = Product::with([
+            'category',
+            'images',
+            'approver:id,name,email',
+            'adminLocker:id,name,email',
+            'certificates.certification',
+            'certificates.approver:id,name,email',
+        ])
             ->where('farm_id', $farm->id);
 
         if (!empty($filters['keyword'])) {
@@ -196,7 +231,7 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
             ],
 
             'products' => collect($products->items())
-                ->map(fn ($product) => $this->formatVendorProduct($product))
+                ->map(fn($product) => $this->formatVendorProduct($product))
                 ->values(),
 
             'pagination' => [
@@ -214,7 +249,15 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
     {
         $farm = $this->getSellerFarm($sellerId);
 
-        $product = Product::with(['farm', 'category', 'images', 'certificates.certification'])
+        $product = Product::with([
+            'farm',
+            'category',
+            'images',
+            'approver:id,name,email',
+            'adminLocker:id,name,email',
+            'certificates.certification',
+            'certificates.approver:id,name,email',
+        ])
             ->where('id', $productId)
             ->where('farm_id', $farm->id)
             ->firstOrFail();
@@ -224,7 +267,7 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
 
     public function createVendorProduct(array $data, int $sellerId): Product
     {
-        $farm = $this->getSellerFarm($sellerId);
+        $farm = $this->getActiveSellerFarm($sellerId);
 
         $data['name'] = trim($data['name']);
 
@@ -296,7 +339,7 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
 
     public function updateVendorProduct(array $data, int $productId, int $sellerId): Product
     {
-        $product = $this->findSellerProduct($productId, $sellerId);
+        $product = $this->findSellerProductForMutation($productId, $sellerId);
 
         $finalPrice = $data['price'] ?? $product->price;
 
@@ -385,14 +428,22 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
 
     public function deleteVendorProduct(int $productId, int $sellerId): void
     {
-        $product = $this->findSellerProduct($productId, $sellerId);
+        $product = $this->findSellerProductForMutation($productId, $sellerId);
 
         $product->delete();
     }
 
     public function toggleVendorProductStatus(int $productId, int $sellerId): array
     {
-        $product = $this->findSellerProduct($productId, $sellerId);
+        $product = $this->findSellerProductForMutation($productId, $sellerId);
+
+        if ($product->admin_locked_at) {
+            throw ValidationException::withMessages([
+                'status' => [
+                    'Sản phẩm đang bị quản trị viên đình chỉ. Người bán không thể tự mở lại.',
+                ],
+            ]);
+        }
 
         $currentStatus = (int) $product->status;
 
@@ -425,54 +476,118 @@ public function getPublicProducts(array $filters = []): LengthAwarePaginator
         );
     }
 
-public function renewVendorProductCertificate(array $data, int $productId, int $sellerId): ProductCertificate
-{
-    $product = $this->findSellerProduct($productId, $sellerId);
+    public function renewVendorProductCertificate(array $data, int $productId, int $sellerId): ProductCertificate
+    {
+        $product = $this->findSellerProductForMutation($productId, $sellerId);
 
-    if (!in_array((int) $product->status, [1, 3], true)) {
-        throw ValidationException::withMessages([
-            'product' => ['Chỉ sản phẩm đã được duyệt mới được gia hạn chứng chỉ.'],
-        ]);
+        if (!in_array((int) $product->status, [1, 3], true)) {
+            throw ValidationException::withMessages([
+                'product' => ['Chỉ sản phẩm đã được duyệt mới được gia hạn chứng chỉ.'],
+            ]);
+        }
+
+        $renewableCertificate = ProductCertificate::where('product_id', $product->id)
+            ->whereIn('status', [1, 3])
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$renewableCertificate) {
+            throw ValidationException::withMessages([
+                'certificate' => ['Sản phẩm chưa có chứng chỉ để gia hạn.'],
+            ]);
+        }
+
+        $hasPendingCertificate = ProductCertificate::where('product_id', $product->id)
+            ->where('status', 0)
+            ->exists();
+
+        if ($hasPendingCertificate) {
+            throw ValidationException::withMessages([
+                'certificate' => ['Sản phẩm đang có chứng chỉ chờ duyệt, không thể gửi gia hạn mới.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($product, $data, $renewableCertificate) {
+            return ProductCertificate::create([
+                'product_id' => $product->id,
+
+                // Không lấy certification_id từ FE.
+                // Luôn dùng đúng loại chứng chỉ cũ.
+                'certification_id' => $renewableCertificate->certification_id,
+
+                'certificate_number' => $data['certificate_number'],
+                'certificate_file' => $data['certificate_file'],
+                'issued_date' => $data['issued_date'],
+                'expiry_date' => $data['expiry_date'],
+
+                'status' => 0,
+            ])->load('certification');
+        });
     }
 
-    $renewableCertificate = ProductCertificate::where('product_id', $product->id)
-        ->whereIn('status', [1, 3])
-        ->orderByDesc('id')
-        ->first();
+    public function resubmitRejectedCertificate(
+        array $data,
+        int $productId,
+        int $sellerId
+    ): ProductCertificate {
+        $product = $this->findSellerProductForMutation($productId, $sellerId);
 
-    if (!$renewableCertificate) {
-        throw ValidationException::withMessages([
-            'certificate' => ['Sản phẩm chưa có chứng chỉ để gia hạn.'],
-        ]);
+        if (!in_array((int) $product->status, [0, 2], true)) {
+            throw ValidationException::withMessages([
+                'product' => [
+                    'Chỉ sản phẩm chờ duyệt hoặc bị từ chối mới được sửa hồ sơ chứng chỉ.'
+                ],
+            ]);
+        }
+
+        $rejectedCertificate = ProductCertificate::query()
+            ->where('product_id', $product->id)
+            ->where('status', 2)
+            ->latest('id')
+            ->first();
+
+        if (!$rejectedCertificate) {
+            throw ValidationException::withMessages([
+                'certificate' => [
+                    'Không tìm thấy hồ sơ chứng chỉ bị từ chối để gửi lại.'
+                ],
+            ]);
+        }
+
+        $hasPendingCertificate = ProductCertificate::query()
+            ->where('product_id', $product->id)
+            ->where('status', 0)
+            ->exists();
+
+        if ($hasPendingCertificate) {
+            throw ValidationException::withMessages([
+                'certificate' => [
+                    'Sản phẩm đang có hồ sơ chờ duyệt, không thể gửi thêm hồ sơ mới.'
+                ],
+            ]);
+        }
+
+        return DB::transaction(function () use ($product, $data, $rejectedCertificate) {
+            $certificate = ProductCertificate::create([
+                'product_id' => $product->id,
+                'certification_id' => $rejectedCertificate->certification_id,
+                'certificate_number' => $data['certificate_number'],
+                'certificate_file' => $data['certificate_file'],
+                'issued_date' => $data['issued_date'],
+                'expiry_date' => $data['expiry_date'],
+                'status' => 0,
+            ]);
+
+            $product->update([
+                'status' => 0,
+                'approved_by' => null,
+                'approved_at' => null,
+                'rejection_reason' => null,
+            ]);
+
+            return $certificate->load(['certification', 'approver']);
+        });
     }
-
-    $hasPendingCertificate = ProductCertificate::where('product_id', $product->id)
-        ->where('status', 0)
-        ->exists();
-
-    if ($hasPendingCertificate) {
-        throw ValidationException::withMessages([
-            'certificate' => ['Sản phẩm đang có chứng chỉ chờ duyệt, không thể gửi gia hạn mới.'],
-        ]);
-    }
-
-    return DB::transaction(function () use ($product, $data, $renewableCertificate) {
-        return ProductCertificate::create([
-            'product_id' => $product->id,
-
-            // Không lấy certification_id từ FE.
-            // Luôn dùng đúng loại chứng chỉ cũ.
-            'certification_id' => $renewableCertificate->certification_id,
-
-            'certificate_number' => $data['certificate_number'],
-            'certificate_file' => $data['certificate_file'],
-            'issued_date' => $data['issued_date'],
-            'expiry_date' => $data['expiry_date'],
-
-            'status' => 0,
-        ])->load('certification');
-    });
-}
 
     private function getSellerFarm(int $sellerId): Farm
     {
@@ -485,11 +600,36 @@ public function renewVendorProductCertificate(array $data, int $productId, int $
         return $farm;
     }
 
+    private function getActiveSellerFarm(int $sellerId): Farm
+    {
+        $farm = $this->getSellerFarm($sellerId);
+
+        if ($farm->trashed() || (int) $farm->status !== Farm::STATUS_ACTIVE) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Gian hàng phải đang hoạt động mới được thay đổi sản phẩm hoặc chứng chỉ. Bạn vẫn có thể xử lý các đơn hàng đã phát sinh.'
+                ],
+            ]);
+        }
+
+        return $farm;
+    }
+
     private function findSellerProduct(int $productId, int $sellerId): Product
     {
         $farm = $this->getSellerFarm($sellerId);
 
         return Product::where('id', $productId)
+            ->where('farm_id', $farm->id)
+            ->firstOrFail();
+    }
+
+    private function findSellerProductForMutation(int $productId, int $sellerId): Product
+    {
+        $farm = $this->getActiveSellerFarm($sellerId);
+
+        return Product::query()
+            ->where('id', $productId)
             ->where('farm_id', $farm->id)
             ->firstOrFail();
     }
@@ -521,11 +661,11 @@ public function renewVendorProductCertificate(array $data, int $productId, int $
 
         while (
             Product::withTrashed()
-                ->where('slug', $slug)
-                ->when($ignoreId, function ($query) use ($ignoreId) {
-                    $query->where('id', '!=', $ignoreId);
-                })
-                ->exists()
+            ->where('slug', $slug)
+            ->when($ignoreId, function ($query) use ($ignoreId) {
+                $query->where('id', '!=', $ignoreId);
+            })
+            ->exists()
         ) {
             $slug = $originalSlug . '-' . $count;
             $count++;
@@ -534,145 +674,170 @@ public function renewVendorProductCertificate(array $data, int $productId, int $
         return $slug;
     }
 
-private function formatVendorProduct(Product $product, bool $isDetail = false): array
-{
-    $currentCertificate = $product->certificates
-        ->where('status', 1)
-        ->filter(function ($certificate) {
-            return $certificate->expiry_date && $certificate->expiry_date->gte(today());
-        })
-        ->sortByDesc('id')
-        ->first();
-
-    $expiredCertificate = $product->certificates
-        ->where('status', 1)
-        ->filter(function ($certificate) {
-            return $certificate->expiry_date && $certificate->expiry_date->lt(today());
-        })
-        ->sortByDesc('id')
-        ->first();
-
-    $pendingCertificate = $product->certificates
-        ->where('status', 0)
-        ->sortByDesc('id')
-        ->first();
-
-    // Chứng chỉ dùng để gia hạn: còn hạn hoặc đã hết hạn
-    $renewableCertificate = $currentCertificate ?: $expiredCertificate;
-
-    // Hiển thị ngoài bảng: ưu tiên pending, rồi current, rồi expired
-    $latestCertificate = $pendingCertificate ?: ($currentCertificate ?: $expiredCertificate);
-
-    $statusText = $this->getProductStatusText((int) $product->status);
-    $statusClass = $this->getProductStatusClass((int) $product->status);
-
-    $isCertificateExpired = false;
-    $isSellable = false;
-
-    if ((int) $product->status === 1) {
-        if ($currentCertificate) {
-            $isSellable = true;
-            $statusText = 'Đang bán';
-            $statusClass = 'active';
-        } elseif ($pendingCertificate && $expiredCertificate) {
-            $statusText = 'Chờ duyệt gia hạn';
-            $statusClass = 'pending';
-            $isCertificateExpired = true;
-        } elseif ($expiredCertificate) {
-            $statusText = 'Hết hạn chứng chỉ';
-            $statusClass = 'danger';
-            $isCertificateExpired = true;
-        } else {
-            $statusText = 'Chưa có chứng chỉ hợp lệ';
-            $statusClass = 'danger';
-        }
-    }
-
-    $data = [
-        'id' => $product->id,
-        'code' => 'SP' . str_pad($product->id, 6, '0', STR_PAD_LEFT),
-
-        'farm_id' => $product->farm_id,
-        'category_id' => $product->category_id,
-        'category_name' => $product->category?->name,
-
-        'name' => $product->name,
-        'slug' => $product->slug,
-        'description' => $product->description,
-
-        'price' => (float) $product->price,
-        'price_text' => $this->formatMoney($product->price),
-
-        'sale_price' => $product->sale_price !== null ? (float) $product->sale_price : null,
-        'sale_price_text' => $product->sale_price !== null
-            ? $this->formatMoney($product->sale_price)
-            : null,
-
-        'stock_quantity' => (float) $product->stock_quantity,
-        'unit' => $product->unit,
-
-        'thumbnail' => $product->thumbnail,
-        'is_hot' => (bool) $product->is_hot,
-
-        // status DB
-        'status' => (int) $product->status,
-
-        // status hiển thị theo nghiệp vụ
-        'status_text' => $statusText,
-        'status_class' => $statusClass,
-
-        'is_sellable' => $isSellable,
-        'is_certificate_expired' => $isCertificateExpired,
-
-        // Chứng chỉ còn hạn đang dùng
-        'current_certificate' => $currentCertificate
-            ? $this->formatCertificate($currentCertificate)
-            : null,
-
-        // Giữ alias cũ cho FE nếu đang dùng
-        'approved_certificate' => $currentCertificate
-            ? $this->formatCertificate($currentCertificate)
-            : null,
-
-        // Chứng chỉ đã hết hạn
-        'expired_certificate' => $expiredCertificate
-            ? $this->formatCertificate($expiredCertificate)
-            : null,
-
-        // Chứng chỉ đang chờ duyệt gia hạn
-        'pending_certificate' => $pendingCertificate
-            ? $this->formatCertificate($pendingCertificate)
-            : null,
-
-        // Chứng chỉ dùng để biết loại gia hạn
-        'renewable_certificate' => $renewableCertificate
-            ? $this->formatCertificate($renewableCertificate)
-            : null,
-
-        'latest_certificate' => $latestCertificate
-            ? $this->formatCertificate($latestCertificate)
-            : null,
-
-        'updated_at' => optional($product->updated_at)->format('d/m/Y H:i'),
-        'created_at' => optional($product->created_at)->format('d/m/Y H:i'),
-    ];
-
-    if ($isDetail) {
-        $data['images'] = $product->images->map(function ($image) {
-            return [
-                'id' => $image->id,
-                'image_url' => $image->image_url,
-            ];
-        })->values();
-
-        $data['certificates'] = $product->certificates
+    private function formatVendorProduct(Product $product, bool $isDetail = false): array
+    {
+        $currentCertificate = $product->certificates
+            ->where('status', 1)
+            ->filter(function ($certificate) {
+                return $certificate->expiry_date && $certificate->expiry_date->gte(today());
+            })
             ->sortByDesc('id')
-            ->map(fn ($certificate) => $this->formatCertificate($certificate))
-            ->values();
-    }
+            ->first();
 
-    return $data;
-}
+        $expiredCertificate = $product->certificates
+            ->where('status', 1)
+            ->filter(function ($certificate) {
+                return $certificate->expiry_date && $certificate->expiry_date->lt(today());
+            })
+            ->sortByDesc('id')
+            ->first();
+
+        $pendingCertificate = $product->certificates
+            ->where('status', 0)
+            ->sortByDesc('id')
+            ->first();
+
+        $rejectedCertificate = $product->certificates
+            ->where('status', 2)
+            ->sortByDesc('id')
+            ->first();
+
+        // Chứng chỉ dùng để gia hạn: còn hạn hoặc đã hết hạn
+        $renewableCertificate = $currentCertificate ?: $expiredCertificate;
+
+        // Hiển thị ngoài bảng: ưu tiên pending, rồi current, rồi expired
+        $latestCertificate = $pendingCertificate
+            ?: ($currentCertificate ?: ($expiredCertificate ?: $rejectedCertificate));
+
+        $statusText = $this->getProductStatusText((int) $product->status);
+        $statusClass = $this->getProductStatusClass((int) $product->status);
+
+        $isCertificateExpired = false;
+        $isSellable = false;
+
+        if ((int) $product->status === 1) {
+            if ($currentCertificate) {
+                $isSellable = true;
+                $statusText = 'Đang bán';
+                $statusClass = 'active';
+            } elseif ($pendingCertificate && $expiredCertificate) {
+                $statusText = 'Chờ duyệt gia hạn';
+                $statusClass = 'pending';
+                $isCertificateExpired = true;
+            } elseif ($expiredCertificate) {
+                $statusText = 'Hết hạn chứng chỉ';
+                $statusClass = 'danger';
+                $isCertificateExpired = true;
+            } else {
+                $statusText = 'Chưa có chứng chỉ hợp lệ';
+                $statusClass = 'danger';
+            }
+        }
+
+        $data = [
+            'id' => $product->id,
+            'code' => 'SP' . str_pad($product->id, 6, '0', STR_PAD_LEFT),
+
+            'farm_id' => $product->farm_id,
+            'category_id' => $product->category_id,
+            'category_name' => $product->category?->name,
+
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'description' => $product->description,
+
+            'price' => (float) $product->price,
+            'price_text' => $this->formatMoney($product->price),
+
+            'sale_price' => $product->sale_price !== null ? (float) $product->sale_price : null,
+            'sale_price_text' => $product->sale_price !== null
+                ? $this->formatMoney($product->sale_price)
+                : null,
+
+            'stock_quantity' => (float) $product->stock_quantity,
+            'unit' => $product->unit,
+
+            'thumbnail' => $product->thumbnail,
+            'is_hot' => (bool) $product->is_hot,
+
+            // status DB
+            'status' => (int) $product->status,
+
+            // status hiển thị theo nghiệp vụ
+            'status_text' => $statusText,
+            'status_class' => $statusClass,
+
+            'reviewed_by' => $product->approver ? [
+                'id' => $product->approver->id,
+                'name' => $product->approver->name,
+                'email' => $product->approver->email,
+            ] : null,
+            'reviewed_at' => optional($product->approved_at)->format('d/m/Y H:i'),
+            'rejection_reason' => $product->rejection_reason,
+            'admin_locked_at' => optional($product->admin_locked_at)->format('d/m/Y H:i'),
+            'admin_lock_reason' => $product->admin_lock_reason,
+            'admin_locker' => $product->adminLocker ? [
+                'id' => $product->adminLocker->id,
+                'name' => $product->adminLocker->name,
+                'email' => $product->adminLocker->email,
+            ] : null,
+
+            'is_sellable' => $isSellable,
+            'is_certificate_expired' => $isCertificateExpired,
+
+            // Chứng chỉ còn hạn đang dùng
+            'current_certificate' => $currentCertificate
+                ? $this->formatCertificate($currentCertificate)
+                : null,
+
+            // Giữ alias cũ cho FE nếu đang dùng
+            'approved_certificate' => $currentCertificate
+                ? $this->formatCertificate($currentCertificate)
+                : null,
+
+            // Chứng chỉ đã hết hạn
+            'expired_certificate' => $expiredCertificate
+                ? $this->formatCertificate($expiredCertificate)
+                : null,
+
+            // Chứng chỉ đang chờ duyệt gia hạn
+            'pending_certificate' => $pendingCertificate
+                ? $this->formatCertificate($pendingCertificate)
+                : null,
+
+            'rejected_certificate' => $rejectedCertificate
+                ? $this->formatCertificate($rejectedCertificate)
+                : null,
+
+            // Chứng chỉ dùng để biết loại gia hạn
+            'renewable_certificate' => $renewableCertificate
+                ? $this->formatCertificate($renewableCertificate)
+                : null,
+
+            'latest_certificate' => $latestCertificate
+                ? $this->formatCertificate($latestCertificate)
+                : null,
+
+            'updated_at' => optional($product->updated_at)->format('d/m/Y H:i'),
+            'created_at' => optional($product->created_at)->format('d/m/Y H:i'),
+        ];
+
+        if ($isDetail) {
+            $data['images'] = $product->images->map(function ($image) {
+                return [
+                    'id' => $image->id,
+                    'image_url' => $image->image_url,
+                ];
+            })->values();
+
+            $data['certificates'] = $product->certificates
+                ->sortByDesc('id')
+                ->map(fn($certificate) => $this->formatCertificate($certificate))
+                ->values();
+        }
+
+        return $data;
+    }
 
     private function formatCertificate(ProductCertificate $certificate): array
     {
@@ -702,6 +867,13 @@ private function formatVendorProduct(Product $product, bool $isDetail = false): 
                 : $this->getCertificateStatusClass((int) $certificate->status),
 
             'is_expired' => $isExpired,
+            'reviewed_by' => $certificate->approver ? [
+                'id' => $certificate->approver->id,
+                'name' => $certificate->approver->name,
+                'email' => $certificate->approver->email,
+            ] : null,
+            'reviewed_at' => optional($certificate->approved_at)->format('d/m/Y H:i'),
+            'rejection_reason' => $certificate->rejection_reason,
         ];
     }
 
@@ -755,68 +927,98 @@ private function formatVendorProduct(Product $product, bool $isDetail = false): 
         };
     }
 
-public function getPublicProductDetail(int $id)
-{
-    $query = Product::query()
-        ->with([
-            'farm',
-            'category',
-            'certificate.certification',
-        ])
-        ->withCount([
-            'completedOrderItems as order_count',
-            'visibleReviews as review_count',
-        ])
-        ->withSum('completedOrderItems as sold_quantity', 'quantity')
-        ->withAvg('visibleReviews as rating_avg', 'rating')
-        ->where('status', 1)
-        ->whereHas('certificate');
+    public function getPublicProductDetailBySlug(string $slug): Product
+    {
+        $query = Product::query()
+            ->with([
+                'farm',
+                'category',
+                'certificate.certification',
+            ])
+            ->withCount([
+                'completedOrderItems as order_count',
+                'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+            ])
+            ->withSum('completedOrderItems as sold_quantity', 'quantity')
+            ->withAvg('visibleRatingReviews as rating_avg', 'rating')
+            ->where('status', 1)
+            ->whereHas('certificate');
 
-    if (method_exists(Product::class, 'images')) {
-        $query->with('images');
+        if (method_exists(Product::class, 'images')) {
+            $query->with('images');
+        }
+
+        return $query
+            ->where('slug', $slug)
+            ->firstOrFail();
     }
 
-    return $query->findOrFail($id);
-}
+    public function getPublicProductDetail(int $id)
+    {
+        $query = Product::query()
+            ->with([
+                'farm',
+                'category',
+                'certificate.certification',
+            ])
+            ->withCount([
+                'completedOrderItems as order_count',
+                'visibleRatingReviews as review_count',
+            ])
+            ->withSum('completedOrderItems as sold_quantity', 'quantity')
+            ->withAvg('visibleRatingReviews as rating_avg', 'rating')
+            ->where('status', 1)
+            ->whereHas('certificate');
 
-public function getPublicProductReviews($product, int $page = 1, int $limit = 5)
-{
-    if (!$product instanceof Product) {
-        $product = $this->getPublicProductDetail((int) $product);
+        if (method_exists(Product::class, 'images')) {
+            $query->with('images');
+        }
+
+        return $query->findOrFail($id);
     }
 
-    return $product->visibleReviews()
-        ->with([
-            'orderItem.subOrder.order.user',
-        ])
-        ->latest('reviews.created_at')
-        ->paginate($limit, ['reviews.*'], 'page', $page);
-}
+    public function getPublicProductReviews($product, int $page = 1, int $limit = 5)
+    {
+        if (!$product instanceof Product) {
+            $product = $this->getPublicProductDetail((int) $product);
+        }
 
-public function getRelatedPublicProducts(Product $product, int $limit = 8)
-{
-    return Product::query()
-        ->with(['farm', 'category', 'certificate.certification'])
-        ->withCount([
-            'completedOrderItems as order_count',
-            'visibleReviews as review_count',
-        ])
-        ->withSum('completedOrderItems as sold_quantity', 'quantity')
-        ->withAvg('visibleReviews as rating_avg', 'rating')
-        ->where('status', 1)
-        ->whereHas('certificate')
+        return $product->visibleReviews()
+            ->with([
+                'orderItem.subOrder.order.user',
+                'user:id,name,email,avatar',
+                'replies' => function ($query) {
+                    $query->where('status', 1)->with('user:id,name,email');
+                },
+            ])
+            ->latest('reviews.created_at')
+            ->paginate($limit, ['reviews.*'], 'page', $page);
+    }
 
-        // Không lấy chính sản phẩm đang xem
-        ->where('id', '!=', $product->id)
+    public function getRelatedPublicProducts(Product $product, int $limit = 8)
+    {
+        return Product::query()
+            ->with(['farm', 'category', 'certificate.certification'])
+            ->withCount([
+                'completedOrderItems as order_count',
+                'visibleRatingReviews as review_count',
+            ])
+            ->withSum('completedOrderItems as sold_quantity', 'quantity')
+            ->withAvg('visibleRatingReviews as rating_avg', 'rating')
+            ->where('status', 1)
+            ->whereHas('certificate')
 
-        // Quan trọng:
-        // Dù đi từ category cha vào,
-        // related vẫn lấy theo category_id thật của sản phẩm
-        ->where('category_id', $product->category_id)
+            // Không lấy chính sản phẩm đang xem
+            ->where('id', '!=', $product->id)
 
-        ->latest()
-        ->limit($limit)
-        ->get();
-}
+            // Quan trọng:
+            // Dù đi từ category cha vào,
+            // related vẫn lấy theo category_id thật của sản phẩm
+            ->where('category_id', $product->category_id)
 
+            ->latest()
+            ->limit($limit)
+            ->get();
+    }
 }

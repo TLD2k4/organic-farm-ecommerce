@@ -40,8 +40,8 @@ class StoreVendorProductRequest extends FormRequest
             'certification_id' => 'required|integer|exists:certifications,id',
             'certificate_number' => 'required|string|max:100|unique:product_certificates,certificate_number',
             'certificate_file' => 'required|string|max:255',
-            'issued_date' => 'required|date',
-            'expiry_date' => 'required|date|after:issued_date',
+            'issued_date' => 'required|date|before_or_equal:today',
+            'expiry_date' => 'required|date|after:issued_date|after_or_equal:today',
 
             // Seller không được tự set trạng thái duyệt
             'status' => ['prohibited'],
@@ -89,10 +89,12 @@ class StoreVendorProductRequest extends FormRequest
 
             'issued_date.required' => 'Ngày cấp chứng chỉ không được để trống.',
             'issued_date.date' => 'Ngày cấp chứng chỉ không hợp lệ.',
+            'issued_date.before_or_equal' => 'Ngày cấp chứng chỉ không được lớn hơn ngày hiện tại.',
 
             'expiry_date.required' => 'Ngày hết hạn chứng chỉ không được để trống.',
             'expiry_date.date' => 'Ngày hết hạn chứng chỉ không hợp lệ.',
             'expiry_date.after' => 'Ngày hết hạn phải sau ngày cấp.',
+            'expiry_date.after_or_equal' => 'Chứng chỉ đã hết hạn, vui lòng dùng chứng chỉ còn hiệu lực.',
         ];
     }
 }
