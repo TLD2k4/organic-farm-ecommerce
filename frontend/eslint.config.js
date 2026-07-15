@@ -17,5 +17,10 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Fetching data on mount necessarily toggles loading state. The React 19
+      // rule currently flags that standard async pattern as an error.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

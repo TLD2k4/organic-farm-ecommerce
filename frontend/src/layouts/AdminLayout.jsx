@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 
 import {
   Award,
   BarChart3,
   Building2,
+  ChevronDown,
   ClipboardList,
+  House,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -16,7 +18,9 @@ import {
   Shield,
   ShoppingBag,
   Star,
+  Store,
   Tags,
+  User,
   Users,
   X,
 } from "lucide-react";
@@ -26,6 +30,7 @@ import useAuth from "@/hooks/useAuth";
 
 import LogoutModal from "@/components/common/LogoutModal";
 import { getImageUrl } from "@/utils/image";
+import { canViewPublicFarm, getFarmEntryPath } from "@/utils/farm";
 
 const menuItems = [
   {
@@ -120,7 +125,104 @@ function AdminAvatar({ user, size = "large" }) {
   );
 }
 
-function SidebarContent({ user, mobile = false, onClose, onOpenLogout }) {
+function AccountActionGrid({ user, onNavigate, onOpenLogout }) {
+  const farm = user?.farm;
+  const hasFarm = Boolean(farm);
+  const publicFarmAvailable = canViewPublicFarm(farm);
+  const farmEntryPath = getFarmEntryPath(user);
+
+  const farmActionLabel =
+    farmEntryPath === "/seller"
+      ? "Quản trị gian hàng"
+      : hasFarm
+        ? "Hồ sơ gian hàng"
+        : "Đăng ký gian hàng";
+
+  const itemClass = `
+    account-action-card
+    account-action-card-admin
+    flex
+    min-h-18
+    min-w-0
+    flex-col
+    items-center
+    justify-center
+    gap-2
+    rounded-xl
+    border
+    border-red-100
+    bg-red-50/60
+    px-2
+    py-3
+    text-center
+    text-xs
+    font-bold
+    text-slate-700
+    transition
+    hover:border-red-200
+    hover:bg-red-100
+    hover:text-red-800
+  `;
+
+  return (
+    <div className="grid min-w-0 grid-cols-2 gap-2">
+      <Link to="/" onClick={onNavigate} className={itemClass}>
+        <House size={19} className="text-red-700" />
+        <span>Trang chủ</span>
+      </Link>
+
+      <Link to="/profile" onClick={onNavigate} className={itemClass}>
+        <User size={19} className="text-red-700" />
+        <span>Hồ sơ cá nhân</span>
+      </Link>
+
+      <Link to="/profile?tab=orders" onClick={onNavigate} className={itemClass}>
+        <ClipboardList size={19} className="text-red-700" />
+        <span>Đơn hàng</span>
+      </Link>
+
+      <Link to={farmEntryPath} onClick={onNavigate} className={itemClass}>
+        <Building2 size={19} className="text-red-700" />
+        <span className="break-words">{farmActionLabel}</span>
+      </Link>
+
+      {publicFarmAvailable && (
+        <Link
+          to={`/farms/${farm.slug}`}
+          onClick={onNavigate}
+          className={itemClass}
+        >
+          <Store size={19} className="text-red-700" />
+          <span>Gian hàng công khai</span>
+        </Link>
+      )}
+
+      <Link to="/admin" onClick={onNavigate} className={itemClass}>
+        <Shield size={19} className="text-red-700" />
+        <span>Quản trị hệ thống</span>
+      </Link>
+
+      <button
+        type="button"
+        onClick={onOpenLogout}
+        className={`${itemClass} col-span-2 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700`}
+      >
+        <LogOut size={19} />
+        <span>Đăng xuất</span>
+      </button>
+    </div>
+  );
+}
+
+function SidebarContent({
+  user,
+  mobile = false,
+  accountOpen,
+  onToggleAccount,
+  onCloseAccount,
+  onClose,
+  onOpenLogout,
+}) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* BRAND */}
@@ -323,6 +425,10 @@ function SidebarContent({ user, mobile = false, onClose, onOpenLogout }) {
         className="
           shrink-0
 
+          max-h-[65dvh]
+          overflow-y-auto
+          overscroll-contain
+
           border-t
           border-slate-100
 
@@ -335,108 +441,75 @@ function SidebarContent({ user, mobile = false, onClose, onOpenLogout }) {
           lg:pt-4
         "
       >
-        {mobile ? (
-          <div className="flex items-center gap-3">
-            <AdminAvatar user={user} size="small" />
+        <div data-layout-account>
+          <button
+            type="button"
+            aria-expanded={accountOpen}
+            aria-label="Mở menu tài khoản quản trị viên"
+            onClick={onToggleAccount}
+            className={`
+              account-summary-trigger
+              account-summary-trigger-admin
+              relative
+              flex
+              w-full
+              min-w-0
+              items-center
+              rounded-2xl
+              border
+              p-3
+              text-left
+              transition
 
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-extrabold text-slate-900">
+              ${
+                accountOpen
+                  ? "border-red-200 bg-red-50"
+                  : "border-transparent hover:bg-red-50"
+              }
+
+              ${mobile ? "gap-3" : "flex-col text-center"}
+            `}
+          >
+            <AdminAvatar user={user} size={mobile ? "small" : "large"} />
+
+            <div className={`min-w-0 ${mobile ? "flex-1" : "mt-3 w-full"}`}>
+              <h3 className="truncate text-sm font-extrabold text-slate-900 lg:text-base">
                 {user?.name || "Quản trị viên"}
               </h3>
 
-              <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+              <p className="mt-0.5 truncate text-xs font-medium text-slate-500 lg:text-sm">
                 {user?.email}
               </p>
 
-              <span
-                className="
-                  mt-1.5
-
-                  inline-flex
-
-                  rounded-md
-
-                  bg-red-100
-
-                  px-2
-                  py-0.5
-
-                  text-[10px]
-                  font-bold
-                  text-red-700
-                "
-              >
+              <span className="mt-1.5 inline-flex rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 lg:text-xs">
                 Admin
               </span>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center text-center">
-            <AdminAvatar user={user} />
 
-            <h3 className="mt-3 max-w-full truncate text-base font-extrabold text-slate-900">
-              {user?.name || "Quản trị viên"}
-            </h3>
+            <ChevronDown
+              size={18}
+              className={`shrink-0 text-slate-400 transition-transform ${
+                accountOpen ? "rotate-180 text-red-700" : ""
+              } ${mobile ? "" : "absolute right-3 top-3"}`}
+            />
+          </button>
 
-            <p className="mt-1 max-w-[210px] truncate text-sm font-medium text-slate-500">
-              {user?.email}
-            </p>
-
-            <span
-              className="
-                mt-2
-
-                inline-flex
-
-                rounded-lg
-
-                bg-red-100
-
-                px-3
-                py-1
-
-                text-xs
-                font-bold
-                text-red-700
-              "
-            >
-              Admin
-            </span>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onOpenLogout}
-          className="
-            mt-4
-
-            flex
-            h-11
-            w-full
-            items-center
-            justify-center
-
-            gap-2
-
-            rounded-xl
-
-            bg-white
-
-            font-bold
-            text-slate-700
-
-            transition-colors
-
-            hover:bg-red-50
-            hover:text-red-600
-
-            lg:h-12
-          "
-        >
-          <LogOut size={19} />
-          Đăng xuất
-        </button>
+          {accountOpen && (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <AccountActionGrid
+                user={user}
+                onNavigate={() => {
+                  onCloseAccount();
+                  onClose();
+                }}
+                onOpenLogout={() => {
+                  onCloseAccount();
+                  onOpenLogout();
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -450,6 +523,8 @@ export default function AdminLayout() {
   const [openLogout, setOpenLogout] = useState(false);
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarAccountOpen, setSidebarAccountOpen] = useState(false);
+  const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
 
   /*
    * Khi sidebar mobile mở:
@@ -480,8 +555,36 @@ export default function AdminLayout() {
     };
   }, [mobileSidebarOpen]);
 
+  useEffect(() => {
+    if (!sidebarAccountOpen && !mobileAccountOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (event.target.closest?.("[data-layout-account]")) return;
+
+      setSidebarAccountOpen(false);
+      setMobileAccountOpen(false);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSidebarAccountOpen(false);
+        setMobileAccountOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sidebarAccountOpen, mobileAccountOpen]);
+
   const handleOpenLogout = () => {
     setMobileSidebarOpen(false);
+    setSidebarAccountOpen(false);
+    setMobileAccountOpen(false);
     setOpenLogout(true);
   };
 
@@ -530,7 +633,10 @@ export default function AdminLayout() {
               type="button"
               aria-label="Mở menu quản trị"
               aria-expanded={mobileSidebarOpen}
-              onClick={() => setMobileSidebarOpen(true)}
+              onClick={() => {
+                setMobileAccountOpen(false);
+                setMobileSidebarOpen(true);
+              }}
               className="
                 flex
                 h-10
@@ -564,14 +670,58 @@ export default function AdminLayout() {
             </div>
           </div>
 
-          <AdminAvatar user={user} size="small" />
+          <div data-layout-account className="relative shrink-0">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={mobileAccountOpen}
+              aria-label="Mở menu tài khoản"
+              onClick={() => {
+                setMobileSidebarOpen(false);
+                setSidebarAccountOpen(false);
+                setMobileAccountOpen((current) => !current);
+              }}
+              className={`rounded-full ring-offset-2 transition ${
+                mobileAccountOpen
+                  ? "ring-2 ring-red-500"
+                  : "hover:ring-2 hover:ring-red-200"
+              }`}
+            >
+              <AdminAvatar user={user} size="small" />
+            </button>
+
+            {mobileAccountOpen && (
+              <div
+                role="menu"
+                className="account-popover account-popover-admin absolute right-0 top-[calc(100%+0.75rem)] z-50 w-76 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-red-100 bg-white p-3 shadow-[0_18px_50px_rgba(15,23,42,0.2)]"
+              >
+                <div className="mb-3 border-b border-slate-100 px-1 pb-3">
+                  <p className="truncate text-sm font-extrabold text-slate-900">
+                    {user?.name || "Quản trị viên"}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {user?.email}
+                  </p>
+                </div>
+
+                <AccountActionGrid
+                  user={user}
+                  onNavigate={() => setMobileAccountOpen(false)}
+                  onOpenLogout={handleOpenLogout}
+                />
+              </div>
+            )}
+          </div>
         </header>
 
         {/* MOBILE OVERLAY */}
         <button
           type="button"
           aria-label="Đóng menu quản trị"
-          onClick={() => setMobileSidebarOpen(false)}
+          onClick={() => {
+            setMobileSidebarOpen(false);
+            setSidebarAccountOpen(false);
+          }}
           className={`
             fixed
             inset-0
@@ -611,7 +761,7 @@ export default function AdminLayout() {
             z-50
 
             w-[86vw]
-            max-w-[310px]
+            max-w-77.5
 
             bg-white
 
@@ -629,7 +779,13 @@ export default function AdminLayout() {
           <SidebarContent
             user={user}
             mobile
-            onClose={() => setMobileSidebarOpen(false)}
+            accountOpen={sidebarAccountOpen}
+            onToggleAccount={() => setSidebarAccountOpen((current) => !current)}
+            onCloseAccount={() => setSidebarAccountOpen(false)}
+            onClose={() => {
+              setMobileSidebarOpen(false);
+              setSidebarAccountOpen(false);
+            }}
             onOpenLogout={handleOpenLogout}
           />
         </aside>
@@ -643,7 +799,7 @@ export default function AdminLayout() {
             z-30
 
             hidden
-            w-[280px]
+            w-70
 
             border-r
             border-slate-100
@@ -655,8 +811,11 @@ export default function AdminLayout() {
         >
           <SidebarContent
             user={user}
-            onClose={() => {}}
-            onOpenLogout={() => setOpenLogout(true)}
+            accountOpen={sidebarAccountOpen}
+            onToggleAccount={() => setSidebarAccountOpen((current) => !current)}
+            onCloseAccount={() => setSidebarAccountOpen(false)}
+            onClose={() => setSidebarAccountOpen(false)}
+            onOpenLogout={handleOpenLogout}
           />
         </aside>
 
@@ -666,7 +825,7 @@ export default function AdminLayout() {
             min-h-[calc(100vh-64px)]
             min-w-0
 
-            lg:ml-[280px]
+            lg:ml-70
             lg:min-h-screen
           "
         >

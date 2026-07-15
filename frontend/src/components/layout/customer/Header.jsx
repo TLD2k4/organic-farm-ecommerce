@@ -21,6 +21,7 @@ import { Link } from "react-router-dom";
 import LogoutModal from "@/components/common/LogoutModal";
 import SearchBar from "@/components/common/SearchBar";
 import MobileMenu from "./MobileMenu";
+import buyerCartService from "@/services/buyerCartService";
 
 import useAuth from "@/hooks/useAuth";
 
@@ -40,7 +41,49 @@ const Header = ({ categories = [], categoriesLoading = false }) => {
 
   const [openLogout, setOpenLogout] = useState(false);
 
+  const [cartSummary, setCartSummary] = useState({
+    items_count: 0,
+    items_total: 0,
+  });
+
   const { user, isAuthenticated, logout, logoutAll } = useAuth();
+
+  useEffect(() => {
+    let active = true;
+
+    const applyCart = (cart) => {
+      if (!active || !cart) return;
+
+      setCartSummary({
+        items_count: Number(cart.items_count || 0),
+        items_total: Number(cart.items_total || 0),
+      });
+    };
+
+    const loadCartSummary = async () => {
+      if (!isAuthenticated) {
+        applyCart({ items_count: 0, items_total: 0 });
+        return;
+      }
+
+      try {
+        const response = await buyerCartService.getCart();
+        applyCart(response?.data);
+      } catch {
+        // Không làm hỏng header nếu API giỏ hàng tạm thời lỗi.
+      }
+    };
+
+    const handleCartUpdated = (event) => applyCart(event.detail);
+
+    loadCartSummary();
+    window.addEventListener("cart:updated", handleCartUpdated);
+
+    return () => {
+      active = false;
+      window.removeEventListener("cart:updated", handleCartUpdated);
+    };
+  }, [isAuthenticated]);
 
   const isAdmin = user?.roles?.includes("admin");
 
@@ -88,6 +131,7 @@ const Header = ({ categories = [], categoriesLoading = false }) => {
   `;
 
   const dropdownItemClass = `
+    customer-menu-item
     flex
     h-12
     w-full
@@ -320,7 +364,7 @@ const Header = ({ categories = [], categoriesLoading = false }) => {
             {/* ACCOUNT */}
             <div
               ref={accountRef}
-              className="relative"
+              className="relative shrink-0"
               onMouseEnter={keepAccountOpen}
               onMouseLeave={requestCloseAccount}
             >
@@ -368,10 +412,10 @@ const Header = ({ categories = [], categoriesLoading = false }) => {
                   )}
                 </div>
 
-                <div className="hidden text-left lg:block">
+                <div className="hidden min-w-max text-left lg:block">
                   {isAuthenticated ? (
                     <>
-                      <p className="max-w-30 truncate text-[14px] font-bold">
+                      <p className="whitespace-nowrap text-[14px] font-bold">
                         {user?.name}
                       </p>
 
@@ -379,7 +423,9 @@ const Header = ({ categories = [], categoriesLoading = false }) => {
                     </>
                   ) : (
                     <>
-                      <p className="text-[14px] font-bold">Tài khoản</p>
+                      <p className="whitespace-nowrap text-[14px] font-bold">
+                        Tài khoản
+                      </p>
 
                       <p className="text-[12px] text-[#777]">Đăng nhập</p>
                     </>
@@ -626,14 +672,18 @@ const Header = ({ categories = [], categoriesLoading = false }) => {
                     text-white
                   "
                 >
-                  0
+                  {cartSummary.items_count > 99
+                    ? "99+"
+                    : cartSummary.items_count}
                 </div>
               </div>
 
               <div className="hidden lg:block">
                 <p className="text-[14px] font-bold">Giỏ hàng</p>
 
-                <p className="text-[12px] text-[#777]">0đ</p>
+                <p className="text-[12px] text-[#777]">
+                  {cartSummary.items_total.toLocaleString("vi-VN")}đ
+                </p>
               </div>
             </Link>
           </div>

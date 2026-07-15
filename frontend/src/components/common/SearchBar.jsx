@@ -261,7 +261,7 @@ const SearchBar = () => {
             left-0
             right-0
             top-[calc(100%+10px)]
-            z-[80]
+            z-80
             overflow-hidden
             rounded-2xl
             border
@@ -290,7 +290,7 @@ const SearchBar = () => {
               ))}
             </div>
           ) : suggestions.length ? (
-            <div className="max-h-[360px] overflow-y-auto p-2">
+            <div className="max-h-90 overflow-y-auto p-2">
               {suggestions.map((product) => {
                 const image = getImage(product);
 
