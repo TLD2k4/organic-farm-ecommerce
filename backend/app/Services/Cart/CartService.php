@@ -207,7 +207,7 @@ class CartService
             throw ValidationException::withMessages([
                 'quantity' => [
                     'Số lượng vượt quá tồn kho hiện có. Hiện còn '
-                    . $product->stock_quantity . ' ' . $product->unit . '.'
+                        . $product->stock_quantity . ' ' . $product->unit . '.'
                 ],
             ]);
         }
@@ -239,6 +239,7 @@ class CartService
             $items[] = [
                 'id' => $item->id,
                 'product_id' => $product->id,
+                'product_slug' => $product->slug,
                 'product_name' => $product->name,
                 'product_image' => $product->thumbnail,
                 'farm_id' => $product->farm_id,
