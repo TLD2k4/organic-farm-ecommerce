@@ -8,6 +8,7 @@ use App\Http\Requests\Review\UpdateReviewRequest;
 use App\Models\Review;
 use App\Services\Review\ReviewService;
 use Illuminate\Http\Request;
+use App\Notifications\MarketplaceNotification;
 
 class ReviewController extends Controller
 {
@@ -46,6 +47,23 @@ class ReviewController extends Controller
         $review = $this->reviewService->create(
             $request->user(),
             $request->validated()
+        );
+
+        $reviewModel = Review::query()
+            ->with('product.farm.seller')
+            ->find($review['id']);
+
+        $reviewModel?->product?->farm?->seller?->notify(
+            new MarketplaceNotification(
+                'review.created',
+                'Sản phẩm có đánh giá mới',
+                ($request->user()->name ?? 'Khách hàng')
+                    . ' vừa đánh giá sản phẩm '
+                    . ($reviewModel?->product?->name ?? '') . '.',
+                '/seller/reviews',
+                $request->user(),
+                ['review_id' => $review['id']]
+            )
         );
 
         return response()->json([

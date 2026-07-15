@@ -77,6 +77,7 @@ class ReviewService
             $review = Review::create([
                 'user_id' => $user->id,
                 'order_item_id' => $orderItem->id,
+                'product_id' => $orderItem->product_id,
                 'rating' => (int) $data['rating'],
                 'comment' => $data['comment'] ?? null,
                 'status' => 1,

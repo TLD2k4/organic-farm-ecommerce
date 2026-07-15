@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import reviewService from "../../../../services/reviewService";
+import { confirmAction } from "../../../../utils/actionDialog";
 
 const EMPTY_FORM = {
   order_item_id: "",
@@ -159,7 +160,7 @@ export default function ReviewSection() {
   };
 
   const handleDelete = async (review) => {
-    if (!window.confirm("Bạn có chắc muốn xóa đánh giá này?")) return;
+    if (!await confirmAction({ title: "Xóa đánh giá", description: "Đánh giá sẽ không còn hiển thị công khai.", confirmLabel: "Xóa đánh giá", danger: true })) return;
 
     try {
       setActionLoadingId(`delete-${review.id}`);
@@ -277,7 +278,7 @@ function ReviewableItemCard({ item, onReview }) {
 
   const goToProduct = () => {
     if (!product?.id) return;
-    navigate(`/products/${product.id}`);
+    navigate(`/products/${product.slug || product.id}`);
   };
 
   return (
@@ -377,7 +378,7 @@ function ReviewCard({ review, actionLoadingId, onEdit, onDelete }) {
 
   const goToProduct = () => {
     if (!product?.id) return;
-    navigate(`/products/${product.id}`);
+    navigate(`/products/${product.slug || product.id}`);
   };
 
   return (
@@ -475,7 +476,7 @@ function ReviewModal({
   const product = editingReview?.product || selectedItem?.product;
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-999 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="text-xl font-bold text-slate-950">
