@@ -84,37 +84,37 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.145 0.018 150);
+  --foreground: oklch(0.94 0.012 145);
+  --card: oklch(0.195 0.02 150);
+  --card-foreground: oklch(0.94 0.012 145);
+  --popover: oklch(0.205 0.022 150);
+  --popover-foreground: oklch(0.94 0.012 145);
+  --primary: oklch(0.64 0.1 142);
+  --primary-foreground: oklch(0.16 0.025 150);
+  --secondary: oklch(0.24 0.025 150);
+  --secondary-foreground: oklch(0.91 0.014 145);
+  --muted: oklch(0.235 0.02 150);
+  --muted-foreground: oklch(0.7 0.025 150);
+  --accent: oklch(0.27 0.045 145);
+  --accent-foreground: oklch(0.92 0.02 145);
+  --destructive: oklch(0.67 0.17 25);
+  --border: oklch(0.34 0.025 150 / 72%);
+  --input: oklch(0.29 0.025 150);
+  --ring: oklch(0.61 0.09 142);
+  --chart-1: oklch(0.64 0.1 142);
+  --chart-2: oklch(0.72 0.12 205);
+  --chart-3: oklch(0.76 0.14 75);
+  --chart-4: oklch(0.68 0.15 25);
+  --chart-5: oklch(0.7 0.13 300);
+  --sidebar: oklch(0.175 0.02 150);
+  --sidebar-foreground: oklch(0.92 0.014 145);
+  --sidebar-primary: oklch(0.62 0.1 142);
+  --sidebar-primary-foreground: oklch(0.15 0.02 150);
+  --sidebar-accent: oklch(0.245 0.035 145);
+  --sidebar-accent-foreground: oklch(0.92 0.014 145);
+  --sidebar-border: oklch(0.32 0.025 150 / 75%);
+  --sidebar-ring: oklch(0.61 0.09 142);
 }
 
 @layer base {
@@ -154,4 +154,506 @@
     padding-left: 32px;
     padding-right: 32px;
   }
+}
+
+/*
+ * Dark palette cho các màn hình cũ đang dùng utility màu trực tiếp.
+ * Nền được pha xanh rất nhẹ để hợp thương hiệu nông sản, nhưng giữ độ bão hòa
+ * thấp để ảnh sản phẩm, badge và nút hành động vẫn là điểm nhấn chính.
+ */
+.dark body {
+  background-color: #09110d !important;
+  color: #e8f0eb;
+}
+
+/* Canvas của customer, seller và admin. */
+.dark [class*="bg-[#f8faf5]"],
+.dark [class*="bg-[#f8faf9]"],
+.dark [class*="bg-[#f8fcf5]"],
+.dark [class*="bg-[#f7fbf3]"],
+.dark [class*="bg-[#f7faf4]"],
+.dark [class*="bg-[#f7f9f4]"],
+.dark [class*="bg-[#f6f8f6]"],
+.dark [class*="bg-[#f6f8f3]"] {
+  background-color: #0b1410 !important;
+  color: #e8f0eb;
+}
+
+/* Surface: card chính, dropdown, drawer và header trong suốt. */
+.dark .bg-white,
+.dark [class*="bg-white/"],
+.dark .bg-slate-50,
+.dark .bg-gray-50 {
+  background-color: #111c17 !important;
+}
+
+.dark .bg-slate-100,
+.dark .bg-gray-100 {
+  background-color: #17231d !important;
+}
+
+.dark .bg-slate-200,
+.dark .bg-gray-200 {
+  background-color: #1d2c24 !important;
+}
+
+/* Các mảng xanh nhạt của thương hiệu. */
+.dark .bg-green-50,
+.dark .bg-emerald-50,
+.dark [class*="bg-[#eef6e8]"],
+.dark [class*="bg-[#eef8e8]"],
+.dark [class*="bg-[#eef2e7]"],
+.dark [class*="bg-[#eaf4e4]"],
+.dark [class*="bg-[#f4faef]"] {
+  background-color: #14291c !important;
+}
+
+.dark .bg-green-100,
+.dark .bg-emerald-100 {
+  background-color: #1a3825 !important;
+}
+
+.dark .bg-green-200,
+.dark .bg-emerald-200 {
+  background-color: #245034 !important;
+}
+
+/* Trạng thái lỗi/cảnh báo dùng nền tối dịu, không phủ đỏ/cam quá sáng. */
+.dark .bg-red-50 {
+  background-color: #2a1719 !important;
+}
+
+.dark .bg-red-100 {
+  background-color: #3a1e21 !important;
+}
+
+.dark .bg-orange-50,
+.dark .bg-amber-50,
+.dark .bg-yellow-50 {
+  background-color: #2b2214 !important;
+}
+
+.dark .bg-orange-100,
+.dark .bg-amber-100,
+.dark .bg-yellow-100 {
+  background-color: #3b2e18 !important;
+}
+
+.dark .bg-blue-50,
+.dark .bg-sky-50 {
+  background-color: #132637 !important;
+}
+
+.dark .bg-pink-50 {
+  background-color: #2b1822 !important;
+}
+
+.dark .bg-blue-100,
+.dark .bg-sky-100 {
+  background-color: #183449 !important;
+}
+
+/* Chữ trung tính có ba cấp tương phản rõ ràng. */
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-gray-950,
+.dark .text-gray-900,
+.dark [class*="text-[#1d1d1d]"],
+.dark [class*="text-[#222]"],
+.dark [class*="text-[#333]"] {
+  color: #edf5ef !important;
+}
+
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-gray-800,
+.dark .text-gray-700,
+.dark [class*="text-[#555]"],
+.dark [class*="text-[#666]"] {
+  color: #cbd9cf !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-slate-400,
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-gray-400,
+.dark [class*="text-[#777]"],
+.dark [class*="text-[#888]"],
+.dark [class*="text-[#999]"],
+.dark [class*="text-[#aaa]"] {
+  color: #91a399 !important;
+}
+
+/* Màu chữ thương hiệu và trạng thái trên nền tối. */
+.dark .text-green-500,
+.dark .text-green-600,
+.dark .text-green-700,
+.dark .text-green-800,
+.dark .text-emerald-500,
+.dark .text-emerald-600,
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark [class*="text-[#6BAE4F]"],
+.dark [class*="text-[#5fa846]"],
+.dark [class*="text-[#5d9d43]"],
+.dark [class*="text-[#2f9b35]"],
+.dark [class*="text-[#2d5d1f]"] {
+  color: #7eb371 !important;
+}
+
+.dark .text-red-500,
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-800 {
+  color: #f39a9f !important;
+}
+
+.dark .text-orange-600,
+.dark .text-orange-700,
+.dark .text-orange-800,
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-yellow-600,
+.dark .text-yellow-700,
+.dark .text-yellow-800 {
+  color: #e9bd6d !important;
+}
+
+.dark .text-blue-600,
+.dark .text-blue-700,
+.dark .text-blue-800,
+.dark .text-sky-600,
+.dark .text-sky-700,
+.dark .text-sky-800 {
+  color: #86c5ed !important;
+}
+
+/* Border theo surface hoặc ngữ nghĩa trạng thái. */
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: #2a3d33 !important;
+}
+
+.dark .border-green-100,
+.dark .border-green-200,
+.dark .border-emerald-100,
+.dark .border-emerald-200 {
+  border-color: #285139 !important;
+}
+
+.dark .border-red-100,
+.dark .border-red-200,
+.dark .border-orange-100,
+.dark .border-orange-200,
+.dark .border-amber-100,
+.dark .border-amber-200 {
+  border-color: #593438 !important;
+}
+
+/* Hover cũ không được phép bật lại nền sáng. */
+.dark [class*="hover:bg-slate-50"]:hover,
+.dark [class*="hover:bg-gray-50"]:hover,
+.dark [class*="hover:bg-white"]:hover {
+  background-color: #192720 !important;
+}
+
+.dark [class*="hover:bg-green-50"]:hover,
+.dark [class*="hover:bg-green-100"]:hover,
+.dark [class*="hover:bg-emerald-50"]:hover {
+  background-color: #1c3927 !important;
+}
+
+.dark [class*="hover:bg-red-50"]:hover {
+  background-color: #3a1e21 !important;
+}
+
+/* Các component customer cũ dùng arbitrary color thay vì utility chuẩn. */
+.dark [class*="bg-[#f7faf4]"],
+.dark [class*="bg-[#eef6e8]"],
+.dark [class*="bg-[#eef8e8]"],
+.dark [class*="bg-[#f4faef]"] {
+  background-color: #142219 !important;
+}
+
+.dark [class*="hover:bg-[#f7faf4]"]:hover,
+.dark [class*="hover:bg-[#eef6e8]"]:hover,
+.dark [class*="hover:bg-[#eef8e8]"]:hover,
+.dark [class*="hover:bg-[#f4faef]"]:hover {
+  background-color: #20352a !important;
+  color: #edf5ef !important;
+}
+
+.dark a[class*="hover:bg-"],
+.dark button[class*="hover:bg-"],
+.dark [role="menuitem"][class*="hover:bg-"] {
+  transition-property: color, background-color, border-color, transform, box-shadow;
+}
+
+.dark a[class*="hover:bg-"]:hover .text-slate-900,
+.dark a[class*="hover:bg-"]:hover .text-slate-800,
+.dark a[class*="hover:bg-"]:hover .text-slate-700,
+.dark button[class*="hover:bg-"]:hover .text-slate-900,
+.dark button[class*="hover:bg-"]:hover .text-slate-800,
+.dark button[class*="hover:bg-"]:hover .text-slate-700 {
+  color: #f2f7f3 !important;
+}
+
+.dark .customer-menu-item:hover,
+.dark .customer-category-item:hover,
+.dark .customer-quick-action:hover {
+  background-color: #20352a !important;
+  color: #f2f7f3 !important;
+}
+
+.dark .customer-menu-item:hover [class*="text-[#222]"],
+.dark .customer-category-item:hover [class*="text-[#1d1d1d]"],
+.dark .customer-category-item:hover [class*="text-[#222]"] {
+  color: #f2f7f3 !important;
+}
+
+/*
+ * Các lớp có opacity (vd. bg-green-50/60) không khớp selector utility ở trên.
+ * Gán riêng để card và menu không bị rơi về mảng xám/sáng trong dark mode.
+ */
+.dark [class*="bg-green-50/"],
+.dark [class*="bg-emerald-50/"] {
+  background-color: rgba(20, 41, 28, 0.84) !important;
+}
+
+.dark [class*="bg-red-50/"] {
+  background-color: rgba(42, 23, 25, 0.84) !important;
+}
+
+.dark [class*="bg-blue-50/"],
+.dark [class*="bg-sky-50/"] {
+  background-color: rgba(19, 38, 55, 0.82) !important;
+}
+
+.dark [class*="bg-slate-50/"],
+.dark [class*="bg-gray-50/"] {
+  background-color: rgba(17, 28, 23, 0.86) !important;
+}
+
+/* Nút chính dùng xanh trầm hơn để không gây chói khi nhìn lâu. */
+.dark .bg-green-600,
+.dark .bg-emerald-600 {
+  background-color: #416f49 !important;
+}
+
+.dark .bg-green-700,
+.dark .bg-green-800,
+.dark .bg-emerald-700,
+.dark .bg-emerald-800,
+.dark .bg-teal-700 {
+  background-color: #345b3d !important;
+}
+
+.dark [class*="hover:bg-green-700"]:hover,
+.dark [class*="hover:bg-green-800"]:hover,
+.dark [class*="hover:bg-emerald-700"]:hover,
+.dark [class*="hover:bg-emerald-800"]:hover {
+  background-color: #477852 !important;
+}
+
+/* Màn hình đăng nhập/đăng ký cần nền tối thật, không giữ gradient trắng cũ. */
+.dark .auth-page-shell {
+  background-color: #0a120e !important;
+  background-image:
+    radial-gradient(circle at 12% 12%, rgba(65, 111, 73, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 84%, rgba(40, 79, 62, 0.14), transparent 38%),
+    linear-gradient(145deg, #09110d, #0f1813 52%, #111d17) !important;
+}
+
+.dark .auth-card {
+  border-color: #293d33 !important;
+  background-color: #111a16 !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32) !important;
+}
+
+.dark .auth-title {
+  color: #7eb371 !important;
+}
+
+/* Đăng ký farm: tách rõ hero, form và khối địa chỉ bằng xanh rêu dịu. */
+.dark .farm-application-page {
+  color: #e4eee7;
+}
+
+.dark .farm-application-hero {
+  border-color: #365f43 !important;
+  background-color: #244c34 !important;
+  background-image: linear-gradient(135deg, #254b34, #31583a 55%, #234a43) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.26) !important;
+}
+
+.dark .farm-form-surface {
+  border-color: #293d33 !important;
+  background-color: #101914 !important;
+}
+
+.dark .farm-address-panel {
+  border-color: #294a35 !important;
+  background-color: #132219 !important;
+}
+
+.dark .farm-address-panel .bg-white,
+.dark .farm-address-panel [class*="bg-white/"] {
+  background-color: #17241d !important;
+}
+
+/* Chính sách farm: giữ chữ đọc được trong cả khung tóm tắt và modal portal. */
+.dark .seller-policy-summary {
+  border-color: #2a4c36 !important;
+  background-color: #132219 !important;
+}
+
+.dark .seller-policy-notice {
+  border-color: #315d3f !important;
+  background-color: #162c1e !important;
+  color: #dbe9df !important;
+}
+
+.dark .seller-policy-modal,
+.dark .seller-policy-footer {
+  border-color: #2a3d33 !important;
+  background-color: #101914 !important;
+}
+
+.dark .seller-policy-section {
+  color: #d2dfd6 !important;
+}
+
+.dark .seller-policy-section h3 {
+  color: #e8f1ea !important;
+}
+
+.dark .seller-policy-section li {
+  color: #c7d7cc !important;
+}
+
+/* Sidebar hồ sơ: hover tối dịu, không phủ nền trắng lên chữ. */
+.dark .profile-sidebar {
+  border-color: #2a3d33 !important;
+  background-color: #101914 !important;
+}
+
+.dark .profile-sidebar-link {
+  color: #cbd9cf !important;
+}
+
+.dark .profile-sidebar-link:hover {
+  background-color: #1b2b22 !important;
+  color: #e8f1ea !important;
+}
+
+.dark .profile-sidebar-link-active,
+.dark .profile-sidebar-link-active:hover {
+  background-color: #193523 !important;
+  color: #82b976 !important;
+}
+
+.dark .profile-sidebar-logout:hover {
+  background-color: #2f1b1d !important;
+  color: #f1a0a5 !important;
+}
+
+.dark .payment-option-momo {
+  border-color: #553044 !important;
+  background-color: #21171c !important;
+}
+
+/* Menu tài khoản admin/seller không còn mảng xám vô nghĩa. */
+.dark .account-popover {
+  border-color: #2a3e34 !important;
+  background-color: #101914 !important;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34) !important;
+}
+
+.dark .account-action-card {
+  border-color: #2a3e34 !important;
+  background-color: #16221c !important;
+  color: #d2ddd5 !important;
+}
+
+.dark .account-action-card:hover {
+  background-color: #1b2b22 !important;
+}
+
+.dark .account-action-card-seller,
+.dark .account-summary-trigger-seller {
+  border-color: #294936 !important;
+  background-color: #14241a !important;
+}
+
+.dark .account-action-card-admin,
+.dark .account-summary-trigger-admin {
+  border-color: #4b3032 !important;
+  background-color: #251a1b !important;
+}
+
+.dark .account-action-card-admin:hover,
+.dark .account-summary-trigger-admin:hover {
+  background-color: #2e1e20 !important;
+}
+
+/* Select native vẫn an toàn nếu còn xuất hiện ở form tạo/sửa. */
+select {
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.dark select {
+  color-scheme: dark;
+}
+
+.dark select option {
+  background-color: #101914;
+  color: #e4eee7;
+}
+
+/* Form control, menu chọn và autofill. */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #101b16 !important;
+  border-color: #365044 !important;
+  color: #edf5ef !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #71877b;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #edf5ef;
+  box-shadow: 0 0 0 1000px #101b16 inset;
+}
+
+/* Chuyển theme bớt giật nhưng không làm chậm animation nghiệp vụ. */
+html.dark body,
+html.dark header,
+html.dark aside,
+html.dark main,
+html.dark section,
+html.dark article,
+html.dark nav {
+  transition: background-color 160ms ease, border-color 160ms ease,
+    color 160ms ease;
+}
+
+.density-compact table th,
+.density-compact table td {
+  padding-top: 0.55rem !important;
+  padding-bottom: 0.55rem !important;
 }

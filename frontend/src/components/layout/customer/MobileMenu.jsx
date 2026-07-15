@@ -50,6 +50,7 @@ const navItems = [
 ];
 
 const quickActionClass = `
+  customer-quick-action
   flex
   flex-col
   items-center
@@ -652,7 +653,7 @@ const MobileMenu = ({
                             "
                           >
                             <Link
-                              to={`/products?category=${encodeURIComponent(
+                              to={`/products?category_slug=${encodeURIComponent(
                                 item.slug,
                               )}`}
                               onClick={handleClose}
@@ -703,7 +704,7 @@ const MobileMenu = ({
                             {children.map((child) => (
                               <Link
                                 key={child.id}
-                                to={`/products?category=${encodeURIComponent(
+                                to={`/products?category_slug=${encodeURIComponent(
                                   child.slug,
                                 )}`}
                                 onClick={handleClose}
@@ -779,7 +780,7 @@ const MobileMenu = ({
                   return (
                     <Link
                       key={item.id}
-                      to={`/products?category=${encodeURIComponent(item.slug)}`}
+                      to={`/products?category_slug=${encodeURIComponent(item.slug)}`}
                       onClick={handleClose}
                       className="
                         flex
