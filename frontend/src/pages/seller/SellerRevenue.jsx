@@ -4,7 +4,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
-  CalendarDays,
   DollarSign,
   Loader2,
   Package,
@@ -25,6 +24,7 @@ import {
   Legend,
 } from "recharts";
 import sellerRevenueService from "../../services/sellerRevenueService";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 
 const DEFAULT_DATA = {
   farm: null,
@@ -128,14 +128,14 @@ export default function SellerRevenue() {
       raw_date: item.raw_date || item.date || "",
       revenue: Number(item.revenue || item.total_revenue || 0),
       order_count: Number(
-        item.order_count || item.orders || item.total_orders || 0
+        item.order_count || item.orders || item.total_orders || 0,
       ),
       sold_quantity: Number(
         item.sold_quantity ||
           item.sold ||
           item.total_quantity ||
           item.quantity ||
-          0
+          0,
       ),
     }));
   }, [rawChart]);
@@ -147,7 +147,7 @@ export default function SellerRevenue() {
   const totalChartOrders = useMemo(() => {
     return chartData.reduce(
       (sum, item) => sum + Number(item.order_count || 0),
-      0
+      0,
     );
   }, [chartData]);
 
@@ -202,14 +202,14 @@ export default function SellerRevenue() {
 
   return (
     <div className="w-full max-w-full space-y-6 overflow-x-hidden">
-      <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-green-800 via-green-700 to-emerald-500 p-6 text-white shadow-sm">
+      <div className="min-w-0 overflow-hidden rounded-3xl bg-linear-to-br from-green-800 via-green-700 to-emerald-500 p-4 text-white shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
+          <div className="min-w-0">
             <p className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold uppercase tracking-wide">
               Seller Analytics
             </p>
 
-            <h1 className="mt-4 text-3xl font-extrabold">
+            <h1 className="mt-4 text-2xl font-extrabold sm:text-3xl">
               Thống kê doanh thu
             </h1>
 
@@ -219,7 +219,7 @@ export default function SellerRevenue() {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white/15 px-5 py-3 text-sm font-extrabold backdrop-blur">
+          <div className="max-w-full break-words rounded-2xl bg-white/15 px-5 py-3 text-sm font-extrabold backdrop-blur">
             {report?.farm?.name || "Gian hàng của tôi"}
           </div>
         </div>
@@ -253,7 +253,7 @@ export default function SellerRevenue() {
 
       <form
         onSubmit={handleSubmitFilter}
-        className="rounded-3xl bg-white p-5 shadow-sm"
+        className="min-w-0 rounded-3xl bg-white p-4 shadow-sm sm:p-5"
       >
         <div
           className={`grid min-w-0 gap-3 ${
@@ -262,25 +262,18 @@ export default function SellerRevenue() {
               : "lg:grid-cols-[220px_auto]"
           }`}
         >
-          <div className="relative">
-            <CalendarDays
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-
-            <select
-              value={filters.period}
-              onChange={(e) => updateFilter("period", e.target.value)}
-              className="h-12 w-full rounded-2xl border border-slate-200 pl-11 pr-4 text-sm font-bold outline-none focus:border-green-600"
-            >
-              <option value="today">Hôm nay</option>
-              <option value="7d">7 ngày gần đây</option>
-              <option value="30d">30 ngày gần đây</option>
-              <option value="month">Tháng này</option>
-              <option value="year">Năm nay</option>
-              <option value="custom">Tùy chọn</option>
-            </select>
-          </div>
+          <ResponsiveSelect
+            value={filters.period}
+            onChange={(value) => updateFilter("period", value)}
+            options={[
+              { value: "today", label: "Hôm nay" },
+              { value: "7d", label: "7 ngày gần đây" },
+              { value: "30d", label: "30 ngày gần đây" },
+              { value: "month", label: "Tháng này" },
+              { value: "year", label: "Năm nay" },
+              { value: "custom", label: "Tùy chọn" },
+            ]}
+          />
 
           {filters.period === "custom" && (
             <>
@@ -288,14 +281,14 @@ export default function SellerRevenue() {
                 type="date"
                 value={filters.from}
                 onChange={(e) => updateFilter("from", e.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
+                className="h-12 w-full min-w-0 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
               />
 
               <input
                 type="date"
                 value={filters.to}
                 onChange={(e) => updateFilter("to", e.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
+                className="h-12 w-full min-w-0 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
               />
             </>
           )}
@@ -346,7 +339,7 @@ export default function SellerRevenue() {
       </div>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-6 shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-slate-950">
@@ -387,7 +380,7 @@ export default function SellerRevenue() {
           )}
         </div>
 
-        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-6 shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-slate-950">
@@ -433,12 +426,14 @@ function HeroMetric({ label, value, percent }) {
   const Icon = positive ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+    <div className="min-w-0 rounded-2xl bg-white/15 p-4 backdrop-blur">
       <p className="text-sm font-bold text-green-50">{label}</p>
 
-      <p className="mt-2 text-2xl font-extrabold text-white">{value}</p>
+      <p className="mt-2 break-words text-xl font-extrabold text-white sm:text-2xl">
+        {value}
+      </p>
 
-      <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold">
+      <div className="mt-3 inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold">
         <Icon size={14} />
         {positive ? "+" : ""}
         {percentNumber}% so với kỳ trước
@@ -449,14 +444,16 @@ function HeroMetric({ label, value, percent }) {
 
 function StatCard({ icon: Icon, label, value, subText }) {
   return (
-    <div className="rounded-3xl bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-3xl bg-white p-4 shadow-sm sm:p-5">
       <div className="grid h-12 w-12 place-items-center rounded-2xl bg-green-50 text-green-700">
         <Icon size={23} />
       </div>
 
       <p className="mt-4 text-sm font-bold text-slate-500">{label}</p>
 
-      <p className="mt-2 text-2xl font-extrabold text-slate-950">{value}</p>
+      <p className="mt-2 break-words text-xl font-extrabold text-slate-950 sm:text-2xl">
+        {value}
+      </p>
 
       <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
         {subText}
@@ -466,17 +463,18 @@ function StatCard({ icon: Icon, label, value, subText }) {
 }
 
 function RevenueComposedChart({ chartData, hasSoldLine }) {
-  const xInterval = chartData.length > 16 ? Math.ceil(chartData.length / 10) : 0;
+  const xInterval =
+    chartData.length > 16 ? Math.ceil(chartData.length / 10) : 0;
 
   return (
-    <div className="h-[430px] w-full rounded-3xl bg-gradient-to-b from-green-50/80 to-white p-4">
+    <div className="h-100 w-full min-w-0 rounded-3xl bg-linear-to-b from-green-50/80 to-white p-1 sm:h-107.5 sm:p-4">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={chartData}
           margin={{
             top: 20,
-            right: 20,
-            left: 10,
+            right: 4,
+            left: -20,
             bottom: 10,
           }}
         >
@@ -516,7 +514,7 @@ function RevenueComposedChart({ chartData, hasSoldLine }) {
             }}
             axisLine={false}
             tickLine={false}
-            width={64}
+            width={56}
           />
 
           <YAxis
@@ -530,7 +528,7 @@ function RevenueComposedChart({ chartData, hasSoldLine }) {
             }}
             axisLine={false}
             tickLine={false}
-            width={42}
+            width={34}
           />
 
           <Tooltip content={<RevenueTooltip hasSoldLine={hasSoldLine} />} />
@@ -600,7 +598,8 @@ function RevenueComposedChart({ chartData, hasSoldLine }) {
 function RevenueTooltip({ active, payload, label, hasSoldLine }) {
   if (!active || !payload?.length) return null;
 
-  const revenue = payload.find((item) => item.dataKey === "revenue")?.value || 0;
+  const revenue =
+    payload.find((item) => item.dataKey === "revenue")?.value || 0;
   const orders =
     payload.find((item) => item.dataKey === "order_count")?.value || 0;
   const sold =
@@ -656,7 +655,7 @@ function TopProductItem({ product, index }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-extrabold text-slate-950">
+          <h3 className="break-words font-extrabold text-slate-950">
             {product.name}
           </h3>
 
@@ -720,8 +719,8 @@ function SellerRevenueSkeleton() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <div className="h-[520px] animate-pulse rounded-3xl bg-white shadow-sm" />
-        <div className="h-[520px] animate-pulse rounded-3xl bg-white shadow-sm" />
+        <div className="h-130 animate-pulse rounded-3xl bg-white shadow-sm" />
+        <div className="h-130 animate-pulse rounded-3xl bg-white shadow-sm" />
       </div>
     </div>
   );

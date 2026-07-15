@@ -41,7 +41,7 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
+          <table className="w-full min-w-225">
             <thead className="bg-slate-50">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3 text-left text-sm font-bold">
@@ -96,7 +96,7 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="flex min-w-[220px] items-center gap-3">
+                    <div className="flex min-w-55 items-center gap-3">
                       {farm.logo ? (
                         <img
                           src={getImageUrl(farm.logo)}
@@ -110,7 +110,7 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
                       )}
 
                       <div className="min-w-0">
-                        <p className="max-w-[230px] break-words font-semibold">
+                        <p className="max-w-57.5 wrap-break-word font-semibold">
                           {farm.farm_name}
                         </p>
 

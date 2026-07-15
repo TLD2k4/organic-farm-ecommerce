@@ -23,6 +23,7 @@ const createInitialReport = () => ({
   summary: {
     revenue: 0,
     total_orders: 0,
+    total_sub_orders: 0,
     paid_orders: 0,
     completed_orders: 0,
     cancelled_orders: 0,

@@ -44,7 +44,7 @@ export default function TopCategoriesTable({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px]">
+          <table className="w-full min-w-175">
             <thead className="bg-slate-50">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3 text-left text-sm font-bold">
@@ -95,7 +95,7 @@ export default function TopCategoriesTable({
                   </td>
 
                   <td className="px-4 py-4">
-                    <p className="max-w-[220px] break-words font-semibold">
+                    <p className="max-w-55 wrap-break-word font-semibold">
                       {category.category_name}
                     </p>
                   </td>
