@@ -8,6 +8,7 @@ import {
   Undo2,
   X,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import ConfirmButton from "@/components/common/ConfirmButton";
 import StatusBadge from "@/components/common/StatusBadge";
@@ -101,9 +102,15 @@ export default function FarmsTable({
                       </div>
 
                       <div className="min-w-0">
-                        <p className="max-w-55 truncate font-bold">
-                          {highlight(farm.name, keyword)}
-                        </p>
+                        {farm.slug && status === FARM_STATUS.ACTIVE && !isDeleted ? (
+                          <Link to={`/farms/${farm.slug}`} className="block max-w-55 truncate font-bold hover:text-green-700 hover:underline">
+                            {highlight(farm.name, keyword)}
+                          </Link>
+                        ) : (
+                          <button type="button" onClick={() => onView(farm)} className="block max-w-55 truncate text-left font-bold hover:text-sky-600 hover:underline">
+                            {highlight(farm.name, keyword)}
+                          </button>
+                        )}
 
                         <p className="max-w-55 truncate text-sm text-slate-500">
                           {farm.slug}

@@ -1,3 +1,5 @@
+// src\services\farmService.js
+
 import axiosClient from "../api/axiosClient";
 
 const farmService = {
@@ -8,9 +10,12 @@ const farmService = {
     });
   },
 
-  getBySlug(slug) {
+  getBySlug(slug, params = {}) {
     return axiosClient.get(
       `/farms/${encodeURIComponent(slug)}`,
+      {
+        params,
+      },
     );
   },
 
@@ -76,9 +81,10 @@ const farmService = {
     );
   },
 
-  suspend(id) {
+  suspend(id, reason) {
     return axiosClient.patch(
       `/admin/farms/${id}/suspend`,
+      { reason },
     );
   },
 
@@ -88,9 +94,10 @@ const farmService = {
     );
   },
 
-  delete(id) {
+  delete(id, reason) {
     return axiosClient.delete(
       `/admin/farms/${id}`,
+      { data: { reason } },
     );
   },
 

@@ -1,3 +1,5 @@
+// src\hooks\useFarm.js
+
 import { useFarmStore } from "../store/farmStore";
 
 export default function useFarm() {
@@ -8,6 +10,10 @@ export default function useFarm() {
     publicMeta,
     publicLoading,
     publicDetailLoading,
+
+    publicFarmProducts,
+    publicFarmProductsMeta,
+    publicFarmProductsLoading,
 
     // OWNER
     myFarm,
@@ -55,6 +61,10 @@ export default function useFarm() {
     publicMeta,
     publicLoading,
     publicDetailLoading,
+
+    publicFarmProducts,
+    publicFarmProductsMeta,
+    publicFarmProductsLoading,
 
     myFarm,
     ownerLoading,
