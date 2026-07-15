@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import addressService from "../../../../services/addressService";
+import { confirmAction } from "../../../../utils/actionDialog";
 
 const EMPTY_FORM = {
   receiver_name: "",
@@ -28,10 +29,6 @@ const EMPTY_FORM = {
 
 function getAddressesFromPayload(payload) {
   return payload?.data?.addresses || payload?.addresses || payload?.data || [];
-}
-
-function getAddressFromPayload(payload) {
-  return payload?.data?.address || payload?.address || payload?.data || null;
 }
 
 function getFullAddress(address) {
@@ -153,7 +150,7 @@ const handleSubmit = async (e) => {
 };
 
 const handleDelete = async (address) => {
-  if (!window.confirm("Bạn có chắc muốn xóa địa chỉ này?")) return;
+  if (!await confirmAction({ title: "Xóa địa chỉ", description: "Địa chỉ sẽ bị xóa khỏi sổ địa chỉ của bạn.", confirmLabel: "Xóa địa chỉ", danger: true })) return;
 
   try {
     setActionLoadingId(`delete-${address.id}`);
@@ -404,7 +401,7 @@ const selectedProvince = provinceOptions.find(
 
 const wardOptions = selectedProvince?.wards || [];
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-999 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="text-xl font-bold text-slate-950">
@@ -697,7 +694,7 @@ function SuggestInput({
             left-0
             right-0
             top-[calc(100%+6px)]
-            z-[1000]
+            z-1000
             max-h-56
             overflow-y-auto
             rounded-2xl

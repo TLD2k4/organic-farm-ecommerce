@@ -5,12 +5,16 @@ namespace App\Http\Controllers\User;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\UpdateProfileRequest;
 use App\Services\User\UserService;
+use App\Services\Audit\AuditLogService;
+use App\Models\User;
+use App\Notifications\MarketplaceNotification;
 use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
     public function __construct(
-        private UserService $userService
+        private UserService $userService,
+        private AuditLogService $auditLogService
     ) {}
 
     public function profile(Request $request)
@@ -70,9 +74,31 @@ class UserController extends Controller
         ]);
     }
 
-    public function toggleStatus($id)
+    public function toggleStatus(Request $request, $id)
     {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
         $data = $this->userService->toggleStatus($id);
+        $newStatus = (int) $data['status'];
+
+        $this->auditLogService->record(
+            $request->user(), 'user', (int) $id,
+            $newStatus === 1 ? 'unlock' : 'lock',
+            $newStatus === 1 ? 0 : 1,
+            $newStatus,
+            $validated['reason']
+        );
+
+        User::withTrashed()->find($id)?->notify(new MarketplaceNotification(
+            $newStatus === 1 ? 'account.unlocked' : 'account.locked',
+            $newStatus === 1 ? 'Tài khoản đã được mở khóa' : 'Tài khoản đã bị khóa',
+            'Lý do: ' . $validated['reason'],
+            '/profile',
+            $request->user(),
+            ['user_id' => (int) $id]
+        ));
 
         return response()->json([
             'success' => true,
@@ -83,7 +109,16 @@ class UserController extends Controller
 
     public function destroy(Request $request, $id)
     {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
         $user = $this->userService->delete($request->user(), $id);
+
+        $this->auditLogService->record(
+            $request->user(), 'user', (int) $id, 'soft_delete',
+            $user->status, 'deleted', $validated['reason']
+        );
 
         return response()->json([
             'success' => true,
@@ -94,7 +129,16 @@ class UserController extends Controller
 
     public function forceDestroy(Request $request, $id)
     {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
         $user = $this->userService->forceDelete($request->user(), $id);
+
+        $this->auditLogService->record(
+            $request->user(), 'user', (int) $id, 'force_delete',
+            'deleted', 'purged', $validated['reason']
+        );
 
         return response()->json([
             'success' => true,
@@ -103,9 +147,14 @@ class UserController extends Controller
         ]);
     }
 
-    public function restore($id)
+    public function restore(Request $request, $id)
     {
         $user = $this->userService->restore($id);
+
+        $this->auditLogService->record(
+            $request->user(), 'user', (int) $id, 'restore',
+            'deleted', $user->status
+        );
 
         return response()->json([
             'success' => true,

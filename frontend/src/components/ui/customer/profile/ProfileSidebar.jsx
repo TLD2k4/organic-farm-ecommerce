@@ -79,7 +79,7 @@ export default function ProfileSidebar() {
   ];
 
   return (
-    <div className="h-fit rounded-2xl bg-white p-5 shadow-sm">
+    <div className="profile-sidebar h-fit rounded-2xl bg-white p-5 shadow-sm">
       <div className="border-b pb-5 text-center">
         <img
           src={
@@ -119,6 +119,7 @@ export default function ProfileSidebar() {
                   key={item.key}
                   to={`/profile?tab=${item.key}`}
                   className={`
+                    profile-sidebar-link
                     flex
                     h-11
                     items-center
@@ -129,7 +130,7 @@ export default function ProfileSidebar() {
 
                     ${
                       tab === item.key
-                        ? "bg-green-100 text-green-600"
+                        ? "profile-sidebar-link-active bg-green-100 text-green-600"
                         : "hover:bg-gray-100"
                     }
                   `}
@@ -154,6 +155,7 @@ export default function ProfileSidebar() {
               <Link
                 to={`/farms/${farm.slug}`}
                 className="
+                  profile-sidebar-link
                   flex
                   h-11
                   items-center
@@ -172,6 +174,7 @@ export default function ProfileSidebar() {
             <Link
               to={farmEntryPath}
               className="
+                profile-sidebar-link
                 flex
                 h-11
                 items-center
@@ -199,6 +202,7 @@ export default function ProfileSidebar() {
             <Link
               to="/admin"
               className="
+                profile-sidebar-link
                 flex
                 h-11
                 items-center
@@ -220,6 +224,7 @@ export default function ProfileSidebar() {
             type="button"
             onClick={() => setOpenLogout(true)}
             className="
+              profile-sidebar-logout
               flex
               h-11
               w-full

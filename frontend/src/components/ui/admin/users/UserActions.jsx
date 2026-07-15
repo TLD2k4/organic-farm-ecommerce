@@ -7,6 +7,7 @@ import useUser from "@/hooks/useUser";
 import ConfirmButton from "@/components/common/ConfirmButton";
 
 import { handleApi } from "@/utils/api";
+import { requestReason } from "@/utils/actionDialog";
 
 export default function UserActions({
   user,
@@ -30,10 +31,13 @@ export default function UserActions({
   };
 
   const handleToggleStatus = async () => {
+    const reason = await requestReason({ title: user.status ? `Khóa ${user.name}` : `Mở khóa ${user.name}`, description: "Người dùng sẽ thấy người thao tác, thời gian và lý do thay đổi trạng thái.", placeholder: user.status ? "Nhập lý do khóa tài khoản..." : "Nhập lý do mở khóa...", confirmLabel: user.status ? "Khóa tài khoản" : "Mở khóa", danger: Boolean(user.status) });
+    if (!reason) return;
+
     try {
       setLoadingId(user.id);
 
-      await handleApi(() => toggleStatus(user.id), reload);
+      await handleApi(() => toggleStatus(user.id, reason), reload);
     } finally {
       setLoadingId(null);
     }
@@ -92,7 +96,16 @@ export default function UserActions({
           <ConfirmButton
             title="Xóa mềm người dùng?"
             tooltip="Xóa mềm"
-            onConfirm={() => handleApi(() => deleteUser(user.id), reload)}
+            onConfirm={async () => {
+              const reason = await requestReason({ title: `Xóa ${user.name}`, description: "Tài khoản được xóa mềm và có thể khôi phục.", placeholder: "Nhập lý do xóa tài khoản...", confirmLabel: "Xóa tài khoản" });
+              if (reason) {
+                return handleApi(
+                  () => deleteUser(user.id, reason),
+                  reload,
+                );
+              }
+              return undefined;
+            }}
           >
             <span
               className="
@@ -139,7 +152,16 @@ export default function UserActions({
           <ConfirmButton
             title="Xóa vĩnh viễn người dùng?"
             tooltip="Xóa vĩnh viễn"
-            onConfirm={() => handleApi(() => forceDelete(user.id), reload)}
+            onConfirm={async () => {
+              const reason = await requestReason({ title: `Xóa vĩnh viễn ${user.name}`, description: "Dữ liệu tài khoản sẽ không thể khôi phục.", placeholder: "Nhập lý do xóa vĩnh viễn...", confirmLabel: "Xóa vĩnh viễn" });
+              if (reason) {
+                return handleApi(
+                  () => forceDelete(user.id, reason),
+                  reload,
+                );
+              }
+              return undefined;
+            }}
           >
             <span
               className="
