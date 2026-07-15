@@ -14,8 +14,8 @@ const productService = {
     return axiosClient.get("/products/filters");
   },
 
-  getProduct(id) {
-  return axiosClient.get(`/products/${id}`);
+  getProduct(slug) {
+  return axiosClient.get(`/products/${slug}`);
   },
 
   getProductReviews(id, params = {}) {
@@ -58,6 +58,13 @@ const productService = {
 
   renewCertificate(id, payload) {
     return axiosClient.post(`/vendor/products/${id}/certificates/renew`, payload);
+  },
+
+  resubmitRejectedCertificate(id, payload) {
+    return axiosClient.post(
+      `/vendor/products/${id}/certificates/resubmit`,
+      payload,
+    );
   },
 };
 

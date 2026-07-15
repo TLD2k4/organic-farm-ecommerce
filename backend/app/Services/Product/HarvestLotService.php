@@ -194,13 +194,33 @@ public function updateVendorLot(array $data, int $lotId, int $sellerId): Harvest
 
         $finalQuantityRemaining = (float) $lot->quantity_remaining;
 
-        if (array_key_exists('quantity_imported', $data)) {
-            if ((float) $lot->quantity_sold > 0) {
-                throw ValidationException::withMessages([
-                    'quantity_imported' => ['Không được sửa số lượng nhập khi lô đã phát sinh bán hàng.'],
-                ]);
-            }
+        if ((float) $lot->quantity_sold > 0) {
+            $immutableFields = [
+                'harvest_date' => $lot->harvest_date->toDateString(),
+                'expiry_date' => $lot->expiry_date->toDateString(),
+                'quantity_imported' => (float) $lot->quantity_imported,
+            ];
 
+            foreach ($immutableFields as $field => $currentValue) {
+                if (!array_key_exists($field, $data)) {
+                    continue;
+                }
+
+                $nextValue = $field === 'quantity_imported'
+                    ? (float) $data[$field]
+                    : (string) $data[$field];
+
+                if ($nextValue !== $currentValue) {
+                    throw ValidationException::withMessages([
+                        $field => ['Lô đã phát sinh đơn hàng nên không được sửa ngày thu hoạch, hạn sử dụng hoặc số lượng nhập.'],
+                    ]);
+                }
+
+                unset($data[$field]);
+            }
+        }
+
+        if (array_key_exists('quantity_imported', $data)) {
             $data['quantity_remaining'] = $data['quantity_imported'];
             $finalQuantityRemaining = (float) $data['quantity_imported'];
         }

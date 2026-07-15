@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { Children, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import uploadService from "../../services/uploadService";
 import {
@@ -20,6 +21,8 @@ import {
   Loader2,
 } from "lucide-react";
 import productService from "../../services/productService";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
+import { confirmAction } from "../../utils/actionDialog";
 
 const createFormDefault = {
   category_id: "",
@@ -37,18 +40,6 @@ const createFormDefault = {
   certificate_file: "",
   issued_date: "",
   expiry_date: "",
-};
-
-const editFormDefault = {
-  category_id: "",
-  name: "",
-  description: "",
-  price: "",
-  sale_price: "",
-  unit: "kg",
-  thumbnail: "",
-  detail_images_text: "",
-  is_hot: false,
 };
 
 const renewFormDefault = {
@@ -89,6 +80,7 @@ function SellerProducts() {
   const [detailProduct, setDetailProduct] = useState(null);
 
   const [renewOpen, setRenewOpen] = useState(false);
+  const [renewMode, setRenewMode] = useState("renew");
   const [renewForm, setRenewForm] = useState(renewFormDefault);
   const [renewSaving, setRenewSaving] = useState(false);
   const [renewError, setRenewError] = useState("");
@@ -189,6 +181,17 @@ function SellerProducts() {
     fetchProducts(filters);
   }, [filters.page, filters.per_page]);
 
+  useEffect(() => {
+    if (!modalOpen && !detailOpen && !renewOpen) return undefined;
+
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = oldOverflow;
+    };
+  }, [modalOpen, detailOpen, renewOpen]);
+
   const handleSearch = () => {
     const nextFilters = {
       ...filters,
@@ -257,7 +260,7 @@ function SellerProducts() {
         detail_images_text: imageUrls,
         is_hot: Boolean(detail.is_hot),
       });
-    } catch (err) {
+    } catch {
       setForm({
         category_id: product.category_id || "",
         name: product.name || "",
@@ -324,7 +327,7 @@ function SellerProducts() {
       } else {
         await productService.updateSellerProduct(
           selectedProduct.id,
-          buildUpdatePayload()
+          buildUpdatePayload(),
         );
         toast.success("Cập nhật sản phẩm thành công. Đang chờ duyệt lại.");
       }
@@ -344,9 +347,7 @@ function SellerProducts() {
   };
 
   const handleDelete = async (product) => {
-    const ok = window.confirm(
-      `Bạn có chắc muốn xóa sản phẩm "${product.name}" không?`
-    );
+    const ok = await confirmAction({ title: `Xóa ${product.name}`, description: "Sản phẩm sẽ được xóa khỏi danh sách quản lý; dữ liệu đơn đã phát sinh vẫn được giữ.", confirmLabel: "Xóa sản phẩm", danger: true });
 
     if (!ok) return;
 
@@ -394,14 +395,15 @@ function SellerProducts() {
       const res = await productService.getSellerProduct(product.id);
       setDetailProduct(res.data);
     } catch (err) {
-      alert(getErrorMessage(err, "Không thể tải chi tiết sản phẩm."));
+      toast.error(getErrorMessage(err, "Không thể tải chi tiết sản phẩm."));
       setDetailOpen(false);
     } finally {
       setDetailLoading(false);
     }
   };
 
-  const openRenewModal = () => {
+  const openRenewModal = (mode = "renew") => {
+    setRenewMode(mode);
     setRenewForm(renewFormDefault);
     setRenewError("");
     setRenewOpen(true);
@@ -421,9 +423,20 @@ function SellerProducts() {
     setRenewError("");
 
     try {
-      await productService.renewCertificate(detailProduct.id, renewForm);
+      const isResubmit = renewMode === "resubmit";
 
-      toast.success("Gửi yêu cầu gia hạn chứng chỉ thành công.");
+      await (isResubmit
+        ? productService.resubmitRejectedCertificate(
+            detailProduct.id,
+            renewForm,
+          )
+        : productService.renewCertificate(detailProduct.id, renewForm));
+
+      toast.success(
+        isResubmit
+          ? "Gửi lại hồ sơ chứng chỉ thành công."
+          : "Gửi yêu cầu gia hạn chứng chỉ thành công.",
+      );
 
       setRenewOpen(false);
 
@@ -443,10 +456,10 @@ function SellerProducts() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-950">
+    <div className="w-full min-w-0 space-y-5">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
             Quản lý sản phẩm
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
@@ -456,14 +469,14 @@ function SellerProducts() {
 
         <button
           onClick={openCreateModal}
-          className="flex h-11 items-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white shadow-sm transition hover:bg-green-700"
+          className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white shadow-sm transition hover:bg-green-700 sm:w-auto"
         >
           <Plus size={18} />
           Thêm sản phẩm
         </button>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-4">
         <ProductStatCard
           icon={<Package size={28} />}
           iconClass="bg-green-100 text-green-700"
@@ -497,9 +510,9 @@ function SellerProducts() {
         />
       </div>
 
-      <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-        <div className="mb-5 grid grid-cols-[1.2fr_0.8fr_0.8fr_auto_auto] gap-3">
-          <div className="relative">
+      <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-5">
+        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_auto_auto]">
+          <div className="relative sm:col-span-2 xl:col-span-1">
             <Search
               size={18}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -520,35 +533,34 @@ function SellerProducts() {
             />
           </div>
 
-          <select
+          <ResponsiveSelect
             value={filters.category_id}
-            onChange={(e) => handleFilterChange("category_id", e.target.value)}
-            className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-green-500"
-          >
-            <option value="">Tất cả danh mục</option>
-            {options.categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => handleFilterChange("category_id", value)}
+            options={[
+              { value: "", label: "Tất cả danh mục" },
+              ...options.categories.map((category) => ({
+                value: category.id,
+                label: category.name,
+              })),
+            ]}
+          />
 
-<select
-  value={filters.status}
-  onChange={(e) => handleFilterChange("status", e.target.value)}
-  className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-green-500"
->
-  <option value="">Tất cả trạng thái</option>
-  <option value="0">Chờ duyệt</option>
-  <option value="1">Đang bán</option>
-  <option value="2">Từ chối</option>
-  <option value="3">Tạm ẩn</option>
-  <option value="expired_certificate">Hết hạn chứng chỉ</option>
-</select>
+          <ResponsiveSelect
+            value={filters.status}
+            onChange={(value) => handleFilterChange("status", value)}
+            options={[
+              { value: "", label: "Tất cả trạng thái" },
+              { value: "0", label: "Chờ duyệt" },
+              { value: "1", label: "Đang bán" },
+              { value: "2", label: "Từ chối" },
+              { value: "3", label: "Tạm ẩn" },
+              { value: "expired_certificate", label: "Hết hạn chứng chỉ" },
+            ]}
+          />
 
           <button
             onClick={resetFilters}
-            className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-600 transition hover:bg-slate-50"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-600 transition hover:bg-slate-50"
           >
             <RotateCcw size={17} />
             Đặt lại
@@ -556,7 +568,7 @@ function SellerProducts() {
 
           <button
             onClick={handleSearch}
-            className="flex h-11 items-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white transition hover:bg-green-700"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white transition hover:bg-green-700"
           >
             <Search size={17} />
             Tìm
@@ -569,8 +581,38 @@ function SellerProducts() {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-slate-100">
-          <table className="w-full text-sm">
+        <div className="grid gap-3 xl:hidden">
+          {loading &&
+            Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-80 animate-pulse rounded-2xl bg-slate-100"
+              />
+            ))}
+
+          {!loading &&
+            products.map((product) => (
+              <ProductMobileCard
+                key={product.id}
+                product={product}
+                isActioning={actionLoadingId === product.id}
+                getImageUrl={getImageUrl}
+                onDetail={openDetail}
+                onEdit={openEditModal}
+                onToggle={handleToggleStatus}
+                onDelete={handleDelete}
+              />
+            ))}
+
+          {!loading && products.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-12 text-center font-bold text-slate-400">
+              Chưa có sản phẩm nào.
+            </div>
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto overscroll-x-contain rounded-xl border border-slate-100 xl:block">
+          <table className="w-full min-w-270 text-sm">
             <thead>
               <tr className="bg-slate-50 text-left text-xs text-slate-500">
                 <th className="px-3 py-3 font-extrabold">Sản phẩm</th>
@@ -587,194 +629,202 @@ function SellerProducts() {
             </thead>
 
             <tbody>
-{loading &&
-  Array.from({ length: 5 }).map((_, index) => (
-    <tr key={index} className="border-t border-slate-100">
-      <td className="px-3 py-4">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 animate-pulse rounded-lg bg-slate-100" />
-          <div className="space-y-2">
-            <div className="h-4 w-40 animate-pulse rounded bg-slate-100" />
-            <div className="h-3 w-24 animate-pulse rounded bg-slate-100" />
-          </div>
-        </div>
-      </td>
+              {loading &&
+                Array.from({ length: 5 }).map((_, index) => (
+                  <tr key={index} className="border-t border-slate-100">
+                    <td className="px-3 py-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="h-12 w-12 animate-pulse rounded-lg bg-slate-100" />
+                        <div className="space-y-2">
+                          <div className="h-4 w-40 animate-pulse rounded bg-slate-100" />
+                          <div className="h-3 w-24 animate-pulse rounded bg-slate-100" />
+                        </div>
+                      </div>
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="h-4 w-24 animate-pulse rounded bg-slate-100" />
-      </td>
+                    <td className="px-3 py-4">
+                      <div className="h-4 w-24 animate-pulse rounded bg-slate-100" />
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="h-4 w-20 animate-pulse rounded bg-slate-100" />
-      </td>
+                    <td className="px-3 py-4">
+                      <div className="h-4 w-20 animate-pulse rounded bg-slate-100" />
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="h-4 w-16 animate-pulse rounded bg-slate-100" />
-      </td>
+                    <td className="px-3 py-4">
+                      <div className="h-4 w-16 animate-pulse rounded bg-slate-100" />
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="h-6 w-20 animate-pulse rounded-lg bg-slate-100" />
-      </td>
+                    <td className="px-3 py-4">
+                      <div className="h-6 w-20 animate-pulse rounded-lg bg-slate-100" />
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="h-6 w-24 animate-pulse rounded-lg bg-slate-100" />
-      </td>
+                    <td className="px-3 py-4">
+                      <div className="h-6 w-24 animate-pulse rounded-lg bg-slate-100" />
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
-      </td>
+                    <td className="px-3 py-4">
+                      <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
+                    </td>
 
-      <td className="px-3 py-4">
-        <div className="ml-auto h-8 w-28 animate-pulse rounded-lg bg-slate-100" />
-      </td>
-    </tr>
-  ))}
+                    <td className="px-3 py-4">
+                      <div className="ml-auto h-8 w-28 animate-pulse rounded-lg bg-slate-100" />
+                    </td>
+                  </tr>
+                ))}
 
-{!loading &&
-  products.map((product) => {
-    const isActioning = actionLoadingId === product.id;
+              {!loading &&
+                products.map((product) => {
+                  const isActioning = actionLoadingId === product.id;
 
-    return (
-      <tr
-        key={product.id}
-        className={[
-          "border-t border-slate-100",
-          isActioning ? "bg-slate-50 opacity-70" : "",
-        ].join(" ")}
-      >
-        <td className="px-3 py-3">
-          <div className="flex items-center gap-3">
-            <img
-              src={getImageUrl(product.thumbnail)}
-              alt={product.name}
-              className="h-12 w-12 rounded-lg object-cover"
-              onError={(e) => {
-                e.currentTarget.src = "/placeholder-product.png";
-              }}
-            />
+                  return (
+                    <tr
+                      key={product.id}
+                      className={[
+                        "border-t border-slate-100",
+                        isActioning ? "bg-slate-50 opacity-70" : "",
+                      ].join(" ")}
+                    >
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={getImageUrl(product.thumbnail)}
+                            alt={product.name}
+                            className="h-12 w-12 rounded-lg object-cover"
+                            onError={(e) => {
+                              e.currentTarget.src = "/placeholder-product.png";
+                            }}
+                          />
 
-            <div>
-              <p className="font-extrabold text-slate-900">{product.name}</p>
-              <p className="text-xs font-semibold text-slate-400">
-                {product.code}
-              </p>
-            </div>
-          </div>
-        </td>
+                          <div className="min-w-0">
+                            {product.slug && Number(product.status) === 1 ? (
+                              <Link to={`/products/${product.slug}`} className="block max-w-55 break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{product.name}</Link>
+                            ) : (
+                              <button type="button" onClick={() => openDetail(product)} className="max-w-55 break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{product.name}</button>
+                            )}
+                            <p className="text-xs font-semibold text-slate-400">
+                              {product.code}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
 
-        <td className="px-3 py-3 font-semibold text-slate-600">
-          {product.category_name || "Chưa có"}
-        </td>
+                      <td className="px-3 py-3 font-semibold text-slate-600">
+                        {product.category_name || "Chưa có"}
+                      </td>
 
-        <td className="px-3 py-3">
-          <p className="font-extrabold text-green-700">
-            {product.sale_price_text || product.price_text}
-          </p>
+                      <td className="px-3 py-3">
+                        <p className="font-extrabold text-green-700">
+                          {product.sale_price_text || product.price_text}
+                        </p>
 
-          {product.sale_price_text && (
-            <p className="text-xs font-semibold text-slate-400 line-through">
-              {product.price_text}
-            </p>
-          )}
-        </td>
+                        {product.sale_price_text && (
+                          <p className="text-xs font-semibold text-slate-400 line-through">
+                            {product.price_text}
+                          </p>
+                        )}
+                      </td>
 
-        <td className="px-3 py-3">
-          <span
-            className={
-              Number(product.stock_quantity || 0) <= 0
-                ? "font-extrabold text-red-500"
-                : "font-extrabold text-slate-700"
-            }
-          >
-            {product.stock_quantity} {product.unit}
-          </span>
-        </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={
+                            Number(product.stock_quantity || 0) <= 0
+                              ? "font-extrabold text-red-500"
+                              : "font-extrabold text-slate-700"
+                          }
+                        >
+                          {product.stock_quantity} {product.unit}
+                        </span>
+                      </td>
 
-        <td className="px-3 py-3">
-          {product.latest_certificate ? (
-            <div className="flex flex-col gap-1">
-              <span
-                className={[
-                  "w-fit rounded-lg border px-2 py-1 text-xs font-extrabold",
-                  product.latest_certificate.status_class === "danger"
-                    ? "border-red-200 bg-red-50 text-red-600"
-                    : product.latest_certificate.status_class === "pending"
-                    ? "border-orange-200 bg-orange-50 text-orange-600"
-                    : "border-green-200 bg-green-50 text-green-700",
-                ].join(" ")}
-              >
-                {product.latest_certificate.certification_name}
-              </span>
+                      <td className="px-3 py-3">
+                        {product.latest_certificate ? (
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={[
+                                "w-fit rounded-lg border px-2 py-1 text-xs font-extrabold",
+                                product.latest_certificate.status_class ===
+                                "danger"
+                                  ? "border-red-200 bg-red-50 text-red-600"
+                                  : product.latest_certificate.status_class ===
+                                      "pending"
+                                    ? "border-orange-200 bg-orange-50 text-orange-600"
+                                    : "border-green-200 bg-green-50 text-green-700",
+                              ].join(" ")}
+                            >
+                              {product.latest_certificate.certification_name}
+                            </span>
 
-              <span className="text-xs font-semibold text-slate-400">
-                {product.latest_certificate.certificate_number}
-              </span>
-            </div>
-          ) : (
-            <span className="text-xs font-bold text-red-500">Chưa có</span>
-          )}
-        </td>
+                            <span className="text-xs font-semibold text-slate-400">
+                              {product.latest_certificate.certificate_number}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-bold text-red-500">
+                            Chưa có
+                          </span>
+                        )}
+                      </td>
 
-        <td className="px-3 py-3">
-          <StatusBadge statusClass={product.status_class}>
-            {product.status_text}
-          </StatusBadge>
-        </td>
+                      <td className="px-3 py-3">
+                        <StatusBadge statusClass={product.status_class}>
+                          {product.status_text}
+                        </StatusBadge>
+                      </td>
 
-        <td className="px-3 py-3 font-semibold text-slate-500">
-          {product.updated_at}
-        </td>
+                      <td className="px-3 py-3 font-semibold text-slate-500">
+                        {product.updated_at}
+                      </td>
 
-        <td className="px-3 py-3">
-          <div className="flex justify-end gap-2">
-            <button
-              title="Xem chi tiết"
-              disabled={isActioning}
-              onClick={() => openDetail(product)}
-              className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Eye size={16} />
-            </button>
+                      <td className="px-3 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            title="Xem chi tiết"
+                            disabled={isActioning}
+                            onClick={() => openDetail(product)}
+                            className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Eye size={16} />
+                          </button>
 
-            <button
-              title="Sửa sản phẩm"
-              disabled={isActioning}
-              onClick={() => openEditModal(product)}
-              className="rounded-lg border border-slate-200 p-2 text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Pencil size={16} />
-            </button>
+                          <button
+                            title="Sửa sản phẩm"
+                            disabled={isActioning}
+                            onClick={() => openEditModal(product)}
+                            className="rounded-lg border border-slate-200 p-2 text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Pencil size={16} />
+                          </button>
 
-            <button
-              title="Ẩn / hiện"
-              disabled={isActioning}
-              onClick={() => handleToggleStatus(product)}
-              className="rounded-lg border border-slate-200 p-2 text-purple-600 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isActioning ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <MoreHorizontal size={16} />
-              )}
-            </button>
+                          <button
+                            title="Ẩn / hiện"
+                            disabled={isActioning}
+                            onClick={() => handleToggleStatus(product)}
+                            className="rounded-lg border border-slate-200 p-2 text-purple-600 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {isActioning ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <MoreHorizontal size={16} />
+                            )}
+                          </button>
 
-            <button
-              title="Xóa"
-              disabled={isActioning}
-              onClick={() => handleDelete(product)}
-              className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isActioning ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Trash2 size={16} />
-              )}
-            </button>
-          </div>
-        </td>
-      </tr>
-    );
-  })}
+                          <button
+                            title="Xóa"
+                            disabled={isActioning}
+                            onClick={() => handleDelete(product)}
+                            className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {isActioning ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={16} />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
               {!loading && products.length === 0 && (
                 <tr>
@@ -790,13 +840,13 @@ function SellerProducts() {
           </table>
         </div>
 
-        <div className="mt-5 flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-500">
+        <div className="mt-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-center text-sm font-semibold text-slate-500 sm:text-left">
             Hiển thị {pagination.from || 0}–{pagination.to || 0} trên{" "}
             {pagination.total || 0} sản phẩm
           </p>
 
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 sm:justify-end">
             <button
               disabled={!canPrev}
               onClick={() =>
@@ -865,13 +915,15 @@ function SellerProducts() {
           loading={detailLoading}
           getImageUrl={getImageUrl}
           onClose={() => setDetailOpen(false)}
-          onRenew={openRenewModal}
+          onRenew={() => openRenewModal("renew")}
+          onResubmit={() => openRenewModal("resubmit")}
         />
       )}
 
       {renewOpen && (
         <RenewCertificateModal
           product={detailProduct}
+          mode={renewMode}
           form={renewForm}
           saving={renewSaving}
           error={renewError}
@@ -881,6 +933,124 @@ function SellerProducts() {
         />
       )}
     </div>
+  );
+}
+
+function ProductMobileCard({
+  product,
+  isActioning,
+  getImageUrl,
+  onDetail,
+  onEdit,
+  onToggle,
+  onDelete,
+}) {
+  return (
+    <article
+      className={`min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
+        isActioning ? "opacity-70" : ""
+      }`}
+    >
+      <div className="flex min-w-0 flex-col gap-3 border-b border-slate-100 p-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <img
+            src={getImageUrl(product.thumbnail)}
+            alt={product.name}
+            className="h-16 w-16 shrink-0 rounded-xl object-cover"
+            onError={(e) => {
+              e.currentTarget.src = "/placeholder-product.png";
+            }}
+          />
+
+          <div className="min-w-0">
+            {product.slug && Number(product.status) === 1 ? (
+              <Link to={`/products/${product.slug}`} className="break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{product.name}</Link>
+            ) : (
+              <button type="button" onClick={() => onDetail(product)} className="break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{product.name}</button>
+            )}
+            <p className="mt-1 text-xs font-semibold text-slate-400">
+              {product.code}
+            </p>
+            <p className="mt-1 break-words text-sm font-semibold text-slate-500">
+              {product.category_name || "Chưa có danh mục"}
+            </p>
+          </div>
+        </div>
+
+        <div className="self-start">
+          <StatusBadge statusClass={product.status_class}>
+            {product.status_text}
+          </StatusBadge>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 p-4 min-[400px]:grid-cols-2">
+        <InfoBox
+          label="Giá bán"
+          value={product.sale_price_text || product.price_text}
+        />
+        <InfoBox
+          label="Tồn kho"
+          value={`${product.stock_quantity} ${product.unit}`}
+        />
+        <InfoBox
+          label="Chứng chỉ"
+          value={product.latest_certificate?.certification_name || "Chưa có"}
+        />
+        <InfoBox label="Cập nhật" value={product.updated_at || "—"} />
+      </div>
+
+      {product.sale_price_text && (
+        <p className="px-4 pb-4 text-xs font-semibold text-slate-400">
+          Giá gốc: <span className="line-through">{product.price_text}</span>
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 min-[480px]:grid-cols-4">
+        <button
+          type="button"
+          disabled={isActioning}
+          onClick={() => onDetail(product)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-40"
+        >
+          <Eye size={16} /> Xem
+        </button>
+        <button
+          type="button"
+          disabled={isActioning}
+          onClick={() => onEdit(product)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600 disabled:opacity-40"
+        >
+          <Pencil size={16} /> Sửa
+        </button>
+        <button
+          type="button"
+          disabled={isActioning}
+          onClick={() => onToggle(product)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-100 bg-purple-50 text-sm font-bold text-purple-600 disabled:opacity-40"
+        >
+          {isActioning ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <MoreHorizontal size={16} />
+          )}
+          Ẩn/hiện
+        </button>
+        <button
+          type="button"
+          disabled={isActioning}
+          onClick={() => onDelete(product)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-600 disabled:opacity-40"
+        >
+          {isActioning ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Trash2 size={16} />
+          )}
+          Xóa
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -898,11 +1068,11 @@ function ProductFormModal({
   const isCreate = mode === "create";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-5">
-      <div className="max-h-[94vh] w-[84vw] max-w-[1280px] overflow-y-auto rounded-2xl bg-white shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-950">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center overflow-y-auto bg-slate-950/40 sm:items-center sm:p-4">
+      <div className="max-h-[100dvh] w-full min-w-0 overflow-y-auto bg-white shadow-xl sm:max-h-[94dvh] sm:max-w-7xl sm:rounded-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h2 className="break-words text-lg font-extrabold text-slate-950 sm:text-xl">
               {isCreate ? "Thêm sản phẩm" : "Cập nhật sản phẩm"}
             </h2>
             <p className="mt-1 text-sm font-medium text-slate-500">
@@ -914,25 +1084,25 @@ function ProductFormModal({
 
           <button
             onClick={onClose}
-            className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+            className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
           </button>
         </div>
 
-        <div className="space-y-5 p-6">
+        <div className="space-y-5 p-4 sm:p-6">
           {error && (
             <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
               {error}
             </div>
           )}
 
-          <div className="rounded-2xl border border-slate-100 p-5">
+          <div className="rounded-2xl border border-slate-100 p-4 sm:p-5">
             <h3 className="mb-4 text-base font-extrabold text-slate-900">
               Thông tin sản phẩm
             </h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
               <FormInput
                 label="Tên sản phẩm"
                 value={form.name}
@@ -971,25 +1141,25 @@ function ProductFormModal({
                 onChange={(value) => onChange("sale_price", value)}
               />
 
-                <FormSelect
+              <FormSelect
                 label="Đơn vị tính"
                 value={form.unit}
                 onChange={(value) => onChange("unit", value)}
                 required
-                >
+              >
                 <option value="kg">kg</option>
-                </FormSelect>
+              </FormSelect>
 
-                <FileUploadInput
+              <FileUploadInput
                 label="Ảnh đại diện"
                 value={form.thumbnail}
                 type="product_thumbnail"
                 accept="image/*"
                 required
                 onUploaded={(url) => onChange("thumbnail", url)}
-                />
+              />
 
-              <div className="col-span-2">
+              <div className="md:col-span-2">
                 <FormTextarea
                   label="Mô tả"
                   value={form.description}
@@ -997,15 +1167,15 @@ function ProductFormModal({
                 />
               </div>
 
-              <div className="col-span-2">
+              <div className="md:col-span-2">
                 <MultiImageUploadInput
-                label="Ảnh chi tiết"
-                value={form.detail_images_text}
-                onChange={(value) => onChange("detail_images_text", value)}
+                  label="Ảnh chi tiết"
+                  value={form.detail_images_text}
+                  onChange={(value) => onChange("detail_images_text", value)}
                 />
               </div>
 
-              <label className="col-span-2 flex items-center gap-2 text-sm font-bold text-slate-600">
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-600 md:col-span-2">
                 <input
                   type="checkbox"
                   checked={Boolean(form.is_hot)}
@@ -1018,12 +1188,12 @@ function ProductFormModal({
           </div>
 
           {isCreate && (
-            <div className="rounded-2xl border border-slate-100 p-5">
+            <div className="rounded-2xl border border-slate-100 p-4 sm:p-5">
               <h3 className="mb-4 text-base font-extrabold text-slate-900">
                 Thông tin chứng chỉ
               </h3>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
                 <FormSelect
                   label="Loại chứng chỉ"
                   value={form.certification_id}
@@ -1048,17 +1218,18 @@ function ProductFormModal({
                 />
 
                 <FileUploadInput
-                label="File chứng chỉ"
-                value={form.certificate_file}
-                type="certificate_file"
-                accept="image/*,.pdf"
-                required
-                onUploaded={(url) => onChange("certificate_file", url)}
+                  label="File chứng chỉ"
+                  value={form.certificate_file}
+                  type="certificate_file"
+                  accept="image/*,.pdf"
+                  required
+                  onUploaded={(url) => onChange("certificate_file", url)}
                 />
 
                 <FormInput
                   label="Ngày cấp"
                   type="date"
+                  max={new Date().toISOString().slice(0, 10)}
                   value={form.issued_date}
                   onChange={(value) => onChange("issued_date", value)}
                   required
@@ -1067,6 +1238,7 @@ function ProductFormModal({
                 <FormInput
                   label="Ngày hết hạn"
                   type="date"
+                  min={form.issued_date || new Date().toISOString().slice(0, 10)}
                   value={form.expiry_date}
                   onChange={(value) => onChange("expiry_date", value)}
                   required
@@ -1078,16 +1250,16 @@ function ProductFormModal({
           {!isCreate && (
             <div className="rounded-2xl border border-orange-100 bg-orange-50 px-5 py-4 text-sm font-bold text-orange-700">
               Chứng chỉ không được sửa trong form cập nhật sản phẩm. Muốn cập
-              nhật hồ sơ chứng chỉ, vui lòng vào chi tiết sản phẩm và bấm Gia
-              hạn.
+              nhật hồ sơ chứng chỉ, vui lòng vào chi tiết sản phẩm để gia hạn
+              hoặc gửi duyệt lại hồ sơ bị từ chối.
             </div>
           )}
         </div>
 
-        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-100 bg-white px-6 py-4">
+        <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-100 bg-white px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button
             onClick={onClose}
-            className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-extrabold text-slate-600 hover:bg-slate-50"
+            className="h-11 w-full rounded-xl border border-slate-200 px-5 text-sm font-extrabold text-slate-600 hover:bg-slate-50 sm:w-auto"
           >
             Hủy
           </button>
@@ -1095,7 +1267,7 @@ function ProductFormModal({
           <button
             onClick={onSave}
             disabled={saving}
-            className="flex h-11 items-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white hover:bg-green-700 disabled:opacity-60"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white hover:bg-green-700 disabled:opacity-60 sm:w-auto"
           >
             <Save size={18} />
             {saving ? "Đang lưu..." : "Lưu sản phẩm"}
@@ -1106,12 +1278,20 @@ function ProductFormModal({
   );
 }
 
-function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew }) {
+function ProductDetailModal({
+  product,
+  loading,
+  getImageUrl,
+  onClose,
+  onRenew,
+  onResubmit,
+}) {
   const currentCertificate =
     product?.current_certificate || product?.approved_certificate;
 
   const expiredCertificate = product?.expired_certificate;
   const pendingCertificate = product?.pending_certificate;
+  const rejectedCertificate = product?.rejected_certificate;
 
   const renewableCertificate =
     product?.renewable_certificate || currentCertificate || expiredCertificate;
@@ -1123,12 +1303,17 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
     renewableCertificate &&
     !pendingCertificate;
 
+  const canResubmit =
+    [0, 2].includes(Number(product?.status)) &&
+    rejectedCertificate &&
+    !pendingCertificate;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-5">
-      <div className="max-h-[94vh] w-[84vw] max-w-[1280px] overflow-y-auto rounded-2xl bg-white shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-950">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center overflow-y-auto bg-slate-950/40 sm:items-center sm:p-4">
+      <div className="max-h-[100dvh] w-full min-w-0 overflow-y-auto bg-white shadow-xl sm:max-h-[94dvh] sm:max-w-7xl sm:rounded-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h2 className="text-lg font-extrabold text-slate-950 sm:text-xl">
               Chi tiết sản phẩm
             </h2>
             <p className="mt-1 text-sm font-medium text-slate-500">
@@ -1138,21 +1323,21 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
 
           <button
             onClick={onClose}
-            className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+            className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
           </button>
         </div>
 
         {loading && (
-          <div className="flex h-[360px] items-center justify-center">
+          <div className="flex h-90 items-center justify-center">
             <p className="font-bold text-slate-400">Đang tải chi tiết...</p>
           </div>
         )}
 
         {!loading && product && (
-          <div className="space-y-5 p-6">
-            <div className="grid grid-cols-[260px_1fr] gap-5">
+          <div className="space-y-5 p-4 sm:p-6">
+            <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
               <div className="rounded-2xl border border-slate-100 p-4">
                 <img
                   src={getImageUrl(product.thumbnail)}
@@ -1173,9 +1358,9 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
               </div>
 
               <div className="rounded-2xl border border-slate-100 p-5">
-                <div className="mb-3 flex items-start justify-between">
-                  <div>
-                    <h3 className="text-2xl font-extrabold text-slate-950">
+                <div className="mb-3 flex min-w-0 flex-col gap-3 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="break-words text-xl font-extrabold text-slate-950 sm:text-2xl">
                       {product.name}
                     </h3>
                     <p className="mt-1 text-sm font-semibold text-slate-400">
@@ -1188,7 +1373,7 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                   </StatusBadge>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-3">
                   <InfoBox label="Giá bán" value={product.price_text} />
                   <InfoBox
                     label="Giá khuyến mãi"
@@ -1208,12 +1393,21 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                     {product.description || "Chưa có mô tả."}
                   </p>
                 </div>
+
+                {(product.reviewed_by || product.rejection_reason || product.admin_locked_at) && (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                    <p className="font-extrabold text-amber-800">Thông tin kiểm duyệt</p>
+                    {product.reviewed_by && <p className="mt-2 font-semibold text-slate-700">Người duyệt/từ chối: {product.reviewed_by.name}{product.reviewed_at ? ` · ${product.reviewed_at}` : ""}</p>}
+                    {product.rejection_reason && <p className="mt-1 text-red-600">Lý do từ chối: {product.rejection_reason}</p>}
+                    {product.admin_locked_at && <><p className="mt-2 font-semibold text-slate-700">Người đình chỉ: {product.admin_locker?.name || "Quản trị viên"} · {product.admin_locked_at}</p><p className="mt-1 text-red-600">Lý do đình chỉ: {product.admin_lock_reason || "Không ghi lý do"}</p></>}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-100 p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h3 className="text-lg font-extrabold text-slate-950">
                     Thông tin chứng chỉ
                   </h3>
@@ -1223,76 +1417,86 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                   </p>
                 </div>
 
-                <button
-                  disabled={!canRenew}
-                  onClick={onRenew}
-                  className="flex h-10 items-center gap-2 rounded-xl bg-green-600 px-4 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <RefreshCcw size={17} />
-                  Gia hạn
-                </button>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  {canResubmit && (
+                    <button
+                      onClick={onResubmit}
+                      className="flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 text-sm font-extrabold text-white hover:bg-orange-700 sm:w-auto"
+                    >
+                      <RefreshCcw size={17} />
+                      Sửa và gửi duyệt lại
+                    </button>
+                  )}
+
+                  <button
+                    disabled={!canRenew}
+                    onClick={onRenew}
+                    className="flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+                  >
+                    <RefreshCcw size={17} />
+                    Gia hạn
+                  </button>
+                </div>
               </div>
 
-{currentCertificate && (
-  <div className="mb-4 rounded-xl bg-green-50 p-4">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="font-extrabold text-green-700">
-          Chứng chỉ đang sử dụng
-        </p>
+              {currentCertificate && (
+                <div className="mb-4 rounded-xl bg-green-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-green-700">
+                        Chứng chỉ đang sử dụng
+                      </p>
 
-        <p className="mt-1 text-sm font-bold text-slate-700">
-          {currentCertificate.certification_name} · Mã:{" "}
-          {currentCertificate.certificate_number}
-        </p>
+                      <p className="mt-1 text-sm font-bold text-slate-700">
+                        {currentCertificate.certification_name} · Mã:{" "}
+                        {currentCertificate.certificate_number}
+                      </p>
 
-        <p className="mt-1 text-sm font-medium text-slate-500">
-          Hết hạn: {currentCertificate.expiry_date}
-        </p>
-      </div>
+                      <p className="mt-1 text-sm font-medium text-slate-500">
+                        Hết hạn: {currentCertificate.expiry_date}
+                      </p>
+                    </div>
 
-      <StatusBadge statusClass="active">
-        {currentCertificate.status_text}
-      </StatusBadge>
-    </div>
-  </div>
-)}
+                    <StatusBadge statusClass="active">
+                      {currentCertificate.status_text}
+                    </StatusBadge>
+                  </div>
+                </div>
+              )}
 
-{!currentCertificate && expiredCertificate && (
-  <div className="mb-4 rounded-xl bg-red-50 p-4">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="font-extrabold text-red-700">
-          Chứng chỉ đã hết hạn
-        </p>
+              {!currentCertificate && expiredCertificate && (
+                <div className="mb-4 rounded-xl bg-red-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-red-700">
+                        Chứng chỉ đã hết hạn
+                      </p>
 
-        <p className="mt-1 text-sm font-bold text-slate-700">
-          {expiredCertificate.certification_name} · Mã:{" "}
-          {expiredCertificate.certificate_number}
-        </p>
+                      <p className="mt-1 text-sm font-bold text-slate-700">
+                        {expiredCertificate.certification_name} · Mã:{" "}
+                        {expiredCertificate.certificate_number}
+                      </p>
 
-        <p className="mt-1 text-sm font-medium text-slate-500">
-          Hết hạn: {expiredCertificate.expiry_date}
-        </p>
-      </div>
+                      <p className="mt-1 text-sm font-medium text-slate-500">
+                        Hết hạn: {expiredCertificate.expiry_date}
+                      </p>
+                    </div>
 
-      <StatusBadge statusClass="danger">
-        Hết hạn
-      </StatusBadge>
-    </div>
-  </div>
-)}
+                    <StatusBadge statusClass="danger">Hết hạn</StatusBadge>
+                  </div>
+                </div>
+              )}
 
-{!currentCertificate && !expiredCertificate && (
-  <div className="mb-4 rounded-xl bg-orange-50 p-4 text-sm font-bold text-orange-700">
-    Sản phẩm chưa có chứng chỉ đã duyệt.
-  </div>
-)}
-              
+              {!currentCertificate && !expiredCertificate && (
+                <div className="mb-4 rounded-xl bg-orange-50 p-4 text-sm font-bold text-orange-700">
+                  Sản phẩm chưa có chứng chỉ đã duyệt.
+                </div>
+              )}
+
               {pendingCertificate && (
                 <div className="mb-4 rounded-xl bg-orange-50 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <p className="font-extrabold text-orange-700">
                         Đang có hồ sơ gia hạn chờ duyệt
                       </p>
@@ -1311,8 +1515,30 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                 </div>
               )}
 
-              <div className="overflow-hidden rounded-xl border border-slate-100">
-                <table className="w-full text-sm">
+              {rejectedCertificate && !pendingCertificate && (
+                <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-4">
+                  <p className="font-extrabold text-red-700">
+                    Hồ sơ chứng chỉ bị từ chối
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-700">
+                    {rejectedCertificate.certification_name} · Mã:{" "}
+                    {rejectedCertificate.certificate_number}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-red-700">
+                    Lý do: {rejectedCertificate.rejection_reason || "Không có ghi chú."}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Kiểm duyệt bởi:{" "}
+                    {rejectedCertificate.reviewed_by?.name || "Quản trị viên"}
+                    {rejectedCertificate.reviewed_at
+                      ? ` · ${rejectedCertificate.reviewed_at}`
+                      : ""}
+                  </p>
+                </div>
+              )}
+
+              <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-100">
+                <table className="w-full min-w-240 text-sm">
                   <thead>
                     <tr className="bg-slate-50 text-left text-xs text-slate-500">
                       <th className="px-3 py-3 font-extrabold">Loại</th>
@@ -1320,6 +1546,7 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                       <th className="px-3 py-3 font-extrabold">Ngày cấp</th>
                       <th className="px-3 py-3 font-extrabold">Ngày hết hạn</th>
                       <th className="px-3 py-3 font-extrabold">Trạng thái</th>
+                      <th className="px-3 py-3 font-extrabold">Kiểm duyệt</th>
                       <th className="px-3 py-3 font-extrabold">File</th>
                     </tr>
                   </thead>
@@ -1343,9 +1570,20 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                           {certificate.expiry_date}
                         </td>
                         <td className="px-3 py-3">
-<CertificateBadge statusClass={certificate.status_class}>
-  {certificate.status_text}
-</CertificateBadge>
+                          <CertificateBadge
+                            statusClass={certificate.status_class}
+                          >
+                            {certificate.status_text}
+                          </CertificateBadge>
+                        </td>
+                        <td className="px-3 py-3 text-xs font-semibold text-slate-500">
+                          <p>{certificate.reviewed_by?.name || "—"}</p>
+                          <p>{certificate.reviewed_at || ""}</p>
+                          {certificate.rejection_reason && (
+                            <p className="mt-1 max-w-56 text-red-600">
+                              {certificate.rejection_reason}
+                            </p>
+                          )}
                         </td>
                         <td className="px-3 py-3">
                           <a
@@ -1364,7 +1602,7 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                     {certificates.length === 0 && (
                       <tr>
                         <td
-                          colSpan="6"
+                          colSpan="7"
                           className="px-3 py-8 text-center font-bold text-slate-400"
                         >
                           Chưa có chứng chỉ.
@@ -1375,9 +1613,10 @@ function ProductDetailModal({ product, loading, getImageUrl, onClose, onRenew })
                 </table>
               </div>
 
-              {!canRenew && (
+              {!canRenew && !canResubmit && (
                 <p className="mt-3 text-sm font-semibold text-slate-400">
-                  Chỉ có thể gia hạn khi sản phẩm đã được duyệt, đã từng có chứng chỉ và không có hồ sơ gia hạn đang chờ duyệt.
+                  Chỉ có thể gia hạn khi sản phẩm đã được duyệt, đã từng có
+                  chứng chỉ và không có hồ sơ gia hạn đang chờ duyệt.
                 </p>
               )}
             </div>
@@ -1420,7 +1659,7 @@ function MultiImageUploadInput({ label, value, onChange }) {
         err?.message ||
           err?.error ||
           Object.values(err?.errors || {})?.[0]?.[0] ||
-          "Upload ảnh chi tiết thất bại."
+          "Upload ảnh chi tiết thất bại.",
       );
     } finally {
       setUploading(false);
@@ -1433,19 +1672,19 @@ function MultiImageUploadInput({ label, value, onChange }) {
   };
 
   return (
-    <div>
+    <div className="min-w-0">
       <span className="mb-1 block text-sm font-extrabold text-slate-600">
         {label}
       </span>
 
-      <div className="rounded-xl border border-slate-200 p-3">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 p-3">
         <input
           type="file"
           accept="image/*"
           multiple
           onChange={handleChange}
           disabled={uploading}
-          className="block w-full text-sm font-semibold text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-50 file:px-4 file:py-2 file:text-sm file:font-bold file:text-green-700 hover:file:bg-green-100"
+          className="block w-full min-w-0 text-sm font-semibold text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-green-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-green-700 hover:file:bg-green-100 sm:file:mr-4 sm:file:px-4"
         />
 
         {uploading && (
@@ -1459,7 +1698,7 @@ function MultiImageUploadInput({ label, value, onChange }) {
         )}
 
         {urls.length > 0 && (
-          <div className="mt-3 grid grid-cols-5 gap-3">
+          <div className="mt-3 grid grid-cols-2 gap-3 min-[440px]:grid-cols-3 lg:grid-cols-5">
             {urls.map((url) => (
               <div key={url} className="relative">
                 <img
@@ -1485,6 +1724,7 @@ function MultiImageUploadInput({ label, value, onChange }) {
 }
 function RenewCertificateModal({
   product,
+  mode,
   form,
   saving,
   error,
@@ -1492,21 +1732,25 @@ function RenewCertificateModal({
   onChange,
   onSubmit,
 }) {
-const currentCertificate =
-  product?.current_certificate || product?.approved_certificate;
+  const isResubmit = mode === "resubmit";
+  const currentCertificate =
+    product?.current_certificate || product?.approved_certificate;
 
-const expiredCertificate = product?.expired_certificate;
+  const expiredCertificate = product?.expired_certificate;
+  const rejectedCertificate = product?.rejected_certificate;
 
-const renewableCertificate =
-  product?.renewable_certificate || currentCertificate || expiredCertificate;
+  const renewableCertificate =
+    (isResubmit ? rejectedCertificate : product?.renewable_certificate) ||
+    currentCertificate ||
+    expiredCertificate;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-5">
-      <div className="w-full max-w-[560px] rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-950">
-              Gia hạn chứng chỉ
+    <div className="fixed inset-0 z-60 flex items-stretch justify-center overflow-y-auto bg-slate-950/50 sm:items-center sm:p-4">
+      <div className="max-h-[100dvh] w-full min-w-0 overflow-y-auto bg-white shadow-xl sm:max-h-[94dvh] sm:max-w-140 sm:rounded-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h2 className="text-lg font-extrabold text-slate-950 sm:text-xl">
+              {isResubmit ? "Sửa hồ sơ bị từ chối" : "Gia hạn chứng chỉ"}
             </h2>
             <p className="mt-1 text-sm font-medium text-slate-500">
               Loại chứng chỉ giữ nguyên:{" "}
@@ -1516,13 +1760,13 @@ const renewableCertificate =
 
           <button
             onClick={onClose}
-            className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+            className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
           </button>
         </div>
 
-        <div className="space-y-4 p-6">
+        <div className="space-y-4 p-4 sm:p-6">
           {error && (
             <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
               {error}
@@ -1536,19 +1780,20 @@ const renewableCertificate =
             required
           />
 
-            <FileUploadInput
+          <FileUploadInput
             label="File chứng chỉ"
             value={form.certificate_file}
             type="certificate_file"
             accept="image/*,.pdf"
             required
             onUploaded={(url) => onChange("certificate_file", url)}
-            />
+          />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormInput
               label="Ngày cấp"
               type="date"
+              max={new Date().toISOString().slice(0, 10)}
               value={form.issued_date}
               onChange={(value) => onChange("issued_date", value)}
               required
@@ -1557,6 +1802,7 @@ const renewableCertificate =
             <FormInput
               label="Ngày hết hạn"
               type="date"
+              min={form.issued_date || new Date().toISOString().slice(0, 10)}
               value={form.expiry_date}
               onChange={(value) => onChange("expiry_date", value)}
               required
@@ -1569,10 +1815,10 @@ const renewableCertificate =
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button
             onClick={onClose}
-            className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-extrabold text-slate-600 hover:bg-slate-50"
+            className="h-11 w-full rounded-xl border border-slate-200 px-5 text-sm font-extrabold text-slate-600 hover:bg-slate-50 sm:w-auto"
           >
             Hủy
           </button>
@@ -1580,10 +1826,14 @@ const renewableCertificate =
           <button
             onClick={onSubmit}
             disabled={saving}
-            className="flex h-11 items-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white hover:bg-green-700 disabled:opacity-60"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white hover:bg-green-700 disabled:opacity-60 sm:w-auto"
           >
             <Save size={18} />
-            {saving ? "Đang gửi..." : "Gửi gia hạn"}
+            {saving
+              ? "Đang gửi..."
+              : isResubmit
+                ? "Gửi duyệt lại"
+                : "Gửi gia hạn"}
           </button>
         </div>
       </div>
@@ -1593,16 +1843,16 @@ const renewableCertificate =
 
 function ProductStatCard({ icon, iconClass, title, value, sub }) {
   return (
-    <div className="flex min-h-[104px] items-center gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:min-h-26 sm:gap-4 sm:p-5">
       <div
         className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${iconClass}`}
       >
         {icon}
       </div>
 
-      <div>
+      <div className="min-w-0">
         <p className="text-sm font-bold text-slate-500">{title}</p>
-        <h2 className="mt-1 text-2xl font-extrabold text-slate-950">
+        <h2 className="mt-1 break-words text-xl font-extrabold text-slate-950 sm:text-2xl">
           {value}
         </h2>
         <p className="mt-1 text-xs font-extrabold text-slate-400">{sub}</p>
@@ -1621,7 +1871,7 @@ function StatusBadge({ statusClass, children }) {
 
   return (
     <span
-      className={`inline-flex min-w-[82px] justify-center rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${
+      className={`inline-flex min-w-20.5 justify-center rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${
         classMap[statusClass] || classMap.pending
       }`}
     >
@@ -1640,7 +1890,7 @@ function CertificateBadge({ statusClass, children }) {
 
   return (
     <span
-      className={`inline-flex min-w-[82px] justify-center rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${
+      className={`inline-flex min-w-20.5 justify-center rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${
         classMap[statusClass] || classMap.pending
       }`}
     >
@@ -1651,9 +1901,11 @@ function CertificateBadge({ statusClass, children }) {
 
 function InfoBox({ label, value }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-4">
+    <div className="min-w-0 rounded-xl bg-slate-50 p-3 sm:p-4">
       <p className="text-xs font-extrabold text-slate-400">{label}</p>
-      <p className="mt-1 text-base font-extrabold text-slate-900">{value}</p>
+      <p className="mt-1 break-words text-sm font-extrabold text-slate-900 sm:text-base">
+        {value}
+      </p>
     </div>
   );
 }
@@ -1665,9 +1917,11 @@ function FormInput({
   type = "text",
   placeholder = "",
   required = false,
+  min,
+  max,
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1 block text-sm font-extrabold text-slate-600">
         {label} {required && <b className="text-red-500">*</b>}
       </span>
@@ -1675,39 +1929,38 @@ function FormInput({
         type={type}
         value={value ?? ""}
         placeholder={placeholder}
+        min={min}
+        max={max}
         onChange={(e) => onChange(e.target.value)}
-        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-green-500"
+        className="h-11 w-full min-w-0 max-w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-green-500"
       />
     </label>
   );
 }
 
 function FormSelect({ label, value, onChange, required = false, children }) {
+  const options = Children.toArray(children).map((child) => ({
+    value: child.props.value,
+    label: child.props.children,
+  }));
+
   return (
-    <label className="block">
+    <div className="block min-w-0">
       <span className="mb-1 block text-sm font-extrabold text-slate-600">
         {label} {required && <b className="text-red-500">*</b>}
       </span>
-      <select
+      <ResponsiveSelect
         value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-green-500"
-      >
-        {children}
-      </select>
-    </label>
+        onChange={onChange}
+        options={options}
+      />
+    </div>
   );
 }
 
-function FormTextarea({
-  label,
-  value,
-  onChange,
-  placeholder = "",
-  rows = 4,
-}) {
+function FormTextarea({ label, value, onChange, placeholder = "", rows = 4 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1 block text-sm font-extrabold text-slate-600">
         {label}
       </span>
@@ -1716,7 +1969,7 @@ function FormTextarea({
         onChange={(e) => onChange(e.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold outline-none focus:border-green-500"
+        className="w-full min-w-0 max-w-full resize-y rounded-xl border border-slate-200 px-3 py-3 text-sm font-semibold outline-none focus:border-green-500"
       />
     </label>
   );
@@ -1750,7 +2003,7 @@ function FileUploadInput({
         err?.message ||
           err?.error ||
           Object.values(err?.errors || {})?.[0]?.[0] ||
-          "Upload file thất bại."
+          "Upload file thất bại.",
       );
     } finally {
       setUploading(false);
@@ -1759,18 +2012,18 @@ function FileUploadInput({
   };
 
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1 block text-sm font-extrabold text-slate-600">
         {label} {required && <b className="text-red-500">*</b>}
       </span>
 
-      <div className="rounded-xl border border-slate-200 p-3">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 p-3">
         <input
           type="file"
           accept={accept}
           onChange={handleChange}
           disabled={uploading}
-          className="block w-full text-sm font-semibold text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-green-50 file:px-4 file:py-2 file:text-sm file:font-bold file:text-green-700 hover:file:bg-green-100"
+          className="block w-full min-w-0 text-sm font-semibold text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-green-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-green-700 hover:file:bg-green-100 sm:file:mr-4 sm:file:px-4"
         />
 
         {uploading && (
@@ -1801,13 +2054,10 @@ function FileUploadInput({
                 Xem file đã upload
               </a>
             )}
-
-
           </div>
         )}
       </div>
     </label>
   );
-  
 }
 export default SellerProducts;
