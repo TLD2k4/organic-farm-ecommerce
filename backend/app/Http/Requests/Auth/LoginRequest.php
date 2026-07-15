@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Auth;
 
-
 use Illuminate\Foundation\Http\FormRequest;
 
 class LoginRequest extends FormRequest
@@ -12,11 +11,20 @@ class LoginRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('email')) {
+            $this->merge([
+                'email' => mb_strtolower(trim((string) $this->input('email'))),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
         return [
-            'email' => 'required|email|max:100',
-            'password' => 'required|string|min:8|max:255',
+            'email' => ['bail', 'required', 'string', 'email:rfc', 'max:100'],
+            'password' => ['bail', 'required', 'string', 'min:8', 'max:255'],
         ];
     }
 
@@ -24,10 +32,12 @@ class LoginRequest extends FormRequest
     {
         return [
             'email.required' => 'Email không được để trống.',
+            'email.string' => 'Email phải là chuỗi ký tự.',
             'email.email' => 'Email không đúng định dạng.',
             'email.max' => 'Email tối đa 100 ký tự.',
 
             'password.required' => 'Mật khẩu không được để trống.',
+            'password.string' => 'Mật khẩu phải là chuỗi ký tự.',
             'password.min' => 'Mật khẩu tối thiểu 8 ký tự.',
             'password.max' => 'Mật khẩu tối đa 255 ký tự.',
         ];

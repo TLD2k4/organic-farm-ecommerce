@@ -10,16 +10,16 @@ const userService = {
     return axiosClient.get(`/admin/users/${id}`);
   },
 
-  toggleStatus(id) {
-    return axiosClient.patch(`/admin/users/${id}/status`);
+  toggleStatus(id, reason) {
+    return axiosClient.patch(`/admin/users/${id}/status`, { reason });
   },
 
-  delete(id) {
-    return axiosClient.delete(`/admin/users/${id}`);
+  delete(id, reason) {
+    return axiosClient.delete(`/admin/users/${id}`, { data: { reason } });
   },
 
-  forceDelete(id) {
-    return axiosClient.delete(`/admin/users/${id}/force`);
+  forceDelete(id, reason) {
+    return axiosClient.delete(`/admin/users/${id}/force`, { data: { reason } });
   },
 
   restore(id) {
