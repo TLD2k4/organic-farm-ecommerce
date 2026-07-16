@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ChevronLeft,
+  AlertTriangle,
   Loader2,
   Minus,
   PackageOpen,
@@ -15,6 +16,7 @@ import {
 
 import buyerCartService from "../../services/buyerCartService";
 import { confirmAction } from "../../utils/actionDialog";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 const DEFAULT_SHIPPING_FEE = 30000;
 
@@ -46,8 +48,13 @@ export default function CartPage() {
 
       setCart(normalizedCart);
       setSelectedIds((current) => {
-        const valid = current.filter((id) => normalizedCart.items.some((item) => item.id === id));
-        return valid.length ? valid : normalizedCart.items.map((item) => item.id);
+        const availableItems = normalizedCart.items.filter(
+          (item) => item.is_available,
+        );
+        const valid = current.filter((id) =>
+          availableItems.some((item) => item.id === id),
+        );
+        return valid.length ? valid : availableItems.map((item) => item.id);
       });
       window.dispatchEvent(
         new CustomEvent("cart:updated", { detail: normalizedCart }),
@@ -55,7 +62,7 @@ export default function CartPage() {
     } catch (error) {
       console.log("LOAD CART ERROR:", error);
 
-      toast.error(error?.response?.data?.message || "Không thể tải giỏ hàng.");
+      toast.error(getApiErrorMessage(error, "Không thể tải giỏ hàng."));
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -68,6 +75,10 @@ export default function CartPage() {
   }, [fetchCart]);
 
   const selectedItems = useMemo(() => (cart.items || []).filter((item) => selectedIds.includes(item.id)), [cart.items, selectedIds]);
+  const availableItems = useMemo(
+    () => (cart.items || []).filter((item) => item.is_available),
+    [cart.items],
+  );
   const cartGroups = useMemo(() => groupItemsByFarm(cart.items || []), [cart.items]);
   const groups = useMemo(() => groupItemsByFarm(selectedItems), [selectedItems]);
 
@@ -114,14 +125,7 @@ export default function CartPage() {
 
       await fetchCart({ showLoading: false });
     } catch (error) {
-      const errors = error?.response?.data?.errors;
-      const firstError = errors ? Object.values(errors)?.[0]?.[0] : null;
-
-      toast.error(
-        firstError ||
-          error?.response?.data?.message ||
-          "Không thể cập nhật số lượng.",
-      );
+      toast.error(getApiErrorMessage(error, "Không thể cập nhật số lượng."));
     } finally {
       setUpdatingItemId(null);
     }
@@ -139,7 +143,7 @@ export default function CartPage() {
 
       await fetchCart({ showLoading: false });
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Không thể xóa sản phẩm.");
+      toast.error(getApiErrorMessage(error, "Không thể xóa sản phẩm."));
     } finally {
       setRemovingItemId(null);
     }
@@ -161,7 +165,7 @@ export default function CartPage() {
 
       await fetchCart({ showLoading: false });
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Không thể xóa giỏ hàng.");
+      toast.error(getApiErrorMessage(error, "Không thể xóa giỏ hàng."));
     } finally {
       setClearing(false);
     }
@@ -170,6 +174,10 @@ export default function CartPage() {
   const handleCheckout = () => {
     if (selectedIds.length === 0) {
       toast.error("Vui lòng tick chọn ít nhất một sản phẩm.");
+      return;
+    }
+    if (selectedItems.some((item) => !item.is_available)) {
+      toast.error("Có sản phẩm hoặc gian hàng hiện không nhận đơn mới.");
       return;
     }
     sessionStorage.setItem("checkout_cart_item_ids", JSON.stringify(selectedIds));
@@ -199,7 +207,7 @@ export default function CartPage() {
               </div>
 
               <label className="ml-auto mr-3 inline-flex items-center gap-2 text-sm font-bold text-slate-600">
-                <input type="checkbox" checked={selectedIds.length === cart.items.length} onChange={() => setSelectedIds(selectedIds.length === cart.items.length ? [] : cart.items.map((item) => item.id))} className="h-5 w-5 accent-green-600" />
+                <input type="checkbox" disabled={availableItems.length === 0} checked={availableItems.length > 0 && selectedIds.length === availableItems.length} onChange={() => setSelectedIds(selectedIds.length === availableItems.length ? [] : availableItems.map((item) => item.id))} className="h-5 w-5 accent-green-600 disabled:opacity-40" />
                 Chọn tất cả
               </label>
 
@@ -222,7 +230,13 @@ export default function CartPage() {
                 key={group.farmKey}
                 group={group}
                 selectedIds={selectedIds}
-                onToggle={(id) => setSelectedIds((ids) => ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id])}
+                onToggle={(item) => {
+                  if (!item.is_available) {
+                    toast.error(item.availability_reason || "Gian hàng hiện không nhận đơn mới.");
+                    return;
+                  }
+                  setSelectedIds((ids) => ids.includes(item.id) ? ids.filter((itemId) => itemId !== item.id) : [...ids, item.id]);
+                }}
                 updatingItemId={updatingItemId}
                 removingItemId={removingItemId}
                 onUpdateQuantity={handleUpdateQuantity}
@@ -293,13 +307,29 @@ function CartFarmGroup({
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-2 font-extrabold text-slate-900">
           <Store size={18} className="text-[#5fa846]" />
-          {group.farmName}
+          {group.farmSlug ? (
+            <Link
+              to={`/farms/${group.farmSlug}`}
+              className="hover:text-[#5fa846] hover:underline"
+            >
+              {group.farmName}
+            </Link>
+          ) : (
+            group.farmName
+          )}
         </div>
 
         <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-[#5fa846]">
-          {group.items.length} sản phẩm
+          {group.farmAcceptingOrders ? `${group.items.length} sản phẩm` : "Tạm ngừng nhận đơn"}
         </span>
       </div>
+
+      {!group.farmAcceptingOrders && (
+        <div className="flex gap-2 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-800">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <p>{group.availabilityReason || "Gian hàng hiện đang tạm ngừng nhận đơn mới."}</p>
+        </div>
+      )}
 
       <div className="divide-y divide-slate-100">
         {group.items.map((item) => (
@@ -307,10 +337,11 @@ function CartFarmGroup({
             key={item.id}
             item={item}
             selected={selectedIds.includes(item.id)}
-            onToggle={() => onToggle(item.id)}
+            onToggle={() => onToggle(item)}
             updating={updatingItemId === item.id}
             removing={removingItemId === item.id}
             disabled={Boolean(updatingItemId || removingItemId)}
+            unavailable={!item.is_available}
             onUpdateQuantity={onUpdateQuantity}
             onRemoveItem={onRemoveItem}
           />
@@ -347,6 +378,7 @@ function CartItemRow({
   updating,
   removing,
   disabled,
+  unavailable,
   onUpdateQuantity,
   onRemoveItem,
 }) {
@@ -358,34 +390,34 @@ function CartItemRow({
     <div className="grid grid-cols-1 gap-4 px-5 py-4 lg:grid-cols-12 lg:items-center">
       <div className="lg:col-span-6">
         <div className="flex gap-4">
-          <input aria-label={`Chọn ${item.product_name}`} type="checkbox" checked={selected} onChange={onToggle} className="mt-10 h-5 w-5 shrink-0 accent-green-600" />
-          <Link
-            to={
-              item.product_slug ? `/products/${item.product_slug}` : "/products"
-            }
-            className="flex-none"
-          >
+          <input aria-label={`Chọn ${item.product_name}`} type="checkbox" checked={selected} disabled={unavailable} onChange={onToggle} className="mt-10 h-5 w-5 shrink-0 accent-green-600 disabled:cursor-not-allowed disabled:opacity-40" />
+          {item.is_publicly_visible && item.product_slug ? (
+            <Link to={`/products/${item.product_slug}`} className="flex-none">
+              <img
+                src={item.product_image || "https://placehold.co/120x120?text=Product"}
+                alt={item.product_name}
+                className="h-24 w-24 rounded-2xl border border-slate-100 object-cover"
+              />
+            </Link>
+          ) : (
             <img
-              src={
-                item.product_image ||
-                "https://placehold.co/120x120?text=Product"
-              }
+              src={item.product_image || "https://placehold.co/120x120?text=Product"}
               alt={item.product_name}
               className="h-24 w-24 rounded-2xl border border-slate-100 object-cover"
             />
-          </Link>
+          )}
 
           <div className="min-w-0 flex-1">
-            <Link
-              to={
-                item.product_slug
-                  ? `/products/${item.product_slug}`
-                  : "/products"
-              }
-              className="line-clamp-2 text-base font-extrabold text-slate-900 hover:text-[#5fa846]"
-            >
-              {item.product_name}
-            </Link>
+            {item.is_publicly_visible && item.product_slug ? (
+              <Link
+                to={`/products/${item.product_slug}`}
+                className="line-clamp-2 text-base font-extrabold text-slate-900 hover:text-[#5fa846] hover:underline"
+              >
+                {item.product_name}
+              </Link>
+            ) : (
+              <p className="line-clamp-2 text-base font-extrabold text-slate-900">{item.product_name}</p>
+            )}
 
             <p className="mt-1 text-sm font-semibold text-slate-400">
               Đơn vị: {item.unit || "sản phẩm"}
@@ -407,6 +439,20 @@ function CartItemRow({
                   Vượt tồn kho
                 </span>
               )}
+
+              {unavailable && (
+                <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">
+                  {item.farm_accepting_orders === false
+                    ? "Tạm ngừng nhận đơn"
+                    : "Không khả dụng"}
+                </span>
+              )}
+
+              {unavailable && item.availability_reason && (
+                <p className="w-full text-xs font-semibold text-amber-700">
+                  {item.availability_reason}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -427,8 +473,10 @@ function CartItemRow({
       <div className="lg:col-span-2">
         <div className="inline-flex h-10 items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
           <button
-            disabled={disabled || item.quantity <= 1}
+            disabled={disabled || unavailable || item.quantity <= 1}
             onClick={() => onUpdateQuantity(item, item.quantity - 1)}
+            aria-label={`Giảm số lượng ${item.product_name}`}
+            title={`Giảm số lượng ${item.product_name}`}
             className="flex h-10 w-10 items-center justify-center text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Minus size={15} />
@@ -445,9 +493,12 @@ function CartItemRow({
           <button
             disabled={
               disabled ||
+              unavailable ||
               (item.stock_quantity > 0 && item.quantity >= item.stock_quantity)
             }
             onClick={() => onUpdateQuantity(item, item.quantity + 1)}
+            aria-label={`Tăng số lượng ${item.product_name}`}
+            title={`Tăng số lượng ${item.product_name}`}
             className="flex h-10 w-10 items-center justify-center text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus size={15} />
@@ -466,6 +517,8 @@ function CartItemRow({
         <button
           disabled={disabled}
           onClick={() => onRemoveItem(item)}
+          aria-label={`Xóa ${item.product_name} khỏi giỏ hàng`}
+          title={`Xóa ${item.product_name} khỏi giỏ hàng`}
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-100 bg-white text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {removing ? (
@@ -664,6 +717,7 @@ function normalizeCart(payload) {
         product.thumbnail ||
         product.image ||
         "https://placehold.co/120x120?text=Product",
+      is_publicly_visible: item.is_publicly_visible !== false,
       unit: item.unit || product.unit || "",
       quantity,
       price,
@@ -675,6 +729,15 @@ function normalizeCart(payload) {
       farm_id: item.farm_id || product.farm_id || product.farm?.id || "unknown",
       farm_name:
         item.farm_name || item.farm?.name || product.farm?.name || "Nông trại",
+      farm_slug:
+        item.farm_slug || item.farm?.slug || product.farm?.slug || "",
+      is_available: item.is_available !== false,
+      farm_accepting_orders: item.farm_accepting_orders !== false,
+      availability_reason:
+        item.availability_reason ||
+        item.order_unavailable_reason ||
+        product.order_unavailable_reason ||
+        null,
 
       shipping_fee: Number(
         item.shipping_fee ??
@@ -711,6 +774,9 @@ function groupItemsByFarm(items) {
         farmKey,
         farmId: item.farm_id,
         farmName: item.farm_name || "Nông trại",
+        farmSlug: item.farm_slug || "",
+        farmAcceptingOrders: item.farm_accepting_orders !== false,
+        availabilityReason: item.availability_reason || null,
         shipping_fee: Number(item.shipping_fee ?? DEFAULT_SHIPPING_FEE),
         items: [],
       });

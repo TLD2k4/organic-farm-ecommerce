@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 
 import buyerCartService from "@/services/buyerCartService";
 import { useAuthStore } from "@/store/authStore";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 export default function useAddToCart() {
   const navigate = useNavigate();
@@ -18,6 +19,15 @@ export default function useAddToCart() {
     }
 
     if (!product?.id || adding) return false;
+
+    if (product.accepting_orders === false) {
+      toast.error(
+        product.order_unavailable_reason ||
+          product.farm?.order_unavailable_reason ||
+          "Gian hàng hiện đang tạm ngừng nhận đơn mới.",
+      );
+      return false;
+    }
 
     const hasStock = product.stock_quantity !== null && product.stock_quantity !== undefined;
     if (hasStock && Number(product.stock_quantity) <= 0) {
@@ -34,10 +44,7 @@ export default function useAddToCart() {
       toast.success(response?.message || "Đã thêm sản phẩm vào giỏ hàng.");
       return true;
     } catch (error) {
-      const firstError = Object.values(error?.errors || {})[0]?.[0];
-      toast.error(
-        firstError || error?.message || "Không thể thêm sản phẩm vào giỏ hàng.",
-      );
+      toast.error(getApiErrorMessage(error, "Không thể thêm sản phẩm vào giỏ hàng."));
       return false;
     } finally {
       setAdding(false);
