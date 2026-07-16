@@ -2,9 +2,8 @@ import {
   Area,
   AreaChart,
   Bar,
+  BarChart,
   CartesianGrid,
-  ComposedChart,
-  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -47,6 +46,64 @@ function LegendPill({ color, label }) {
   return <span className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600"><i className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />{label}</span>;
 }
 
+function prepareChartData(data) {
+  const normalized = data.map((item) => ({
+    ...item,
+    revenue: Number(item.revenue || 0),
+    orders: Number(item.orders || 0),
+    completed_orders: Number(item.completed_orders || 0),
+    cancelled_orders: Number(item.cancelled_orders || 0),
+    sub_orders: Number(item.sub_orders || 0),
+    processing_sub_orders: Number(item.processing_sub_orders || 0),
+    completed_sub_orders: Number(item.completed_sub_orders || 0),
+    cancelled_sub_orders: Number(item.cancelled_sub_orders || 0),
+  }));
+
+  const groups = normalized.length > 45
+    ? Array.from(
+        { length: Math.ceil(normalized.length / 7) },
+        (_, index) => normalized.slice(index * 7, index * 7 + 7),
+      )
+    : normalized.map((item) => [item]);
+
+  return groups.filter(Boolean).map((group) => {
+    const first = group[0];
+    const last = group[group.length - 1];
+    const totals = group.reduce(
+      (sum, item) => ({
+        revenue: sum.revenue + item.revenue,
+        orders: sum.orders + item.orders,
+        completed_orders: sum.completed_orders + item.completed_orders,
+        cancelled_orders: sum.cancelled_orders + item.cancelled_orders,
+        sub_orders: sum.sub_orders + item.sub_orders,
+        processing_sub_orders:
+          sum.processing_sub_orders + item.processing_sub_orders,
+        completed_sub_orders:
+          sum.completed_sub_orders + item.completed_sub_orders,
+        cancelled_sub_orders:
+          sum.cancelled_sub_orders + item.cancelled_sub_orders,
+      }),
+      {
+        revenue: 0,
+        orders: 0,
+        completed_orders: 0,
+        cancelled_orders: 0,
+        sub_orders: 0,
+        processing_sub_orders: 0,
+        completed_sub_orders: 0,
+        cancelled_sub_orders: 0,
+      },
+    );
+
+    return {
+      ...totals,
+      label: first.label === last.label
+        ? first.label
+        : `${first.label}–${last.label}`,
+    };
+  });
+}
+
 export default function DashboardCharts({ data = [], loading = false }) {
   if (loading) {
     return <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">{[0, 1].map((item) => <div key={item} className="h-105 animate-pulse rounded-3xl bg-slate-200/80" />)}</div>;
@@ -56,10 +113,20 @@ export default function DashboardCharts({ data = [], loading = false }) {
     return <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-4 py-16 text-center font-semibold text-slate-500">Chưa có dữ liệu biểu đồ trong khoảng thời gian này.</div>;
   }
 
-  const totalRevenue = data.reduce((sum, item) => sum + Number(item.revenue || 0), 0);
-  const totalOrders = data.reduce((sum, item) => sum + Number(item.orders || 0), 0);
-  const completedOrders = data.reduce((sum, item) => sum + Number(item.completed_orders || 0), 0);
+  const chartData = prepareChartData(data);
+  const groupedByWeek = data.length > 45;
+  const totalRevenue = chartData.reduce((sum, item) => sum + item.revenue, 0);
+  const totalOrders = chartData.reduce((sum, item) => sum + item.orders, 0);
+  const completedOrders = chartData.reduce((sum, item) => sum + item.completed_orders, 0);
   const completionRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
+  const totalSubOrders = chartData.reduce((sum, item) => sum + item.sub_orders, 0);
+  const completedSubOrders = chartData.reduce(
+    (sum, item) => sum + item.completed_sub_orders,
+    0,
+  );
+  const subOrderCompletionRate = totalSubOrders > 0
+    ? Math.round((completedSubOrders / totalSubOrders) * 100)
+    : 0;
 
   return (
     <div className="grid min-w-0 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
@@ -71,7 +138,7 @@ export default function DashboardCharts({ data = [], loading = false }) {
         </header>
         <div className="relative h-75 w-full sm:h-82">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 12, right: 8, left: -10, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 12, right: 8, left: -10, bottom: 0 }}>
               <defs><linearGradient id="adminRevenueGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.38} /><stop offset="65%" stopColor="#34d399" stopOpacity={0.09} /><stop offset="100%" stopColor="#ffffff" stopOpacity={0} /></linearGradient></defs>
               <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="4 7" />
               <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={24} tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 700 }} dy={8} />
@@ -85,18 +152,18 @@ export default function DashboardCharts({ data = [], loading = false }) {
       </section>
 
       <section className="min-w-0 overflow-hidden rounded-3xl border border-indigo-100 bg-white p-4 shadow-[0_18px_50px_-28px_rgba(79,70,229,0.4)] sm:p-6">
-        <header className="mb-4"><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Vận hành đơn hàng</p><h2 className="mt-2 text-xl font-black text-slate-950">Trạng thái theo thời gian</h2><div className="mt-3 flex flex-wrap gap-2"><LegendPill color="#6366f1" label="Tổng đơn" /><LegendPill color="#10b981" label="Hoàn thành" /><LegendPill color="#fb7185" label="Đã hủy" /></div></header>
+        <header className="mb-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Vận hành đơn hàng</p><h2 className="mt-2 text-xl font-black text-slate-950">Trạng thái đơn theo gian hàng</h2><p className="mt-1 text-xs font-semibold text-slate-500">{groupedByWeek ? "90 ngày được tự động gộp theo từng nhóm 7 ngày." : "Tính theo đơn con để phản ánh đúng từng gian hàng."}</p></div><div className="rounded-2xl bg-indigo-50 px-3 py-2 text-right"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-500">Hoàn thành</p><p className="text-lg font-black text-indigo-800">{subOrderCompletionRate}%</p></div></div><div className="mt-3 flex flex-wrap gap-2"><LegendPill color="#6366f1" label="Đang xử lý" /><LegendPill color="#10b981" label="Hoàn thành" /><LegendPill color="#fb7185" label="Đã hủy" /></div></header>
         <div className="h-85 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 14, right: 6, left: -22, bottom: 0 }} barGap={3}>
+            <BarChart data={chartData} margin={{ top: 14, right: 6, left: -22, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="4 7" />
               <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={24} tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 700 }} dy={8} />
               <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 700 }} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f1f5f9", opacity: 0.7 }} />
-              <Bar dataKey="completed_orders" name="Hoàn thành" fill="#10b981" radius={[7, 7, 2, 2]} maxBarSize={18} />
-              <Bar dataKey="cancelled_orders" name="Đã hủy" fill="#fb7185" radius={[7, 7, 2, 2]} maxBarSize={18} />
-              <Line type="monotone" dataKey="orders" name="Tổng đơn" stroke="#6366f1" strokeWidth={2.8} dot={false} activeDot={{ r: 5, fill: "#6366f1", stroke: "#fff", strokeWidth: 3 }} />
-            </ComposedChart>
+              <Bar stackId="order-status" dataKey="processing_sub_orders" name="Đang xử lý" fill="#6366f1" maxBarSize={32} />
+              <Bar stackId="order-status" dataKey="completed_sub_orders" name="Hoàn thành" fill="#10b981" maxBarSize={32} />
+              <Bar stackId="order-status" dataKey="cancelled_sub_orders" name="Đã hủy" fill="#fb7185" radius={[7, 7, 0, 0]} maxBarSize={32} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </section>

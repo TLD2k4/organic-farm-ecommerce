@@ -29,7 +29,9 @@ class ReportFilterRequest extends FormRequest
             'group_by' => [
                 'nullable',
                 Rule::in([
+                    'auto',
                     'day',
+                    'week',
                     'month',
                     'year',
                 ]),
@@ -80,7 +82,7 @@ class ReportFilterRequest extends FormRequest
             'Ngày kết thúc không hợp lệ.',
 
             'group_by.in' =>
-            'Kiểu nhóm chỉ được là day, month hoặc year.',
+            'Kiểu nhóm chỉ được là auto, day, week, month hoặc year.',
 
             'limit.integer' =>
             'Giới hạn phải là số nguyên.',

@@ -4,8 +4,16 @@ import ResponsiveSelect from "@/components/common/ResponsiveSelect";
 
 const groupOptions = [
   {
+    value: "auto",
+    label: "Tự động theo khoảng ngày",
+  },
+  {
     value: "day",
     label: "Theo ngày",
+  },
+  {
+    value: "week",
+    label: "Theo tuần",
   },
   {
     value: "month",
@@ -150,6 +158,9 @@ export default function ReportFilter({
           disabled={loading}
           onChange={(selectedValue) => onChange("group_by", selectedValue)}
         />
+        <p className="mt-1.5 text-xs font-medium text-slate-400">
+          Tự động giúp biểu đồ không có quá nhiều điểm.
+        </p>
       </div>
 
       <div className="min-w-0">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Package,
   ClipboardList,
@@ -70,13 +70,32 @@ function SellerDashboard() {
   const hasRevenueChart = revenueChart.some(
     (item) => Number(item.revenue || 0) > 0,
   );
+  const revenueGrowth = stats.revenue_growth;
+  const hasRevenueComparison =
+    revenueGrowth !== null && revenueGrowth !== undefined;
+  const revenueGrowthNumber = Number(revenueGrowth || 0);
+  const revenueGrowthText = !hasRevenueComparison
+    ? "Tháng trước chưa có doanh thu"
+    : revenueGrowthNumber === 0
+      ? "Không đổi so với tháng trước"
+      : `${revenueGrowthNumber > 0 ? "+" : ""}${revenueGrowthNumber}% so với tháng trước ${
+          revenueGrowthNumber > 0 ? "↑" : "↓"
+        }`;
+  const revenueGrowthClass = !hasRevenueComparison || revenueGrowthNumber === 0
+    ? "text-slate-500"
+    : revenueGrowthNumber > 0
+      ? "text-green-700"
+      : "text-red-600";
 
   return (
     <div className="w-full min-w-0 space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="break-words text-xl font-extrabold text-slate-950 sm:text-2xl">
-            Xin chào, {dashboard.farm?.name || "Nông dân An Tâm"}! 👋
+            Xin chào,{" "}
+            <Link to="/seller/farm" className="hover:text-green-700 hover:underline">
+              {dashboard.farm?.name || "Nông dân An Tâm"}
+            </Link>! 👋
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
             Đây là tổng quan hoạt động nông trại của bạn hôm nay.
@@ -94,7 +113,7 @@ function SellerDashboard() {
           iconClass="bg-green-100 text-green-700"
           title="Tổng sản phẩm"
           value={stats.total_products ?? 0}
-          sub={`+ ${stats.new_products ?? 0} so với tháng trước ↑`}
+          sub={`${stats.new_products ?? 0} sản phẩm mới trong tháng này`}
         />
 
         <StatCard
@@ -102,7 +121,7 @@ function SellerDashboard() {
           iconClass="bg-blue-100 text-blue-600"
           title="Tổng lô thu hoạch"
           value={stats.total_lots ?? 0}
-          sub={`+ ${stats.new_lots ?? 0} so với tháng trước ↑`}
+          sub={`${stats.new_lots ?? 0} lô mới trong tháng này`}
         />
 
         <StatCard
@@ -119,15 +138,16 @@ function SellerDashboard() {
           iconClass="bg-purple-100 text-purple-600"
           title="Doanh thu tháng"
           value={stats.month_revenue_text ?? "0 đ"}
-          sub={`+ ${stats.revenue_growth ?? 0}% so với tháng trước ↑`}
+          sub={revenueGrowthText}
+          subClass={revenueGrowthClass}
         />
 
         <StatCard
           icon={<Warehouse size={28} />}
           iconClass="bg-green-100 text-green-700"
-          title="Tổng tồn kho"
-          value={`${stats.total_stock ?? 0} kg`}
-          sub="Trong các lô"
+          title="Lô còn hàng"
+          value={stats.available_lots ?? 0}
+          sub="Đang bán và còn hạn sử dụng"
         />
       </div>
 
@@ -188,9 +208,13 @@ function SellerDashboard() {
                           }}
                         />
                         <div className="min-w-0">
-                          <p className="max-w-44 break-words font-extrabold text-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/seller/products?view=${lot.product_id}`)}
+                            className="max-w-44 break-words text-left font-extrabold text-slate-800 hover:text-green-700 hover:underline"
+                          >
                             {lot.product_name}
-                          </p>
+                          </button>
                           <p className="text-xs font-semibold text-slate-400">
                             {lot.certificate_name}
                           </p>
@@ -230,7 +254,13 @@ function SellerDashboard() {
                     </td>
 
                     <td className="px-3 py-3 text-right">
-                      <button className="rounded-lg p-1 hover:bg-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => navigate("/seller/harvest-lots")}
+                        aria-label={`Xem quản lý lô ${lot.lot_code}`}
+                        title={`Xem quản lý lô ${lot.lot_code}`}
+                        className="rounded-lg p-1 hover:bg-slate-100"
+                      >
                         <MoreHorizontal size={18} />
                       </button>
                     </td>
@@ -272,6 +302,7 @@ function SellerDashboard() {
                 sub={`Tồn kho: ${item.stock_quantity} kg`}
                 rightText={`Còn ${item.stock_quantity} kg`}
                 danger={Number(item.stock_quantity || 0) <= 10}
+                onClick={() => navigate(`/seller/products?view=${item.id}`)}
               />
             ))}
           </SmallListCard>
@@ -342,9 +373,13 @@ function SellerDashboard() {
                 />
 
                 <div className="min-w-0">
-                  <p className="break-words font-extrabold text-slate-900">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/seller/products?view=${item.id}`)}
+                    className="break-words text-left font-extrabold text-slate-900 hover:text-green-700 hover:underline"
+                  >
                     {item.name}
-                  </p>
+                  </button>
                   <p className="text-xs font-semibold text-slate-500">
                     Chứng nhận
                   </p>
@@ -496,7 +531,7 @@ function SmallListCard({ title, action, onAction, children }) {
   );
 }
 
-function ProductMiniItem({ image, name, sub, rightText, danger }) {
+function ProductMiniItem({ image, name, sub, rightText, danger, onClick }) {
   return (
     <div className="flex min-w-0 flex-col gap-2 border-b border-slate-100 py-3 last:border-b-0 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between">
       <div className="flex min-w-0 items-center gap-3">
@@ -510,7 +545,13 @@ function ProductMiniItem({ image, name, sub, rightText, danger }) {
         />
 
         <div className="min-w-0">
-          <p className="break-words font-extrabold text-slate-900">{name}</p>
+          <button
+            type="button"
+            onClick={onClick}
+            className="break-words text-left font-extrabold text-slate-900 hover:text-green-700 hover:underline"
+          >
+            {name}
+          </button>
           <p className="break-words text-xs font-semibold text-slate-500">
             {sub}
           </p>
