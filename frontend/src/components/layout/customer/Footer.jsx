@@ -46,6 +46,10 @@ const Footer = () => {
 
       links: [
         {
+          label: "Chính sách người bán",
+          path: "/seller-policy",
+        },
+        {
           label: "Bảo mật",
           path: "/privacy-policy",
         },

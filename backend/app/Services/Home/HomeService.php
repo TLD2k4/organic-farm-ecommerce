@@ -7,12 +7,17 @@ use App\Models\Farm;
 use App\Models\Product;
 use App\Models\Order;
 use App\Models\Review;
+use App\Services\Farm\SellerPolicyAccessService;
 
 class HomeService
 {
     private const NEW_PRODUCT_DAYS = 7;
     private const BEST_SELLER_DAYS = 30;
     private const BEST_SELLER_MIN_QUANTITY = 20;
+
+    public function __construct(
+        private SellerPolicyAccessService $sellerPolicyAccessService,
+    ) {}
 
     public function getHomeData(array $filters = []): array
     {
@@ -101,7 +106,7 @@ class HomeService
     {
         return Product::query()
             ->with([
-                'farm:id,name,slug,logo,address',
+                'farm:id,seller_id,name,slug,logo,address,status,deleted_at',
                 'category:id,name,slug',
             ])
             ->withCount([
@@ -302,6 +307,8 @@ class HomeService
 
     private function formatProduct(Product $product): array
     {
+        $orderAvailability = $this->sellerPolicyAccessService
+            ->availability($product->farm);
         $price = (float) $product->price;
 
         $salePrice = $product->sale_price !== null
@@ -361,6 +368,9 @@ class HomeService
             'is_new' => $isNew,
             'is_best_seller' => $isBestSeller,
             'status' => (int) $product->status,
+            'accepting_orders' => $orderAvailability['accepting_orders'],
+            'order_unavailable_reason' => $orderAvailability['reason'],
+            'required_policy_version' => $orderAvailability['policy_version'],
 
             'rating' => $rating,
             'rating_avg' => $rating,
@@ -381,6 +391,8 @@ class HomeService
                 'slug' => $product->farm->slug,
                 'logo' => $product->farm->logo,
                 'address' => $product->farm->address,
+                'accepting_orders' => $orderAvailability['accepting_orders'],
+                'order_unavailable_reason' => $orderAvailability['reason'],
             ] : null,
 
             'category' => $product->category ? [
@@ -393,6 +405,8 @@ class HomeService
 
     private function formatFarm(Farm $farm): array
     {
+        $orderAvailability = $this->sellerPolicyAccessService
+            ->availability($farm);
         $reviewCount = (int) ($farm->review_count ?? 0);
 
         $rating = $reviewCount > 0 && $farm->rating_avg !== null
@@ -431,6 +445,8 @@ class HomeService
             'sold_quantity' => (float) ($farm->sold_quantity ?? 0),
 
             'certification_text' => 'Organic / VietGAP',
+            'accepting_orders' => $orderAvailability['accepting_orders'],
+            'order_unavailable_reason' => $orderAvailability['reason'],
         ];
     }
 

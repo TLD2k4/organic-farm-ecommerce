@@ -843,6 +843,12 @@ function ProductCard({ product }) {
           {formatSoldQuantity(product)}
         </p>
 
+        {product.accepting_orders === false && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-700">
+            Tạm ngừng nhận đơn
+          </p>
+        )}
+
         <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <div className="min-w-0">
             <p
@@ -864,11 +870,11 @@ function ProductCard({ product }) {
 
           <button
             type="button"
-            title={`Thêm ${product.name} vào giỏ hàng`}
+            title={product.accepting_orders === false ? (product.order_unavailable_reason || "Gian hàng tạm ngừng nhận đơn") : `Thêm ${product.name} vào giỏ hàng`}
             aria-label={`Thêm ${product.name} vào giỏ hàng`}
-            disabled={adding}
+            disabled={adding || product.accepting_orders === false}
             onClick={() => addToCart(product)}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-green-200 text-green-700 transition hover:bg-green-700 hover:text-white disabled:cursor-wait disabled:opacity-60"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-green-200 text-green-700 transition hover:bg-green-700 hover:text-white disabled:cursor-not-allowed disabled:border-amber-200 disabled:bg-amber-50 disabled:text-amber-700 disabled:opacity-70"
           >
             <ShoppingCart size={18} aria-hidden="true" />
           </button>
