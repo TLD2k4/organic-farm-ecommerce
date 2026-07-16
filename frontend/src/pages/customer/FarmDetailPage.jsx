@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  AlertTriangle,
   Award,
   Leaf,
   MapPin,
@@ -218,6 +219,19 @@ export default function FarmDetailPage() {
           </div>
         </div>
       </div>
+
+      {farm.accepting_orders === false && (
+        <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+          <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+          <div>
+            <p>Nông trại đang tạm ngừng nhận đơn mới.</p>
+            <p className="mt-1 font-semibold">
+              {farm.order_unavailable_reason ||
+                "Các đơn đã phát sinh vẫn tiếp tục được xử lý bình thường."}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5">
@@ -480,6 +494,12 @@ function ProductCard({ product }) {
           {formatSoldQuantity(product)}
         </p>
 
+        {product.accepting_orders === false && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-700">
+            Tạm ngừng nhận đơn
+          </p>
+        )}
+
         <div className="mt-2 flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <p className="whitespace-normal wrap-break-word text-base font-black text-green-700 sm:text-lg">
@@ -495,11 +515,11 @@ function ProductCard({ product }) {
 
           <button
             type="button"
-            title={`Thêm ${product.name} vào giỏ hàng`}
+            title={product.accepting_orders === false ? (product.order_unavailable_reason || "Gian hàng tạm ngừng nhận đơn") : `Thêm ${product.name} vào giỏ hàng`}
             aria-label={`Thêm ${product.name} vào giỏ hàng`}
-            disabled={adding}
+            disabled={adding || product.accepting_orders === false}
             onClick={() => addToCart(product)}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-green-200 text-green-700 transition hover:bg-green-700 hover:text-white disabled:cursor-wait disabled:opacity-60"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-green-200 text-green-700 transition hover:bg-green-700 hover:text-white disabled:cursor-not-allowed disabled:border-amber-200 disabled:bg-amber-50 disabled:text-amber-700 disabled:opacity-70"
           >
             <ShoppingCart size={18} aria-hidden="true" />
           </button>

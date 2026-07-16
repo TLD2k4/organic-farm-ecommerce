@@ -93,6 +93,7 @@ class FarmController extends Controller
 
         $policyAcceptance = [
             'policy_version' => $validated['policy_version'],
+            'seller_policy_id' => $validated['seller_policy_id'] ?? null,
             'ip_address' => $request->ip(),
             'user_agent' => Str::limit(
                 (string) $request->userAgent(),
@@ -107,7 +108,8 @@ class FarmController extends Controller
          */
         unset(
             $validated['policy_accepted'],
-            $validated['policy_version']
+            $validated['policy_version'],
+            $validated['seller_policy_id']
         );
 
         $farm = $this->farmService->register(
