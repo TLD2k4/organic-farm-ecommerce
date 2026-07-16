@@ -24,6 +24,7 @@ class SellerRevenueService
         );
 
         $limit = min(20, max(1, (int) ($filters['limit'] ?? 10)));
+        $chartGroup = $this->resolveChartGroup($from, $to);
 
         $currentSummary = $this->getSummary($farm->id, $from, $to);
 
@@ -43,6 +44,7 @@ class SellerRevenueService
                 'to' => $to->format('Y-m-d'),
                 'previous_from' => $previousFrom->format('Y-m-d'),
                 'previous_to' => $previousTo->format('Y-m-d'),
+                'group_by' => $chartGroup,
             ],
 
             'summary' => [
@@ -67,7 +69,12 @@ class SellerRevenueService
                 ],
             ],
 
-            'revenue_chart' => $this->getRevenueChart($farm->id, $from, $to),
+            'revenue_chart' => $this->getRevenueChart(
+                $farm->id,
+                $from,
+                $to,
+                $chartGroup
+            ),
 
             'top_products' => $this->getTopProducts(
                 $farm->id,
@@ -146,21 +153,25 @@ class SellerRevenueService
         return $query;
     }
 
-    private function getRevenueChart(int $farmId, Carbon $from, Carbon $to)
+    private function getRevenueChart(
+        int $farmId,
+        Carbon $from,
+        Carbon $to,
+        string $groupBy
+    )
     {
         $dateColumn = $this->getRevenueDateColumn();
-        $diffDays = $from->diffInDays($to);
-
-        $groupByMonth = $diffDays > 92;
-
-        $dateSelect = $groupByMonth
-            ? "DATE_FORMAT({$dateColumn}, '%Y-%m-01')"
-            : "DATE({$dateColumn})";
+        $dateSelect = match ($groupBy) {
+            'month' => "DATE_FORMAT({$dateColumn}, '%Y-%m-01')",
+            'week' => "DATE_SUB(DATE({$dateColumn}), INTERVAL WEEKDAY({$dateColumn}) DAY)",
+            default => "DATE({$dateColumn})",
+        };
 
         $rows = $this->baseRevenueQuery($farmId, $from, $to)
             ->selectRaw("{$dateSelect} as period_date")
             ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as revenue')
             ->selectRaw('COUNT(DISTINCT sub_orders.id) as order_count')
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as sold_quantity')
             ->groupBy(DB::raw($dateSelect))
             ->orderBy('period_date')
             ->get()
@@ -168,11 +179,11 @@ class SellerRevenueService
 
         $result = collect();
 
-        if ($groupByMonth) {
+        if ($groupBy === 'month') {
             $cursor = $from->copy()->startOfMonth();
             $end = $to->copy()->startOfMonth();
 
-            while ($cursor <= $end) {
+            while ($cursor->lte($end)) {
                 $key = $cursor->format('Y-m-01');
                 $row = $rows->get($key);
 
@@ -181,9 +192,38 @@ class SellerRevenueService
                     'raw_date' => $key,
                     'revenue' => (float) ($row?->revenue ?? 0),
                     'order_count' => (int) ($row?->order_count ?? 0),
+                    'sold_quantity' => (float) ($row?->sold_quantity ?? 0),
                 ]);
 
                 $cursor->addMonth();
+            }
+
+            return $result->values();
+        }
+
+        if ($groupBy === 'week') {
+            $cursor = $from->copy()->startOfWeek(Carbon::MONDAY);
+            $end = $to->copy()->startOfWeek(Carbon::MONDAY);
+
+            while ($cursor->lte($end)) {
+                $key = $cursor->format('Y-m-d');
+                $row = $rows->get($key);
+                $weekEnd = $cursor->copy()->endOfWeek(Carbon::SUNDAY);
+
+                if ($weekEnd->gt($to)) {
+                    $weekEnd = $to->copy();
+                }
+
+                $result->push([
+                    'date' => $cursor->format('d/m')
+                        . '–' . $weekEnd->format('d/m'),
+                    'raw_date' => $key,
+                    'revenue' => (float) ($row?->revenue ?? 0),
+                    'order_count' => (int) ($row?->order_count ?? 0),
+                    'sold_quantity' => (float) ($row?->sold_quantity ?? 0),
+                ]);
+
+                $cursor->addWeek();
             }
 
             return $result->values();
@@ -198,10 +238,26 @@ class SellerRevenueService
                 'raw_date' => $key,
                 'revenue' => (float) ($row?->revenue ?? 0),
                 'order_count' => (int) ($row?->order_count ?? 0),
+                'sold_quantity' => (float) ($row?->sold_quantity ?? 0),
             ]);
         }
 
         return $result->values();
+    }
+
+    private function resolveChartGroup(Carbon $from, Carbon $to): string
+    {
+        $days = $from->diffInDays($to) + 1;
+
+        if ($days <= 31) {
+            return 'day';
+        }
+
+        if ($days <= 180) {
+            return 'week';
+        }
+
+        return 'month';
     }
 
     private function getTopProducts(
@@ -274,13 +330,13 @@ class SellerRevenueService
         return [$previousFrom, $previousTo];
     }
 
-    private function percentChange(float|int $current, float|int $previous): float
+    private function percentChange(float|int $current, float|int $previous): ?float
     {
         $current = (float) $current;
         $previous = (float) $previous;
 
         if ($previous <= 0) {
-            return $current > 0 ? 100 : 0;
+            return $current > 0 ? null : 0;
         }
 
         return round((($current - $previous) / $previous) * 100, 1);
@@ -303,12 +359,12 @@ class SellerRevenueService
 
             'month' => [
                 $now->copy()->startOfMonth(),
-                $now->copy()->endOfMonth(),
+                $now->copy()->endOfDay(),
             ],
 
             'year' => [
                 $now->copy()->startOfYear(),
-                $now->copy()->endOfYear(),
+                $now->copy()->endOfDay(),
             ],
 
             'custom' => [

@@ -57,13 +57,13 @@ export default function ReportSummary({ summary = {}, loading = false }) {
       iconClass: "bg-cyan-100 text-cyan-700",
     },
     {
-      label: "Đơn hoàn thành",
+      label: "Đơn tổng hoàn thành",
       value: formatNumber(summary.completed_orders),
       icon: CheckCircle2,
       iconClass: "bg-emerald-100 text-emerald-700",
     },
     {
-      label: "Đơn đã hủy",
+      label: "Đơn tổng đã hủy",
       value: formatNumber(summary.cancelled_orders),
       icon: Ban,
       iconClass: "bg-red-100 text-red-700",
@@ -75,13 +75,13 @@ export default function ReportSummary({ summary = {}, loading = false }) {
       iconClass: "bg-violet-100 text-violet-700",
     },
     {
-      label: "Tỷ lệ hoàn thành",
+      label: "Tỷ lệ hoàn thành đơn tổng",
       value: formatPercent(summary.completion_rate),
       icon: ClipboardCheck,
       iconClass: "bg-teal-100 text-teal-700",
     },
     {
-      label: "Tỷ lệ hủy",
+      label: "Tỷ lệ hủy đơn tổng",
       value: formatPercent(summary.cancellation_rate),
       icon: Percent,
       iconClass: "bg-orange-100 text-orange-700",

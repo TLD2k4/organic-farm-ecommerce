@@ -144,11 +144,12 @@ export default function ReportsPage() {
           <span className="mx-2 text-slate-300">|</span>
           Nhóm theo:{" "}
           <span className="font-bold text-slate-900">
-            {report.filters.group_by === "month"
-              ? "Tháng"
-              : report.filters.group_by === "year"
-                ? "Năm"
-                : "Ngày"}
+            {{
+              day: "Ngày",
+              week: "Tuần",
+              month: "Tháng",
+              year: "Năm",
+            }[report.filters.group_by] || "Tự động"}
           </span>
         </div>
       )}

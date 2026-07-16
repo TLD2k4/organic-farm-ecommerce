@@ -10,9 +10,9 @@ export const ADMIN_REPORT_DEFAULT_FILTERS = {
 
   to_date: dayjs().format("YYYY-MM-DD"),
 
-  group_by: "day",
+  group_by: "auto",
 
-  limit: 10,
+  limit: 5,
 };
 
 const createInitialReport = () => ({
