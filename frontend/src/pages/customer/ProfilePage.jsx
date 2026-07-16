@@ -27,7 +27,7 @@ export default function ProfilePage() {
 
         {tab === "orders" && <OrderSection />}
 
-        {tab === "reviews" && <ReviewSection />}
+        {tab === "reviews" && <ReviewSection focusReviewId={searchParams.get("review_id")} />}
       </div>
     </div>
   );
