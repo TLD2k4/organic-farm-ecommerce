@@ -23,6 +23,11 @@ return new class extends Migration
                 ->constrained('farms')
                 ->nullOnDelete();
 
+            $table->foreignId('seller_policy_id')
+                ->nullable()
+                ->constrained('seller_policies')
+                ->restrictOnDelete();
+
             $table->string('policy_version', 50);
             $table->timestamp('accepted_at');
             $table->ipAddress('ip_address')->nullable();
@@ -33,6 +38,11 @@ return new class extends Migration
             $table->unique(
                 ['user_id', 'farm_id', 'policy_version'],
                 'farm_policy_acceptances_unique'
+            );
+
+            $table->unique(
+                ['user_id', 'farm_id', 'seller_policy_id'],
+                'farm_policy_acceptances_policy_unique'
             );
         });
     }
