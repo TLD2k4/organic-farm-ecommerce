@@ -17,8 +17,14 @@ class AdminReportService
             ? Carbon::parse($filters['to_date'])->endOfDay()
             : now()->endOfDay();
 
-        $groupBy = $filters['group_by']
-            ?? $this->guessGroupBy($startDate, $endDate);
+        $requestedGroupBy = $filters['group_by'] ?? 'auto';
+        $groupBy = $requestedGroupBy === 'auto'
+            ? $this->guessGroupBy($startDate, $endDate)
+            : $this->capGroupByForRange(
+                $requestedGroupBy,
+                $startDate,
+                $endDate
+            );
 
         $limit = (int) ($filters['limit'] ?? 10);
 
@@ -73,6 +79,13 @@ class AdminReportService
             ]);
 
         $totalOrders = (clone $orderQuery)->count();
+
+        $totalSubOrders = DB::table('sub_orders as so')
+            ->join('orders as o', 'o.id', '=', 'so.order_id')
+            ->whereNull('so.deleted_at')
+            ->whereNull('o.deleted_at')
+            ->whereBetween('o.created_at', [$startDate, $endDate])
+            ->count();
 
         $completedOrders = (clone $orderQuery)
             ->where('status', 3)
@@ -137,6 +150,8 @@ class AdminReportService
             'revenue' => $revenue,
 
             'total_orders' => $totalOrders,
+
+            'total_sub_orders' => $totalSubOrders,
 
             'paid_orders' => $paidOrders,
 
@@ -252,6 +267,31 @@ class AdminReportService
             }
         }
 
+        $subOrders = DB::table('sub_orders as so')
+            ->join('orders as o', 'o.id', '=', 'so.order_id')
+            ->select([
+                'so.created_at',
+                'so.status',
+            ])
+            ->whereNull('so.deleted_at')
+            ->whereNull('o.deleted_at')
+            ->whereBetween('so.created_at', [$startDate, $endDate])
+            ->get();
+
+        foreach ($subOrders as $subOrder) {
+            $key = $this->periodKey(Carbon::parse($subOrder->created_at), $groupBy);
+
+            if (isset($series[$key])) {
+                $series[$key]['sub_orders']++;
+
+                match ((int) $subOrder->status) {
+                    3 => $series[$key]['completed_sub_orders']++,
+                    4 => $series[$key]['cancelled_sub_orders']++,
+                    default => $series[$key]['processing_sub_orders']++,
+                };
+            }
+        }
+
         /*
          * Người dùng mới.
          */
@@ -285,7 +325,33 @@ class AdminReportService
         Carbon $endDate,
         int $limit
     ): array {
+        $validCertificates = DB::table('product_certificates')
+            ->select('product_id')
+            ->whereNull('deleted_at')
+            ->where('status', 1)
+            ->whereDate('expiry_date', '>=', today())
+            ->groupBy('product_id');
+
         return DB::table('order_items as oi')
+            ->leftJoin(
+                'products as p',
+                'p.id',
+                '=',
+                'oi.product_id'
+            )
+            ->leftJoin(
+                'farms as f',
+                'f.id',
+                '=',
+                'p.farm_id'
+            )
+            ->leftJoinSub(
+                $validCertificates,
+                'valid_certificates',
+                'valid_certificates.product_id',
+                '=',
+                'p.id'
+            )
             ->join(
                 'sub_orders as so',
                 'so.id',
@@ -317,6 +383,13 @@ class AdminReportService
                 'oi.product_name',
                 'oi.product_image',
                 'oi.unit',
+                'p.id as current_product_id',
+                'p.slug as product_slug',
+                'p.status as product_status',
+                'p.deleted_at as product_deleted_at',
+                'f.status as farm_status',
+                'f.deleted_at as farm_deleted_at',
+                'valid_certificates.product_id as valid_certificate_product_id',
             ])
             ->selectRaw(
                 'SUM(oi.quantity) as quantity_sold'
@@ -332,6 +405,13 @@ class AdminReportService
                 'oi.product_name',
                 'oi.product_image',
                 'oi.unit',
+                'p.id',
+                'p.slug',
+                'p.status',
+                'p.deleted_at',
+                'f.status',
+                'f.deleted_at',
+                'valid_certificates.product_id',
             ])
             ->orderByDesc('quantity_sold')
             ->limit($limit)
@@ -341,6 +421,16 @@ class AdminReportService
                     'product_id' => $item->product_id,
                     'product_name' => $item->product_name,
                     'product_image' => $item->product_image,
+                    'product_slug' => $item->product_slug,
+                    'current_product_exists' =>
+                    $item->current_product_id !== null,
+                    'is_publicly_visible' =>
+                    $item->product_slug !== null
+                    && (int) $item->product_status === 1
+                    && $item->product_deleted_at === null
+                    && (int) $item->farm_status === 1
+                    && $item->farm_deleted_at === null
+                    && $item->valid_certificate_product_id !== null,
                     'unit' => $item->unit,
 
                     'quantity_sold' =>
@@ -470,6 +560,8 @@ class AdminReportService
                 'f.name',
                 'f.slug',
                 'f.logo',
+                'f.status',
+                'f.deleted_at',
             ])
             ->selectRaw(
                 'SUM(so.items_total) as items_revenue'
@@ -488,6 +580,8 @@ class AdminReportService
                 'f.name',
                 'f.slug',
                 'f.logo',
+                'f.status',
+                'f.deleted_at',
             ])
             ->orderByDesc('total_revenue')
             ->limit($limit)
@@ -498,6 +592,8 @@ class AdminReportService
                     'farm_name' => $item->name,
                     'slug' => $item->slug,
                     'logo' => $item->logo,
+                    'status' => (int) $item->status,
+                    'deleted_at' => $item->deleted_at,
 
                     'items_revenue' =>
                     (float) $item->items_revenue,
@@ -524,12 +620,14 @@ class AdminReportService
         $series = [];
 
         $cursor = match ($groupBy) {
+            'week' => $startDate->copy()->startOfWeek(Carbon::MONDAY),
             'month' => $startDate->copy()->startOfMonth(),
             'year' => $startDate->copy()->startOfYear(),
             default => $startDate->copy()->startOfDay(),
         };
 
         $lastDate = match ($groupBy) {
+            'week' => $endDate->copy()->startOfWeek(Carbon::MONDAY),
             'month' => $endDate->copy()->startOfMonth(),
             'year' => $endDate->copy()->startOfYear(),
             default => $endDate->copy()->startOfDay(),
@@ -552,12 +650,17 @@ class AdminReportService
                 'revenue' => 0,
                 'paid_orders' => 0,
                 'orders' => 0,
+                'sub_orders' => 0,
                 'completed_orders' => 0,
                 'cancelled_orders' => 0,
+                'processing_sub_orders' => 0,
+                'completed_sub_orders' => 0,
+                'cancelled_sub_orders' => 0,
                 'new_users' => 0,
             ];
 
             $cursor = match ($groupBy) {
+                'week' => $cursor->copy()->addWeek(),
                 'month' => $cursor->copy()->addMonth(),
                 'year' => $cursor->copy()->addYear(),
                 default => $cursor->copy()->addDay(),
@@ -572,6 +675,9 @@ class AdminReportService
         string $groupBy
     ): string {
         return match ($groupBy) {
+            'week' => $date->copy()
+                ->startOfWeek(Carbon::MONDAY)
+                ->format('Y-m-d'),
             'month' => $date->format('Y-m'),
             'year' => $date->format('Y'),
             default => $date->format('Y-m-d'),
@@ -583,6 +689,7 @@ class AdminReportService
         string $groupBy
     ): string {
         return match ($groupBy) {
+            'week' => 'Tuần ' . $date->format('d/m'),
             'month' => $date->format('m/Y'),
             'year' => $date->format('Y'),
             default => $date->format('d/m'),
@@ -595,8 +702,12 @@ class AdminReportService
     ): string {
         $days = $startDate->diffInDays($endDate);
 
-        if ($days <= 60) {
+        if ($days <= 31) {
             return 'day';
+        }
+
+        if ($days <= 180) {
+            return 'week';
         }
 
         if ($days <= 730) {
@@ -604,5 +715,31 @@ class AdminReportService
         }
 
         return 'year';
+    }
+
+    /**
+     * Giữ số điểm trên biểu đồ ở mức dễ đọc, kể cả khi người dùng
+     * chọn kiểu nhóm quá chi tiết cho một khoảng thời gian rất dài.
+     */
+    private function capGroupByForRange(
+        string $groupBy,
+        Carbon $startDate,
+        Carbon $endDate
+    ): string {
+        $days = $startDate->diffInDays($endDate);
+
+        if ($groupBy === 'day' && $days > 92) {
+            return $days <= 365 ? 'week' : 'month';
+        }
+
+        if ($groupBy === 'week' && $days > 730) {
+            return 'month';
+        }
+
+        if ($groupBy === 'month' && $days > 3650) {
+            return 'year';
+        }
+
+        return $groupBy;
     }
 }

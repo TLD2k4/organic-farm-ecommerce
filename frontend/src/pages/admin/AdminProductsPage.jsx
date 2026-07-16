@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
   FileClock,
@@ -17,31 +18,11 @@ import AdminProductsFilter from "@/components/ui/admin/products/AdminProductsFil
 import AdminProductsTable from "@/components/ui/admin/products/AdminProductsTable";
 import AdminProductDrawer from "@/components/ui/admin/products/AdminProductDrawer";
 import AdminProductRejectModal from "@/components/ui/admin/products/AdminProductRejectModal";
-
-function getErrorMessage(error) {
-  const errorData = error?.response?.data ?? error;
-  const errors = errorData?.errors;
-
-  if (errors && typeof errors === "object") {
-    const firstMessages = Object.values(errors)[0];
-
-    if (Array.isArray(firstMessages)) {
-      return firstMessages[0];
-    }
-
-    if (typeof firstMessages === "string") {
-      return firstMessages;
-    }
-  }
-
-  return (
-    errorData?.message ||
-    errorData?.error ||
-    "Có lỗi xảy ra khi kiểm duyệt sản phẩm."
-  );
-}
+import { confirmAction, requestReason } from "@/utils/actionDialog";
+import { getApiErrorMessage as getErrorMessage } from "@/utils/apiError";
 
 export default function AdminProductsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     products,
     meta,
@@ -56,6 +37,8 @@ export default function AdminProductsPage() {
     getOptions,
     approveProduct,
     rejectProduct,
+    suspendProduct,
+    reopenProduct,
     approveCertificate,
     rejectCertificate,
     clearProduct,
@@ -78,6 +61,15 @@ export default function AdminProductsPage() {
   const [rejectContext, setRejectContext] = useState(null);
 
   const debouncedKeyword = useDebounce(params.keyword, 500);
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+
+    if (Number.isInteger(requestedId) && requestedId > 0) {
+      setSelectedProductId(requestedId);
+      setOpenDrawer(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     getOptions().catch((error) => {
@@ -121,6 +113,12 @@ export default function AdminProductsPage() {
     setOpenDrawer(false);
     setSelectedProductId(null);
     clearProduct();
+
+    if (searchParams.has("view")) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("view");
+      setSearchParams(nextParams, { replace: true });
+    }
   };
 
   const runAction = async (action) => {
@@ -174,6 +172,17 @@ export default function AdminProductsPage() {
       productId: product.id,
       productName: product.name,
     });
+  };
+
+  const handleSuspendProduct = async (product) => {
+    const reason = await requestReason({ title: `Đình chỉ ${product.name}`, description: "Người bán sẽ thấy admin thực hiện, thời gian và lý do.", placeholder: "Nhập lý do đình chỉ sản phẩm...", confirmLabel: "Đình chỉ" });
+    if (!reason) return null;
+    return runAction(() => suspendProduct(product.id, reason));
+  };
+
+  const handleReopenProduct = async (product) => {
+    if (!await confirmAction({ title: `Mở lại ${product.name}`, description: "Hệ thống sẽ kiểm tra trạng thái gian hàng và chứng chỉ trước khi mở bán.", confirmLabel: "Mở lại" })) return null;
+    return runAction(() => reopenProduct(product.id));
   };
 
   const openRejectCertificate = (
@@ -318,6 +327,8 @@ export default function AdminProductsPage() {
         meta={meta}
         params={params}
         setParams={setParams}
+        itemLabel="sản phẩm"
+        loading={listLoading}
       />
 
       <AdminProductDrawer
@@ -327,6 +338,8 @@ export default function AdminProductsPage() {
         onClose={closeDrawer}
         onApproveProduct={handleApproveProduct}
         onRejectProduct={openRejectProduct}
+        onSuspendProduct={handleSuspendProduct}
+        onReopenProduct={handleReopenProduct}
         onApproveCertificate={handleApproveCertificate}
         onRejectCertificate={openRejectCertificate}
       />

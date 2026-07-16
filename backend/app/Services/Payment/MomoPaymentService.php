@@ -20,15 +20,26 @@ class MomoPaymentService
         $redirectUrl = config('services.momo.redirect_url');
         $ipnUrl = config('services.momo.ipn_url');
 
-        if (!$endpoint || !$partnerCode || !$accessKey || !$secretKey) {
+        if (
+            !$endpoint ||
+            !$partnerCode ||
+            !$accessKey ||
+            !$secretKey ||
+            !$redirectUrl ||
+            !$ipnUrl
+        ) {
             throw ValidationException::withMessages([
-                'momo' => ['Chưa cấu hình MoMo.'],
+                'momo' => [
+                    'Chưa cấu hình đầy đủ MoMo (endpoint, khóa, redirect URL và IPN URL).'
+                ],
             ]);
         }
 
         $amount = (string) (int) round((float) $order->grand_total);
-        $orderId = $order->order_code;
         $requestId = $order->payment?->transaction_code ?: uniqid('MOMO_');
+        // MoMo không cho tạo lại giao dịch với orderId cũ. Dùng mã giao dịch
+        // riêng cho từng lần thử, còn mã đơn thật vẫn nằm trong orderInfo.
+        $orderId = $requestId;
         $orderInfo = 'Thanh toán đơn hàng ' . $order->order_code;
         $extraData = '';
 

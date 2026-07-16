@@ -13,14 +13,19 @@ class Review extends Model
     protected $fillable = [
         'user_id',
         'order_item_id',
+        'product_id',
         'rating',
         'comment',
         'status',
+        'moderated_by',
+        'moderated_at',
+        'moderation_reason',
     ];
 
     protected $casts = [
         'rating' => 'integer',
         'status' => 'integer',
+        'moderated_at' => 'datetime',
     ];
 
     public function user()
@@ -31,5 +36,20 @@ class Review extends Model
     public function orderItem()
     {
         return $this->belongsTo(OrderItem::class);
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function moderator()
+    {
+        return $this->belongsTo(User::class, 'moderated_by')->withTrashed();
+    }
+
+    public function replies()
+    {
+        return $this->hasMany(ReviewReply::class)->oldest();
     }
 }

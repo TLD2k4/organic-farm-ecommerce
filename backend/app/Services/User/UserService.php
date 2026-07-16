@@ -30,7 +30,7 @@ class UserService
     public function formatUser(User $user): array
     {
         $user->loadMissing([
-            'farm',
+            'farm' => fn ($query) => $query->withTrashed(),
             'roles',
         ]);
 

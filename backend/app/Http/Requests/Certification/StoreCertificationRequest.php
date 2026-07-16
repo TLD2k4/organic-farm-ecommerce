@@ -13,22 +13,32 @@ class StoreCertificationRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ($this->filled('name')) {
+        $data = [];
 
-            $name = preg_replace('/\s+/u', ' ', trim($this->name));
+        if ($this->has('name')) {
+            $data['name'] = preg_replace(
+                '/\s+/u',
+                ' ',
+                trim((string) $this->input('name'))
+            );
+        }
 
-            $this->merge([
-                'name' => $name,
-            ]);
+        if ($this->has('description')) {
+            $description = trim((string) $this->input('description', ''));
+            $data['description'] = $description !== '' ? $description : null;
+        }
+
+        if ($data !== []) {
+            $this->merge($data);
         }
     }
 
     public function rules(): array
     {
         return [
-            'name' => 'required|string|max:25|unique:certifications,name',
-            'description' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:0,1',
+            'name' => ['bail', 'required', 'string', 'min:2', 'max:25', 'unique:certifications,name'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'status' => ['nullable', 'integer', 'in:0,1'],
         ];
     }
 
@@ -36,11 +46,16 @@ class StoreCertificationRequest extends FormRequest
     {
         return [
             'name.required' => 'Tên chứng chỉ không được để trống.',
+            'name.string' => 'Tên chứng chỉ phải là chuỗi ký tự.',
+            'name.min' => 'Tên chứng chỉ phải có ít nhất 2 ký tự.',
+            'name.max' => 'Tên chứng chỉ tối đa 25 ký tự.',
             'name.unique' => 'Tên chứng chỉ đã tồn tại.',
-            'name.max' => 'Tên tối đa 25 ký tự.',
 
+            'description.string' => 'Mô tả phải là chuỗi ký tự.',
             'description.max' => 'Mô tả tối đa 1000 ký tự.',
-            'status.in' => 'Trạng thái không hợp lệ (0 hoặc 1).',
+
+            'status.integer' => 'Trạng thái không hợp lệ.',
+            'status.in' => 'Trạng thái chỉ được là 0 (ẩn) hoặc 1 (hiển thị).',
         ];
     }
 }

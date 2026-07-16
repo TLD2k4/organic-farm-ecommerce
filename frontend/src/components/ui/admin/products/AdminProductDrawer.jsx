@@ -7,6 +7,8 @@ import {
   FileCheck2,
   FileText,
   ImageIcon,
+  LockKeyhole,
+  LockKeyholeOpen,
   Package,
   Store,
   User,
@@ -107,6 +109,8 @@ export default function AdminProductDrawer({
   onClose,
   onApproveProduct,
   onRejectProduct,
+  onSuspendProduct,
+  onReopenProduct,
   onApproveCertificate,
   onRejectCertificate,
 }) {
@@ -218,6 +222,20 @@ export default function AdminProductDrawer({
                     </button>
                   </div>
                 )}
+
+                {!canReviewProduct && !product.deleted_at && [1, 3].includes(Number(product.status)) && (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    {product.admin_locked_at ? (
+                      <button type="button" disabled={actionLoading} onClick={() => onReopenProduct(product)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 font-semibold text-white hover:bg-green-700 disabled:opacity-60">
+                        <LockKeyholeOpen size={17} /> Mở lại sản phẩm
+                      </button>
+                    ) : (
+                      <button type="button" disabled={actionLoading} onClick={() => onSuspendProduct(product)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+                        <LockKeyhole size={17} /> Đình chỉ sản phẩm
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <section>
@@ -327,6 +345,14 @@ export default function AdminProductDrawer({
                     <p className="mt-1 whitespace-pre-wrap wrap-break-word">
                       {product.rejection_reason}
                     </p>
+                  </div>
+                )}
+
+                {product.admin_locked_at && (
+                  <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-red-700">
+                    <p className="font-bold">Sản phẩm bị đình chỉ</p>
+                    <p className="mt-1 whitespace-pre-wrap wrap-break-word">{product.admin_lock_reason || "Không có lý do."}</p>
+                    <p className="mt-2 text-sm font-semibold">Bởi {product.admin_locker?.name || "Quản trị viên"} · {formatDate(product.admin_locked_at)}</p>
                   </div>
                 )}
 

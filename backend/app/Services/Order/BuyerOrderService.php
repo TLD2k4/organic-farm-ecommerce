@@ -2,16 +2,88 @@
 
 namespace App\Services\Order;
 
+use App\Models\Farm;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\SubOrder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Services\Payment\MomoPaymentService;
 
 class BuyerOrderService
 {
     public function __construct(
         private InventoryService $inventoryService,
+        private MomoPaymentService $momoPaymentService,
     ) {
+    }
+
+    public function retryMomoPayment(int $userId, int $orderId): array
+    {
+        $order = Order::with(['payment', 'subOrders'])->where('user_id', $userId)->findOrFail($orderId);
+        if (!$order->payment || $order->payment->payment_method !== 'MOMO') {
+            throw ValidationException::withMessages(['payment' => ['Đơn hàng không sử dụng MoMo.']]);
+        }
+        if ((int) $order->payment->status === 1) {
+            throw ValidationException::withMessages(['payment' => ['Đơn hàng đã được thanh toán.']]);
+        }
+        $this->ensurePaymentMethodCanChange($order);
+
+        $order->payment->update([
+            'status' => 0,
+            'transaction_code' => 'PAY' . now()->format('YmdHis') . random_int(1000, 9999),
+        ]);
+        return $this->momoPaymentService->createPayment($order->fresh('payment'));
+    }
+
+    public function changePendingPaymentMethod(int $userId, int $orderId, string $paymentMethod): array
+    {
+        $order = Order::with(['payment', 'subOrders'])
+            ->where('user_id', $userId)
+            ->findOrFail($orderId);
+
+        $this->ensurePaymentMethodCanChange($order);
+
+        $paymentMethod = strtoupper($paymentMethod);
+        if (!in_array($paymentMethod, ['COD', 'MOMO'], true)) {
+            throw ValidationException::withMessages(['payment_method' => ['Phương thức thanh toán không hợp lệ.']]);
+        }
+
+        if ($order->payment->payment_method === $paymentMethod) {
+            throw ValidationException::withMessages(['payment_method' => ['Đơn hàng đang sử dụng phương thức này.']]);
+        }
+
+        $order->payment->update([
+            'payment_method' => $paymentMethod,
+            'status' => 0,
+            'paid_at' => null,
+            'transaction_code' => 'PAY' . now()->format('YmdHis') . random_int(1000, 9999),
+        ]);
+        $order->subOrders()->update(['payment_status' => 0]);
+
+        $momo = $paymentMethod === 'MOMO'
+            ? $this->momoPaymentService->createPayment($order->fresh('payment'))
+            : [];
+
+        return [
+            'order' => $this->getBuyerOrder($userId, $orderId),
+            'payment_url' => $momo['payment_url'] ?? null,
+            'deeplink' => $momo['deeplink'] ?? null,
+            'qr_code_url' => $momo['qr_code_url'] ?? null,
+        ];
+    }
+
+    private function ensurePaymentMethodCanChange(Order $order): void
+    {
+        if (!$order->payment) {
+            throw ValidationException::withMessages(['payment' => ['Đơn hàng chưa có thông tin thanh toán.']]);
+        }
+        if ((int) $order->payment->status === 1) {
+            throw ValidationException::withMessages(['payment' => ['Thanh toán online đã thành công nên không thể đổi phương thức.']]);
+        }
+        if ((int) $order->status !== 0 || $order->subOrders->contains(fn ($subOrder) => (int) $subOrder->status !== 0)) {
+            throw ValidationException::withMessages(['order' => ['Chỉ được đổi phương thức khi toàn bộ đơn vẫn chờ xác nhận.']]);
+        }
     }
 
     /**
@@ -22,7 +94,10 @@ class BuyerOrderService
         $query = Order::with([
             'payment',
             'subOrders.farm',
-            'subOrders.items',
+            'subOrders.items.product.farm',
+            'subOrders.items.product.approvedCertificate',
+            'cancelledBy',
+            'subOrders.cancelledBy',
         ])
             ->where('user_id', $userId);
 
@@ -89,7 +164,8 @@ class BuyerOrderService
             'address',
             'payment',
             'subOrders.farm',
-            'subOrders.items.product',
+            'subOrders.items.product.farm',
+            'subOrders.items.product.approvedCertificate',
             'subOrders.items.orderItemLots.harvestLot',
         ])
             ->where('id', $orderId)
@@ -151,12 +227,18 @@ class BuyerOrderService
                         'status' => 4,
                         'payment_status' => ((int) $subOrder->payment_status === 1) ? 3 : 2,
                         'seller_note' => $cancelReason ?? $subOrder->seller_note,
+                        'cancelled_by' => $userId,
+                        'cancelled_at' => now(),
+                        'cancel_reason' => $cancelReason,
                     ]);
                 }
             }
 
             $order->update([
                 'status' => 4,
+                'cancelled_by' => $userId,
+                'cancelled_at' => now(),
+                'cancel_reason' => $cancelReason,
             ]);
 
             if ($order->payment) {
@@ -177,6 +259,17 @@ class BuyerOrderService
      */
     private function validateCanCancel(Order $order): void
     {
+        $isPaidMomo = strtolower((string) $order->payment?->payment_method) === 'momo'
+            && (int) $order->payment?->status === 1;
+
+        if ($isPaidMomo) {
+            throw ValidationException::withMessages([
+                'payment' => [
+                    'Đơn MoMo đã thanh toán không thể hủy trực tiếp. Vui lòng gửi yêu cầu hoàn tiền để quản trị viên xử lý với cổng thanh toán.'
+                ],
+            ]);
+        }
+
         $statuses = $order->subOrders
             ->pluck('status')
             ->map(fn ($status) => (int) $status);
@@ -244,7 +337,8 @@ class BuyerOrderService
         $order->loadMissing([
             'payment',
             'subOrders.farm',
-            'subOrders.items',
+            'subOrders.items.product.farm',
+            'subOrders.items.product.approvedCertificate',
         ]);
 
         return [
@@ -262,6 +356,11 @@ class BuyerOrderService
             'status' => (int) $order->status,
             'status_text' => $this->getOrderStatusText((int) $order->status),
             'status_class' => $this->getOrderStatusClass((int) $order->status),
+            'cancellation' => $order->cancelled_at ? [
+                'reason' => $order->cancel_reason,
+                'at' => optional($order->cancelled_at)->format('d/m/Y H:i'),
+                'by' => $order->cancelledBy ? ['id' => $order->cancelledBy->id, 'name' => $order->cancelledBy->name] : null,
+            ] : null,
 
             'payment_method' => $order->payment?->payment_method,
             'payment_status' => (int) ($order->payment?->status ?? 0),
@@ -330,12 +429,7 @@ class BuyerOrderService
                             'price' => (float) $item->price,
                             'subtotal' => (float) $item->subtotal,
 
-                            'product' => $item->product ? [
-                                'id' => $item->product->id,
-                                'name' => $item->product->name,
-                                'thumbnail' => $item->product->thumbnail,
-                                'status' => (int) $item->product->status,
-                            ] : null,
+                            'product' => $this->formatProductReference($item->product),
 
                             'allocated_lots' => $item->orderItemLots
                                 ->map(function ($itemLot) {
@@ -364,7 +458,9 @@ class BuyerOrderService
     {
         $subOrder->loadMissing([
             'farm',
-            'items',
+            'items.product.farm',
+            'items.product.approvedCertificate',
+            'cancelledBy',
         ]);
 
         return [
@@ -373,6 +469,14 @@ class BuyerOrderService
 
             'farm_id' => $subOrder->farm_id,
             'farm_name' => $subOrder->farm?->name,
+            'farm' => $subOrder->farm ? [
+                'id' => $subOrder->farm->id,
+                'name' => $subOrder->farm->name,
+                'slug' => $subOrder->farm->slug,
+                'status' => (int) $subOrder->farm->status,
+                'is_publicly_visible' =>
+                    (int) $subOrder->farm->status === Farm::STATUS_ACTIVE,
+            ] : null,
 
             'items_total' => (float) $subOrder->items_total,
             'shipping_fee' => (float) $subOrder->shipping_fee,
@@ -381,6 +485,11 @@ class BuyerOrderService
             'status' => (int) $subOrder->status,
             'status_text' => $this->getSubOrderStatusText((int) $subOrder->status),
             'status_class' => $this->getOrderStatusClass((int) $subOrder->status),
+            'cancellation' => $subOrder->cancelled_at ? [
+                'reason' => $subOrder->cancel_reason,
+                'at' => optional($subOrder->cancelled_at)->format('d/m/Y H:i'),
+                'by' => $subOrder->cancelledBy ? ['id' => $subOrder->cancelledBy->id, 'name' => $subOrder->cancelledBy->name] : null,
+            ] : null,
 
             'payment_status' => (int) $subOrder->payment_status,
             'payment_status_text' => $this->getPaymentStatusText((int) $subOrder->payment_status),
@@ -404,9 +513,32 @@ class BuyerOrderService
                         'quantity' => (float) $item->quantity,
                         'price' => (float) $item->price,
                         'subtotal' => (float) $item->subtotal,
+                        'product' => $this->formatProductReference($item->product),
                     ];
                 })
                 ->values(),
+        ];
+    }
+
+    private function formatProductReference(?Product $product): ?array
+    {
+        if (!$product) {
+            return null;
+        }
+
+        $farm = $product->farm;
+        $isPubliclyVisible = (int) $product->status === 1
+            && $farm
+            && (int) $farm->status === Farm::STATUS_ACTIVE
+            && $product->approvedCertificate !== null;
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'thumbnail' => $product->thumbnail,
+            'status' => (int) $product->status,
+            'is_publicly_visible' => (bool) $isPubliclyVisible,
         ];
     }
 

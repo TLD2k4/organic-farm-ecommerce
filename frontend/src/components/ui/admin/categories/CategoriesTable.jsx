@@ -86,7 +86,7 @@ export default function CategoriesTable({
       "
     >
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px]">
+        <table className="w-full min-w-270">
           <thead className="bg-slate-100">
             <tr>
               <th className="whitespace-nowrap px-4 py-4 text-left text-sm font-bold">
@@ -163,13 +163,13 @@ export default function CategoriesTable({
                 </td>
 
                 <td className="px-4 py-4 font-semibold">
-                  <div className="max-w-[220px]">
+                  <div className="max-w-55">
                     {highlight(category.name, params.keyword)}
                   </div>
                 </td>
 
                 <td className="px-4 py-4 text-sm text-slate-500">
-                  <div className="max-w-[230px] wrap-break-word">
+                  <div className="max-w-57.5 wrap-break-word">
                     {highlight(category.slug, params.keyword)}
                   </div>
                 </td>

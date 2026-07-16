@@ -27,7 +27,7 @@ class RenewProductCertificateRequest extends FormRequest
 
             'certificate_file' => ['required', 'string', 'max:255'],
 
-            'issued_date' => ['required', 'date'],
+            'issued_date' => ['required', 'date', 'before_or_equal:today'],
             'expiry_date' => ['required', 'date', 'after:issued_date', 'after_or_equal:today'],
 
             'product_id' => ['prohibited'],
@@ -52,6 +52,7 @@ class RenewProductCertificateRequest extends FormRequest
 
             'issued_date.required' => 'Ngày cấp không được để trống.',
             'issued_date.date' => 'Ngày cấp không hợp lệ.',
+            'issued_date.before_or_equal' => 'Ngày cấp không được lớn hơn ngày hiện tại.',
 
             'expiry_date.required' => 'Ngày hết hạn không được để trống.',
             'expiry_date.date' => 'Ngày hết hạn không hợp lệ.',

@@ -3,10 +3,12 @@
 namespace App\Services\Dashboard;
 
 use App\Models\Farm;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\HarvestLot;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SellerDashboardService
 {
@@ -69,6 +71,14 @@ class SellerDashboardService
         $totalStock = Product::where('farm_id', $farm->id)
             ->sum('stock_quantity');
 
+        $availableLots = HarvestLot::whereHas('productCertificate.product', function ($query) use ($farm) {
+                $query->where('farm_id', $farm->id);
+            })
+            ->where('status', 1)
+            ->where('quantity_remaining', '>', 0)
+            ->whereDate('expiry_date', '>=', today())
+            ->count();
+
         $expiringLots = HarvestLot::whereHas('productCertificate', function ($query) use ($farm) {
                 $query->where('status', 1)
                     ->whereDate('expiry_date', '>=', today())
@@ -91,24 +101,29 @@ class SellerDashboardService
             ->whereDate('created_at', today())
             ->count();
 
-        $monthRevenue = DB::table('sub_orders')
-            ->where('farm_id', $farm->id)
-            ->where('status', 3)
-            ->whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
-            ->sum('total');
+        $currentMonthFrom = now()->startOfMonth();
+        $currentMonthTo = now()->endOfMonth();
+        $previousMonthFrom = now()->subMonthNoOverflow()->startOfMonth();
+        $previousMonthTo = $previousMonthFrom->copy()->endOfMonth();
 
-        $lastMonthRevenue = DB::table('sub_orders')
-            ->where('farm_id', $farm->id)
-            ->where('status', 3)
-            ->whereMonth('created_at', now()->subMonth()->month)
-            ->whereYear('created_at', now()->subMonth()->year)
-            ->sum('total');
+        $monthRevenue = (float) ($this->baseRevenueQuery(
+            $farm->id,
+            $currentMonthFrom,
+            $currentMonthTo
+        )->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')->value('total') ?? 0);
 
-        $revenueGrowth = 0;
+        $lastMonthRevenue = (float) ($this->baseRevenueQuery(
+            $farm->id,
+            $previousMonthFrom,
+            $previousMonthTo
+        )->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')->value('total') ?? 0);
+
+        $revenueGrowth = null;
 
         if ((float) $lastMonthRevenue > 0) {
             $revenueGrowth = round((($monthRevenue - $lastMonthRevenue) / $lastMonthRevenue) * 100, 1);
+        } elseif ((float) $monthRevenue <= 0) {
+            $revenueGrowth = 0;
         }
 
         return [
@@ -118,6 +133,7 @@ class SellerDashboardService
             'total_lots' => $totalLots,
             'new_lots' => $newLots,
             'total_stock' => (float) $totalStock,
+            'available_lots' => $availableLots,
 
             'pending_orders' => $pendingOrders,
             'new_orders' => $newOrders,
@@ -132,16 +148,21 @@ class SellerDashboardService
 
     private function getRevenueChart(Farm $farm): array
     {
+        $from = today()->subDays(6)->startOfDay();
+        $to = today()->endOfDay();
+        $dateColumn = $this->getRevenueDateColumn();
+        $rows = $this->baseRevenueQuery($farm->id, $from, $to)
+            ->selectRaw("DATE({$dateColumn}) as revenue_date")
+            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as revenue')
+            ->groupBy(DB::raw("DATE({$dateColumn})"))
+            ->orderBy('revenue_date')
+            ->get()
+            ->keyBy('revenue_date');
         $days = collect();
 
         for ($i = 6; $i >= 0; $i--) {
             $date = today()->subDays($i);
-
-            $revenue = DB::table('sub_orders')
-                ->where('farm_id', $farm->id)
-                ->where('status', 3)
-                ->whereDate('created_at', $date)
-                ->sum('total');
+            $revenue = (float) ($rows->get($date->toDateString())?->revenue ?? 0);
 
             $days->push([
                 'date' => $date->toDateString(),
@@ -165,6 +186,41 @@ class SellerDashboardService
         })->values()->toArray();
     }
 
+    private function baseRevenueQuery(int $farmId, Carbon $from, Carbon $to)
+    {
+        $dateColumn = $this->getRevenueDateColumn();
+
+        $query = OrderItem::query()
+            ->join('products', 'products.id', '=', 'order_items.product_id')
+            ->join('sub_orders', 'sub_orders.id', '=', 'order_items.sub_order_id')
+            ->join('orders', 'orders.id', '=', 'sub_orders.order_id')
+            ->where('sub_orders.farm_id', $farmId)
+            ->where('sub_orders.status', 3)
+            ->whereBetween($dateColumn, [
+                $from->copy()->startOfDay(),
+                $to->copy()->endOfDay(),
+            ]);
+
+        if (Schema::hasColumn('sub_orders', 'payment_status')) {
+            $query->whereIn('sub_orders.payment_status', [0, 1]);
+        }
+
+        return $query;
+    }
+
+    private function getRevenueDateColumn(): string
+    {
+        if (Schema::hasColumn('sub_orders', 'completed_at')) {
+            return 'sub_orders.completed_at';
+        }
+
+        if (Schema::hasColumn('sub_orders', 'delivered_at')) {
+            return 'sub_orders.delivered_at';
+        }
+
+        return 'sub_orders.updated_at';
+    }
+
     private function getOrderStatus(Farm $farm): array
     {
         $pending = DB::table('sub_orders')
@@ -175,6 +231,11 @@ class SellerDashboardService
         $shipping = DB::table('sub_orders')
             ->where('farm_id', $farm->id)
             ->where('status', 2)
+            ->count();
+
+        $processing = DB::table('sub_orders')
+            ->where('farm_id', $farm->id)
+            ->where('status', 1)
             ->count();
 
         $completed = DB::table('sub_orders')
@@ -188,8 +249,9 @@ class SellerDashboardService
             ->count();
 
         return [
-            'total' => $pending + $shipping + $completed + $cancelled,
+            'total' => $pending + $processing + $shipping + $completed + $cancelled,
             'pending' => $pending,
+            'processing' => $processing,
             'shipping' => $shipping,
             'completed' => $completed,
             'cancelled' => $cancelled,

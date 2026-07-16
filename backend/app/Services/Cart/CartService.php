@@ -5,11 +5,16 @@ namespace App\Services\Cart;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Services\Farm\SellerPolicyAccessService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CartService
 {
+    public function __construct(
+        private SellerPolicyAccessService $sellerPolicyAccessService,
+    ) {}
+
     /**
      * Lấy giỏ hàng của user
      */
@@ -191,6 +196,8 @@ class CartService
             ]);
         }
 
+        $this->sellerPolicyAccessService->ensureCanReceiveNewOrder($product->farm);
+
         if ($quantity <= 0) {
             throw ValidationException::withMessages([
                 'quantity' => ['Số lượng phải lớn hơn 0.'],
@@ -207,7 +214,7 @@ class CartService
             throw ValidationException::withMessages([
                 'quantity' => [
                     'Số lượng vượt quá tồn kho hiện có. Hiện còn '
-                    . $product->stock_quantity . ' ' . $product->unit . '.'
+                        . $product->stock_quantity . ' ' . $product->unit . '.'
                 ],
             ]);
         }
@@ -236,13 +243,22 @@ class CartService
             $itemsTotal += $subtotal;
             $itemsCount += 1;
 
+            $orderAvailability = $this->sellerPolicyAccessService
+                ->availability($product->farm);
+            $isAvailable = $this->isProductAvailable($product, $quantity);
+
             $items[] = [
                 'id' => $item->id,
                 'product_id' => $product->id,
+                'product_slug' => $product->slug,
                 'product_name' => $product->name,
                 'product_image' => $product->thumbnail,
+                'is_publicly_visible' => (int) $product->status === 1
+                    && (int) ($product->farm?->status ?? 0) === 1
+                    && $product->certificate !== null,
                 'farm_id' => $product->farm_id,
                 'farm_name' => $product->farm?->name,
+                'farm_slug' => $product->farm?->slug,
                 'unit' => $product->unit,
                 'price' => $price,
                 'original_price' => (float) $product->price,
@@ -252,7 +268,16 @@ class CartService
                 'quantity' => $quantity,
                 'stock_quantity' => (float) $product->stock_quantity,
                 'subtotal' => $subtotal,
-                'is_available' => $this->isProductAvailable($product, $quantity),
+                'is_available' => $isAvailable,
+                'farm_accepting_orders' => $orderAvailability['accepting_orders'],
+                'availability_reason' => $isAvailable
+                    ? null
+                    : $this->unavailableReason(
+                        $product,
+                        $quantity,
+                        $orderAvailability
+                    ),
+                'policy_version' => $orderAvailability['policy_version'],
             ];
         }
 
@@ -278,6 +303,36 @@ class CartService
     {
         return (int) $product->status === 1
             && $product->certificate !== null
-            && (float) $product->stock_quantity >= $quantity;
+            && (float) $product->stock_quantity >= $quantity
+            && $this->sellerPolicyAccessService
+                ->availability($product->farm)['accepting_orders'];
+    }
+
+    private function unavailableReason(
+        Product $product,
+        float $quantity,
+        array $orderAvailability
+    ): string {
+        if ((int) $product->status !== 1) {
+            return 'Sản phẩm hiện không được bán.';
+        }
+
+        if (!$product->certificate) {
+            return 'Sản phẩm chưa có chứng nhận hợp lệ.';
+        }
+
+        if (!$orderAvailability['accepting_orders']) {
+            return $orderAvailability['reason'];
+        }
+
+        if ((float) $product->stock_quantity <= 0) {
+            return 'Sản phẩm đã hết hàng.';
+        }
+
+        if ($quantity > (float) $product->stock_quantity) {
+            return 'Số lượng trong giỏ vượt quá tồn kho hiện có.';
+        }
+
+        return 'Sản phẩm hiện không thể thanh toán.';
     }
 }

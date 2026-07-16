@@ -29,7 +29,7 @@ class UploadFileRequest extends FormRequest
             'file' => [
                 'required',
                 'file',
-                'max:10240',
+                'max:5120',
                 "mimes:{$mimes}",
             ],
         ];
@@ -43,7 +43,7 @@ class UploadFileRequest extends FormRequest
 
             'file.required' => 'Vui lòng chọn file.',
             'file.file' => 'File upload không hợp lệ.',
-            'file.max' => 'File không được vượt quá 10MB.',
+            'file.max' => 'File không được vượt quá 5MB.',
             'file.mimes' => 'Định dạng file không hợp lệ.',
         ];
     }

@@ -112,6 +112,10 @@ class AdminDashboardService
                 'orders' => 0,
                 'completed_orders' => 0,
                 'cancelled_orders' => 0,
+                'sub_orders' => 0,
+                'processing_sub_orders' => 0,
+                'completed_sub_orders' => 0,
+                'cancelled_sub_orders' => 0,
             ];
         }
 
@@ -174,6 +178,40 @@ class AdminDashboardService
             if ((int) $order->status === 4) {
                 $series[$key]['cancelled_orders']++;
             }
+        }
+
+        /*
+         * Vận hành của sàn đa gian hàng phải tính theo đơn con.
+         * Một đơn tổng có thể đồng thời chứa gian hàng đang giao, đã hoàn
+         * thành và đã hủy nên không thể suy ra cơ cấu từ status đơn tổng.
+         */
+        $subOrders = DB::table('sub_orders')
+            ->select([
+                'created_at',
+                'status',
+            ])
+            ->whereNull('deleted_at')
+            ->whereBetween('created_at', [
+                $startDate,
+                $endDate,
+            ])
+            ->get();
+
+        foreach ($subOrders as $subOrder) {
+            $key = Carbon::parse($subOrder->created_at)
+                ->format('Y-m-d');
+
+            if (!isset($series[$key])) {
+                continue;
+            }
+
+            $series[$key]['sub_orders']++;
+
+            match ((int) $subOrder->status) {
+                3 => $series[$key]['completed_sub_orders']++,
+                4 => $series[$key]['cancelled_sub_orders']++,
+                default => $series[$key]['processing_sub_orders']++,
+            };
         }
 
         return array_values($series);

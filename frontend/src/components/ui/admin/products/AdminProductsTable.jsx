@@ -5,12 +5,17 @@ import {
   PackageCheck,
   X,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import ConfirmButton from "@/components/common/ConfirmButton";
 import StatusBadge from "@/components/common/StatusBadge";
 
 import { getImageUrl } from "@/utils/image";
 import { highlight } from "@/utils/highlight";
+import {
+  getAdminFarmLink,
+  getAdminProductLink,
+} from "@/utils/adminEntityLink";
 
 const productStatusConfig = {
   0: {
@@ -128,6 +133,8 @@ export default function AdminProductsTable({
           <tbody>
             {products.map((product) => {
               const latestCertificate = product.latest_certificate;
+              const productLink = getAdminProductLink(product);
+              const farmLink = getAdminFarmLink(product.farm);
               const canReviewProduct =
                 !product.deleted_at && Number(product.status) === 0;
 
@@ -153,9 +160,15 @@ export default function AdminProductsTable({
                       </div>
 
                       <div className="min-w-0">
-                        <p className="max-w-64 truncate font-bold text-slate-900">
-                          {highlight(product.name, keyword)}
-                        </p>
+                        {productLink?.isPublic ? (
+                          <Link to={productLink.to} title={productLink.title} className="block max-w-64 truncate font-bold text-slate-900 hover:text-green-700 hover:underline">
+                            {highlight(product.name, keyword)}
+                          </Link>
+                        ) : (
+                          <button type="button" title={productLink?.title} onClick={() => onView(product)} className="block max-w-64 truncate text-left font-bold text-slate-900 hover:text-sky-600 hover:underline">
+                            {highlight(product.name, keyword)}
+                          </button>
+                        )}
                         <p className="mt-1 text-xs text-slate-500">
                           {product.code} · #{product.id}
                         </p>
@@ -170,9 +183,15 @@ export default function AdminProductsTable({
 
                   <td className="px-4 py-4">
                     <div className="max-w-64">
-                      <p className="truncate font-semibold text-slate-800">
-                        {highlight(product.farm?.name || "—", keyword)}
-                      </p>
+                      {farmLink ? (
+                        <Link to={farmLink.to} title={farmLink.title} className={`block truncate font-semibold hover:underline ${farmLink.isPublic ? "text-slate-800 hover:text-green-700" : "text-slate-800 hover:text-sky-600"}`}>
+                          {highlight(product.farm?.name || "—", keyword)}
+                        </Link>
+                      ) : (
+                        <p className="truncate font-semibold text-slate-800">
+                          {highlight(product.farm?.name || "—", keyword)}
+                        </p>
+                      )}
                       <p className="mt-1 truncate text-sm text-slate-500">
                         {highlight(
                           product.farm?.seller?.name || "Chưa có seller",

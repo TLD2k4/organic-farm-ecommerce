@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
-  CalendarDays,
   DollarSign,
   Loader2,
   Package,
@@ -15,16 +15,17 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  ComposedChart,
+  Area,
+  AreaChart,
   Bar,
-  Line,
+  BarChart,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
 import sellerRevenueService from "../../services/sellerRevenueService";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 
 const DEFAULT_DATA = {
   farm: null,
@@ -32,6 +33,7 @@ const DEFAULT_DATA = {
     period: "30d",
     from: "",
     to: "",
+    group_by: "day",
   },
   summary: {
     total_revenue: 0,
@@ -50,6 +52,33 @@ const DEFAULT_DATA = {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+const CHART_METRICS = {
+  revenue: {
+    key: "revenue",
+    label: "Doanh thu",
+    totalLabel: "Tổng doanh thu",
+    color: "#059669",
+    background: "from-emerald-50/80",
+    emptyText: "Chưa có doanh thu trong khoảng thời gian này.",
+  },
+  orders: {
+    key: "order_count",
+    label: "Số đơn",
+    totalLabel: "Tổng đơn hoàn thành",
+    color: "#2563eb",
+    background: "from-blue-50/80",
+    emptyText: "Chưa có đơn hoàn thành trong khoảng thời gian này.",
+  },
+  sold: {
+    key: "sold_quantity",
+    label: "Số lượng bán",
+    totalLabel: "Tổng số lượng bán",
+    color: "#d97706",
+    background: "from-amber-50/80",
+    emptyText: "Chưa có sản phẩm được bán trong khoảng thời gian này.",
+  },
+};
 
 function formatCurrency(value = 0) {
   return (
@@ -110,6 +139,7 @@ export default function SellerRevenue() {
   const [report, setReport] = useState(DEFAULT_DATA);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [chartMetric, setChartMetric] = useState("revenue");
 
   const [filters, setFilters] = useState({
     period: "30d",
@@ -128,14 +158,14 @@ export default function SellerRevenue() {
       raw_date: item.raw_date || item.date || "",
       revenue: Number(item.revenue || item.total_revenue || 0),
       order_count: Number(
-        item.order_count || item.orders || item.total_orders || 0
+        item.order_count || item.orders || item.total_orders || 0,
       ),
       sold_quantity: Number(
         item.sold_quantity ||
           item.sold ||
           item.total_quantity ||
           item.quantity ||
-          0
+          0,
       ),
     }));
   }, [rawChart]);
@@ -147,13 +177,28 @@ export default function SellerRevenue() {
   const totalChartOrders = useMemo(() => {
     return chartData.reduce(
       (sum, item) => sum + Number(item.order_count || 0),
-      0
+      0,
     );
   }, [chartData]);
 
-  const hasSoldLine = useMemo(() => {
-    return chartData.some((item) => Number(item.sold_quantity || 0) > 0);
+  const totalChartSold = useMemo(() => {
+    return chartData.reduce(
+      (sum, item) => sum + Number(item.sold_quantity || 0),
+      0,
+    );
   }, [chartData]);
+
+  const selectedMetric = CHART_METRICS[chartMetric];
+  const selectedMetricTotal = chartMetric === "revenue"
+    ? totalChartRevenue
+    : chartMetric === "orders"
+      ? totalChartOrders
+      : totalChartSold;
+  const groupLabel = {
+    day: "ngày",
+    week: "tuần",
+    month: "tháng",
+  }[report.filters?.group_by] || "kỳ";
 
   const loadReport = async ({ silent = false } = {}) => {
     try {
@@ -167,7 +212,7 @@ export default function SellerRevenue() {
         period: filters.period,
         from: filters.from,
         to: filters.to,
-        limit: 10,
+        limit: 5,
       });
 
       setReport(getReportData(payload));
@@ -202,14 +247,14 @@ export default function SellerRevenue() {
 
   return (
     <div className="w-full max-w-full space-y-6 overflow-x-hidden">
-      <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-green-800 via-green-700 to-emerald-500 p-6 text-white shadow-sm">
+      <div className="min-w-0 overflow-hidden rounded-3xl bg-linear-to-br from-green-800 via-green-700 to-emerald-500 p-4 text-white shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
+          <div className="min-w-0">
             <p className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold uppercase tracking-wide">
               Seller Analytics
             </p>
 
-            <h1 className="mt-4 text-3xl font-extrabold">
+            <h1 className="mt-4 text-2xl font-extrabold sm:text-3xl">
               Thống kê doanh thu
             </h1>
 
@@ -219,9 +264,9 @@ export default function SellerRevenue() {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white/15 px-5 py-3 text-sm font-extrabold backdrop-blur">
+          <Link to="/seller/farm" className="max-w-full break-words rounded-2xl bg-white/15 px-5 py-3 text-sm font-extrabold backdrop-blur hover:bg-white/25 hover:underline">
             {report?.farm?.name || "Gian hàng của tôi"}
-          </div>
+          </Link>
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -253,7 +298,7 @@ export default function SellerRevenue() {
 
       <form
         onSubmit={handleSubmitFilter}
-        className="rounded-3xl bg-white p-5 shadow-sm"
+        className="min-w-0 rounded-3xl bg-white p-4 shadow-sm sm:p-5"
       >
         <div
           className={`grid min-w-0 gap-3 ${
@@ -262,25 +307,18 @@ export default function SellerRevenue() {
               : "lg:grid-cols-[220px_auto]"
           }`}
         >
-          <div className="relative">
-            <CalendarDays
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-
-            <select
-              value={filters.period}
-              onChange={(e) => updateFilter("period", e.target.value)}
-              className="h-12 w-full rounded-2xl border border-slate-200 pl-11 pr-4 text-sm font-bold outline-none focus:border-green-600"
-            >
-              <option value="today">Hôm nay</option>
-              <option value="7d">7 ngày gần đây</option>
-              <option value="30d">30 ngày gần đây</option>
-              <option value="month">Tháng này</option>
-              <option value="year">Năm nay</option>
-              <option value="custom">Tùy chọn</option>
-            </select>
-          </div>
+          <ResponsiveSelect
+            value={filters.period}
+            onChange={(value) => updateFilter("period", value)}
+            options={[
+              { value: "today", label: "Hôm nay" },
+              { value: "7d", label: "7 ngày gần đây" },
+              { value: "30d", label: "30 ngày gần đây" },
+              { value: "month", label: "Tháng này" },
+              { value: "year", label: "Năm nay" },
+              { value: "custom", label: "Tùy chọn" },
+            ]}
+          />
 
           {filters.period === "custom" && (
             <>
@@ -288,14 +326,14 @@ export default function SellerRevenue() {
                 type="date"
                 value={filters.from}
                 onChange={(e) => updateFilter("from", e.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
+                className="h-12 w-full min-w-0 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
               />
 
               <input
                 type="date"
                 value={filters.to}
                 onChange={(e) => updateFilter("to", e.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
+                className="h-12 w-full min-w-0 rounded-2xl border border-slate-200 px-4 text-sm font-bold outline-none focus:border-green-600"
               />
             </>
           )}
@@ -346,48 +384,63 @@ export default function SellerRevenue() {
       </div>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-6 shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-slate-950">
-                Biểu đồ doanh thu
+                Xu hướng theo thời gian
               </h2>
 
               <p className="mt-1 text-sm font-medium text-slate-500">
-                Doanh thu, số đơn và số lượng bán theo thời gian.
+                Dữ liệu tự động nhóm theo {groupLabel}; mỗi lần hiển thị một chỉ số.
               </p>
             </div>
 
             <div className="rounded-2xl bg-green-50 px-4 py-3 text-right">
               <p className="text-xs font-extrabold uppercase tracking-wide text-green-700">
-                Tổng trong kỳ
+                {selectedMetric.totalLabel}
               </p>
 
-              <p className="text-lg font-extrabold text-green-700">
-                {formatCurrency(totalChartRevenue)}
-              </p>
-
-              <p className="mt-1 text-xs font-bold text-slate-500">
-                {formatNumber(totalChartOrders)} đơn hoàn thành
+              <p className="mt-1 text-lg font-extrabold text-green-700">
+                {chartMetric === "revenue"
+                  ? formatCurrency(selectedMetricTotal)
+                  : formatNumber(selectedMetricTotal)}
               </p>
             </div>
           </div>
 
-          {chartData.length === 0 || totalChartRevenue <= 0 ? (
+          <div className="mb-5 flex flex-wrap gap-2">
+            {Object.entries(CHART_METRICS).map(([key, metric]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setChartMetric(key)}
+                className={`rounded-xl px-4 py-2.5 text-sm font-extrabold transition ${
+                  chartMetric === key
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {metric.label}
+              </button>
+            ))}
+          </div>
+
+          {chartData.length === 0 || selectedMetricTotal <= 0 ? (
             <EmptyBox
               icon={BarChart3}
-              title="Chưa có doanh thu"
-              text="Chưa có đơn hàng hoàn thành trong khoảng thời gian này."
+              title={`Chưa có ${selectedMetric.label.toLowerCase()}`}
+              text={selectedMetric.emptyText}
             />
           ) : (
-            <RevenueComposedChart
+            <SellerMetricChart
               chartData={chartData}
-              hasSoldLine={hasSoldLine}
+              metricKey={chartMetric}
             />
           )}
         </div>
 
-        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-6 shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-3xl bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-slate-950">
@@ -428,20 +481,26 @@ export default function SellerRevenue() {
 }
 
 function HeroMetric({ label, value, percent }) {
+  const hasComparison = percent !== null && percent !== undefined;
   const percentNumber = Number(percent || 0);
-  const positive = percentNumber >= 0;
+  const positive = percentNumber > 0;
   const Icon = positive ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+    <div className="min-w-0 rounded-2xl bg-white/15 p-4 backdrop-blur">
       <p className="text-sm font-bold text-green-50">{label}</p>
 
-      <p className="mt-2 text-2xl font-extrabold text-white">{value}</p>
+      <p className="mt-2 break-words text-xl font-extrabold text-white sm:text-2xl">
+        {value}
+      </p>
 
-      <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold">
-        <Icon size={14} />
-        {positive ? "+" : ""}
-        {percentNumber}% so với kỳ trước
+      <div className="mt-3 inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-extrabold">
+        {hasComparison && percentNumber !== 0 && <Icon size={14} />}
+        {!hasComparison
+          ? "Mới trong kỳ này"
+          : percentNumber === 0
+            ? "Không đổi so với kỳ trước"
+            : `${positive ? "+" : ""}${percentNumber}% so với kỳ trước`}
       </div>
     </div>
   );
@@ -449,14 +508,16 @@ function HeroMetric({ label, value, percent }) {
 
 function StatCard({ icon: Icon, label, value, subText }) {
   return (
-    <div className="rounded-3xl bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-3xl bg-white p-4 shadow-sm sm:p-5">
       <div className="grid h-12 w-12 place-items-center rounded-2xl bg-green-50 text-green-700">
         <Icon size={23} />
       </div>
 
       <p className="mt-4 text-sm font-bold text-slate-500">{label}</p>
 
-      <p className="mt-2 text-2xl font-extrabold text-slate-950">{value}</p>
+      <p className="mt-2 break-words text-xl font-extrabold text-slate-950 sm:text-2xl">
+        {value}
+      </p>
 
       <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
         {subText}
@@ -465,169 +526,78 @@ function StatCard({ icon: Icon, label, value, subText }) {
   );
 }
 
-function RevenueComposedChart({ chartData, hasSoldLine }) {
-  const xInterval = chartData.length > 16 ? Math.ceil(chartData.length / 10) : 0;
+function SellerMetricChart({ chartData, metricKey }) {
+  const metric = CHART_METRICS[metricKey];
+  const xInterval =
+    chartData.length > 16 ? Math.ceil(chartData.length / 10) : 0;
+  const commonXAxis = {
+    dataKey: "label",
+    interval: xInterval,
+    tick: {
+      fill: "#64748b",
+      fontSize: 12,
+      fontWeight: 800,
+    },
+    axisLine: false,
+    tickLine: false,
+    minTickGap: 10,
+  };
+  const commonYAxis = {
+    tickFormatter: formatCompactCurrency,
+    tick: {
+      fill: "#64748b",
+      fontSize: 12,
+      fontWeight: 800,
+    },
+    axisLine: false,
+    tickLine: false,
+    width: 56,
+    allowDecimals: metricKey !== "orders",
+  };
 
   return (
-    <div className="h-[430px] w-full rounded-3xl bg-gradient-to-b from-green-50/80 to-white p-4">
+    <div className={`h-100 w-full min-w-0 rounded-3xl bg-linear-to-b ${metric.background} to-white p-1 sm:h-107.5 sm:p-4`}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={chartData}
-          margin={{
-            top: 20,
-            right: 20,
-            left: 10,
-            bottom: 10,
-          }}
-        >
-          <defs>
-            <linearGradient id="revenueBar" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#059669" stopOpacity={0.95} />
-              <stop offset="100%" stopColor="#86efac" stopOpacity={0.85} />
-            </linearGradient>
-          </defs>
-
-          <CartesianGrid
-            strokeDasharray="5 5"
-            stroke="#d8eadc"
-            vertical={false}
-          />
-
-          <XAxis
-            dataKey="label"
-            interval={xInterval}
-            tick={{
-              fill: "#64748b",
-              fontSize: 12,
-              fontWeight: 800,
-            }}
-            axisLine={false}
-            tickLine={false}
-            minTickGap={10}
-          />
-
-          <YAxis
-            yAxisId="money"
-            tickFormatter={formatCompactCurrency}
-            tick={{
-              fill: "#64748b",
-              fontSize: 12,
-              fontWeight: 800,
-            }}
-            axisLine={false}
-            tickLine={false}
-            width={64}
-          />
-
-          <YAxis
-            yAxisId="count"
-            orientation="right"
-            allowDecimals={false}
-            tick={{
-              fill: "#94a3b8",
-              fontSize: 12,
-              fontWeight: 800,
-            }}
-            axisLine={false}
-            tickLine={false}
-            width={42}
-          />
-
-          <Tooltip content={<RevenueTooltip hasSoldLine={hasSoldLine} />} />
-
-          <Legend
-            verticalAlign="top"
-            align="right"
-            wrapperStyle={{
-              paddingBottom: 16,
-              fontWeight: 800,
-              fontSize: 13,
-            }}
-          />
-
-          <Bar
-            yAxisId="money"
-            dataKey="revenue"
-            name="Doanh thu"
-            fill="url(#revenueBar)"
-            radius={[12, 12, 0, 0]}
-            maxBarSize={36}
-          />
-
-          <Line
-            yAxisId="count"
-            type="monotone"
-            dataKey="order_count"
-            name="Số đơn"
-            stroke="#0f766e"
-            strokeWidth={3}
-            dot={{
-              r: 4,
-              fill: "#0f766e",
-              strokeWidth: 2,
-              stroke: "#ffffff",
-            }}
-            activeDot={{
-              r: 7,
-            }}
-          />
-
-          {hasSoldLine && (
-            <Line
-              yAxisId="count"
-              type="monotone"
-              dataKey="sold_quantity"
-              name="SL bán"
-              stroke="#f59e0b"
-              strokeWidth={3}
-              dot={{
-                r: 4,
-                fill: "#f59e0b",
-                strokeWidth: 2,
-                stroke: "#ffffff",
-              }}
-              activeDot={{
-                r: 7,
-              }}
-            />
-          )}
-        </ComposedChart>
+        {metricKey === "revenue" ? (
+          <AreaChart data={chartData} margin={{ top: 20, right: 4, left: -20, bottom: 10 }}>
+            <defs>
+              <linearGradient id="sellerRevenueArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={metric.color} stopOpacity={0.42} />
+                <stop offset="100%" stopColor={metric.color} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="5 5" stroke="#d8eadc" vertical={false} />
+            <XAxis {...commonXAxis} />
+            <YAxis {...commonYAxis} />
+            <Tooltip content={<MetricTooltip metricKey={metricKey} />} />
+            <Area type="monotone" dataKey={metric.key} name={metric.label} stroke={metric.color} strokeWidth={3} fill="url(#sellerRevenueArea)" activeDot={{ r: 6, fill: metric.color, stroke: "white", strokeWidth: 3 }} />
+          </AreaChart>
+        ) : (
+          <BarChart data={chartData} margin={{ top: 20, right: 4, left: -20, bottom: 10 }}>
+            <CartesianGrid strokeDasharray="5 5" stroke="#dbe4ee" vertical={false} />
+            <XAxis {...commonXAxis} />
+            <YAxis {...commonYAxis} />
+            <Tooltip content={<MetricTooltip metricKey={metricKey} />} cursor={{ fill: "#e2e8f0", opacity: 0.5 }} />
+            <Bar dataKey={metric.key} name={metric.label} fill={metric.color} radius={[10, 10, 0, 0]} maxBarSize={38} />
+          </BarChart>
+        )}
       </ResponsiveContainer>
     </div>
   );
 }
 
-function RevenueTooltip({ active, payload, label, hasSoldLine }) {
+function MetricTooltip({ active, payload, label, metricKey }) {
   if (!active || !payload?.length) return null;
-
-  const revenue = payload.find((item) => item.dataKey === "revenue")?.value || 0;
-  const orders =
-    payload.find((item) => item.dataKey === "order_count")?.value || 0;
-  const sold =
-    payload.find((item) => item.dataKey === "sold_quantity")?.value || 0;
+  const metric = CHART_METRICS[metricKey];
+  const value = payload.find((item) => item.dataKey === metric.key)?.value || 0;
 
   return (
-    <div className="rounded-2xl border border-green-100 bg-white px-4 py-3 shadow-xl">
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xl">
       <p className="mb-2 text-sm font-extrabold text-slate-950">{label}</p>
-
-      <div className="space-y-1 text-sm font-bold">
-        <p className="flex items-center justify-between gap-6 text-green-700">
-          <span>Doanh thu</span>
-          <span>{formatCurrency(revenue)}</span>
-        </p>
-
-        <p className="flex items-center justify-between gap-6 text-teal-700">
-          <span>Số đơn</span>
-          <span>{formatNumber(orders)} đơn</span>
-        </p>
-
-        {hasSoldLine && (
-          <p className="flex items-center justify-between gap-6 text-amber-600">
-            <span>SL bán</span>
-            <span>{formatNumber(sold)} sp</span>
-          </p>
-        )}
-      </div>
+      <p className="flex items-center justify-between gap-6 text-sm font-bold" style={{ color: metric.color }}>
+        <span>{metric.label}</span>
+        <span>{metricKey === "revenue" ? formatCurrency(value) : formatNumber(value)}</span>
+      </p>
     </div>
   );
 }
@@ -656,9 +626,12 @@ function TopProductItem({ product, index }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-extrabold text-slate-950">
+          <Link
+            to={`/seller/products?view=${product.id}`}
+            className="break-words font-extrabold text-slate-950 hover:text-green-700 hover:underline"
+          >
             {product.name}
-          </h3>
+          </Link>
 
           <p className="mt-1 text-sm font-semibold text-slate-500">
             Đã bán: {formatNumber(product.sold_quantity)} {product.unit || ""}
@@ -720,8 +693,8 @@ function SellerRevenueSkeleton() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <div className="h-[520px] animate-pulse rounded-3xl bg-white shadow-sm" />
-        <div className="h-[520px] animate-pulse rounded-3xl bg-white shadow-sm" />
+        <div className="h-130 animate-pulse rounded-3xl bg-white shadow-sm" />
+        <div className="h-130 animate-pulse rounded-3xl bg-white shadow-sm" />
       </div>
     </div>
   );

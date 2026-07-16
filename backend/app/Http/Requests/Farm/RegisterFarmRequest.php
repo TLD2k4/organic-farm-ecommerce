@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Farm;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use App\Models\SellerPolicy;
 
 class RegisterFarmRequest extends FormRequest
 {
@@ -19,13 +21,13 @@ class RegisterFarmRequest extends FormRequest
             $data['name'] = preg_replace(
                 '/\s+/u',
                 ' ',
-                trim($this->input('name'))
+                trim((string) $this->input('name'))
             );
         }
 
         if ($this->filled('phone')) {
             $data['phone'] = trim(
-                $this->input('phone')
+                (string) $this->input('phone')
             );
         }
 
@@ -33,7 +35,13 @@ class RegisterFarmRequest extends FormRequest
             $data['address'] = preg_replace(
                 '/\s+/u',
                 ' ',
-                trim($this->input('address'))
+                trim((string) $this->input('address'))
+            );
+        }
+
+        if ($this->filled('policy_version')) {
+            $data['policy_version'] = trim(
+                (string) $this->input('policy_version')
             );
         }
 
@@ -44,8 +52,11 @@ class RegisterFarmRequest extends FormRequest
 
     public function rules(): array
     {
+        $currentPolicy = SellerPolicy::current();
+
         return [
             'name' => [
+                'bail',
                 'required',
                 'string',
                 'max:100',
@@ -57,10 +68,6 @@ class RegisterFarmRequest extends FormRequest
                 'max:5000',
             ],
 
-            /*
-             * Ảnh đã được upload qua API uploads.
-             * Farm chỉ nhận URL Cloudinary.
-             */
             'logo' => [
                 'nullable',
                 'url',
@@ -79,9 +86,36 @@ class RegisterFarmRequest extends FormRequest
             ],
 
             'address' => [
+                'bail',
                 'required',
                 'string',
                 'max:255',
+            ],
+
+            /*
+             * Không tin checkbox ở frontend. Request đăng ký chỉ hợp lệ
+             * khi backend nhận được xác nhận và đúng policy version hiện tại.
+             */
+            'policy_accepted' => [
+                'bail',
+                'required',
+                'accepted',
+            ],
+
+            'policy_version' => [
+                'bail',
+                'required',
+                'string',
+                'max:50',
+                Rule::in([
+                    (string) ($currentPolicy?->version ?? config('seller_policy.version')),
+                ]),
+            ],
+            'seller_policy_id' => [
+                Rule::requiredIf((bool) $currentPolicy),
+                'nullable',
+                'integer',
+                Rule::in(array_filter([$currentPolicy?->id])),
             ],
         ];
     }
@@ -107,6 +141,16 @@ class RegisterFarmRequest extends FormRequest
             'address.required' => 'Địa chỉ nông trại không được để trống.',
             'address.string' => 'Địa chỉ phải là chuỗi ký tự.',
             'address.max' => 'Địa chỉ tối đa 255 ký tự.',
+
+            'policy_accepted.required' =>
+            'Bạn phải chấp thuận chính sách người bán trước khi đăng ký.',
+            'policy_accepted.accepted' =>
+            'Bạn phải chấp thuận chính sách người bán trước khi đăng ký.',
+
+            'policy_version.required' =>
+            'Không xác định được phiên bản chính sách người bán.',
+            'policy_version.in' =>
+            'Chính sách người bán đã được cập nhật. Vui lòng tải lại trang và đọc phiên bản mới.',
         ];
     }
 }

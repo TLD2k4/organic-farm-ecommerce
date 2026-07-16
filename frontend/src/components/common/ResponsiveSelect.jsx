@@ -47,7 +47,7 @@ export default function ResponsiveSelect({
     const viewportHeight = window.innerHeight;
 
     const width = Math.min(
-      Math.max(rect.width, 220),
+      Math.max(rect.width, 180),
       viewportWidth - SCREEN_PADDING * 2,
     );
 
@@ -181,6 +181,7 @@ export default function ResponsiveSelect({
           relative
           min-w-0
           w-full
+          max-w-full
 
           ${className}
         `}
@@ -196,7 +197,7 @@ export default function ResponsiveSelect({
           onClick={handleToggle}
           className={`
             flex
-            min-h-12
+            min-h-11
             w-full
             min-w-0
             items-center
@@ -211,8 +212,8 @@ export default function ResponsiveSelect({
 
             bg-white
 
-            px-4
-            py-3
+            px-3
+            py-2.5
 
             text-left
             text-sm
@@ -232,8 +233,6 @@ export default function ResponsiveSelect({
             disabled:bg-slate-100
             disabled:text-slate-500
             disabled:opacity-60
-
-            sm:text-base
 
             ${open ? "border-green-500 ring-2 ring-green-100" : ""}
           `}
@@ -354,6 +353,7 @@ export default function ResponsiveSelect({
                       className="
                         min-w-0
                         flex-1
+                        overflow-hidden
 
                         whitespace-normal
                         wrap-break-word

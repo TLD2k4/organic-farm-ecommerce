@@ -2,9 +2,10 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Models\Role;
+
 class RoleSeeder extends Seeder
 {
     /**
@@ -12,22 +13,22 @@ class RoleSeeder extends Seeder
      */
     public function run(): void
     {
-        Role::create([
-            'name' => 'admin',
-            'guard_name' => 'web',
-            'description' => 'Quản trị hệ thống'
-        ]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        Role::create([
-            'name' => 'seller',
-            'guard_name' => 'web',
-            'description' => 'Người bán'
-        ]);
+        foreach ([
+            'admin' => 'Quản trị hệ thống',
+            'seller' => 'Người bán',
+            'customer' => 'Khách hàng',
+        ] as $name => $description) {
+            Role::updateOrCreate(
+                ['name' => $name],
+                [
+                    'guard_name' => 'web',
+                    'description' => $description,
+                ]
+            );
+        }
 
-        Role::create([
-            'name' => 'customer',
-            'guard_name' => 'web',
-            'description' => 'Khách hàng'
-        ]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 }

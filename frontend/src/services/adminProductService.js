@@ -31,6 +31,14 @@ const adminProductService = {
     );
   },
 
+  suspendProduct(id, reason) {
+    return axiosClient.patch(`/admin/products/${encodeURIComponent(id)}/suspend`, { reason });
+  },
+
+  reopenProduct(id) {
+    return axiosClient.patch(`/admin/products/${encodeURIComponent(id)}/reopen`);
+  },
+
   approveCertificate(productId, certificateId) {
     return axiosClient.patch(
       `/admin/products/${encodeURIComponent(productId)}/certificates/${encodeURIComponent(certificateId)}/approve`,

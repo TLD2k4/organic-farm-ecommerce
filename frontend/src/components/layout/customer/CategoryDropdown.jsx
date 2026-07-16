@@ -12,7 +12,7 @@ import { getImageUrl } from "@/utils/image";
 
 const SUBMENU_WIDTH = 320;
 const SCREEN_PADDING = 12;
-const SUBMENU_GAP = 8;
+const SUBMENU_GAP = 12;
 
 const SUBMENU_HEADER_HEIGHT = 145;
 const SUBMENU_ITEM_HEIGHT = 58;
@@ -81,7 +81,7 @@ const CategoryDropdown = ({
       closeSubmenu();
       onNavigate();
 
-      navigate(`/products?category=${encodeURIComponent(slug)}`);
+      navigate(`/products?category_slug=${encodeURIComponent(slug)}`);
     },
     [closeSubmenu, goToAllProducts, navigate, onNavigate],
   );
@@ -242,25 +242,14 @@ const CategoryDropdown = ({
         ref={parentMenuRef}
         className="
           relative
-
-          max-h-[calc(100vh-165px)]
           w-full
-
-          overflow-y-auto
-          overscroll-contain
-
+          overflow-hidden
           rounded-2xl
-
           border
           border-[#e5e8df]
-
           bg-white
-
-          py-1.5
-
           shadow-[0_12px_35px_rgba(0,0,0,0.07)]
         "
-        onScroll={closeSubmenu}
         onMouseEnter={() => {
           clearCloseTimer();
           onSubmenuEnter();
@@ -270,12 +259,21 @@ const CategoryDropdown = ({
           onSubmenuLeave();
         }}
       >
-        {loading ? (
-          <div className="space-y-2 px-3 py-2">
-            {[...Array(5)].map((_, index) => (
-              <div
-                key={index}
-                className="
+        <div
+          className="
+            max-h-[calc(100vh-165px)]
+            overflow-y-auto
+            overscroll-contain
+            py-1.5
+          "
+          onScroll={closeSubmenu}
+        >
+          {loading ? (
+            <div className="space-y-2 px-3 py-2">
+              {[...Array(5)].map((_, index) => (
+                <div
+                  key={index}
+                  className="
                     h-14
 
                     animate-pulse
@@ -284,36 +282,36 @@ const CategoryDropdown = ({
 
                     bg-slate-100
                   "
-              />
-            ))}
-          </div>
-        ) : categories.length === 0 ? (
-          <div className="px-4 py-7 text-center text-sm text-slate-500">
-            Chưa có danh mục.
-          </div>
-        ) : (
-          categories.map((item, index) => {
-            const children = getChildren(item);
+                />
+              ))}
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="px-4 py-7 text-center text-sm text-slate-500">
+              Chưa có danh mục.
+            </div>
+          ) : (
+            categories.map((item, index) => {
+              const children = getChildren(item);
 
-            const hasChildren = children.length > 0;
+              const hasChildren = children.length > 0;
 
-            const isOpen = openCategory?.id === item.id;
+              const isOpen = openCategory?.id === item.id;
 
-            return (
-              <button
-                type="button"
-                key={item.id}
-                aria-expanded={hasChildren ? isOpen : undefined}
-                aria-haspopup={hasChildren ? "menu" : undefined}
-                onMouseEnter={(event) => {
-                  if (hasChildren) {
-                    openSubmenu(item, event.currentTarget);
-                  } else {
-                    closeSubmenu();
-                  }
-                }}
-                onClick={(event) => handleParentClick(event, item)}
-                className={`
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  aria-expanded={hasChildren ? isOpen : undefined}
+                  aria-haspopup={hasChildren ? "menu" : undefined}
+                  onMouseEnter={(event) => {
+                    if (hasChildren) {
+                      openSubmenu(item, event.currentTarget);
+                    } else {
+                      closeSubmenu();
+                    }
+                  }}
+                  onClick={(event) => handleParentClick(event, item)}
+                  className={`
                     flex
                     min-h-14
                     w-full
@@ -340,11 +338,11 @@ const CategoryDropdown = ({
                         : ""
                     }
                   `}
-              >
-                <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                  {/* ẢNH CHA */}
-                  <div
-                    className="
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                    {/* ẢNH CHA */}
+                    <div
+                      className="
                         flex
                         h-9.5
                         w-9.5
@@ -357,26 +355,26 @@ const CategoryDropdown = ({
 
                         bg-[#f7faf4]
                       "
-                  >
-                    {item.image ? (
-                      <img
-                        src={getImageUrl(item.image)}
-                        alt={item.name}
-                        className="
+                    >
+                      {item.image ? (
+                        <img
+                          src={getImageUrl(item.image)}
+                          alt={item.name}
+                          className="
                             h-full
                             w-full
                             object-cover
                           "
-                      />
-                    ) : (
-                      <ImageIcon size={18} className="text-[#6BAE4F]" />
-                    )}
-                  </div>
+                        />
+                      ) : (
+                        <ImageIcon size={18} className="text-[#6BAE4F]" />
+                      )}
+                    </div>
 
-                  {/* THÔNG TIN CHA */}
-                  <div className="min-w-0 flex-1">
-                    <h3
-                      className={`
+                    {/* THÔNG TIN CHA */}
+                    <div className="min-w-0 flex-1">
+                      <h3
+                        className={`
                           whitespace-normal
                           wrap-break-word
 
@@ -386,30 +384,30 @@ const CategoryDropdown = ({
 
                           ${isOpen ? "text-[#5d9d43]" : "text-[#1d1d1d]"}
                         `}
-                    >
-                      {item.name}
-                    </h3>
+                      >
+                        {item.name}
+                      </h3>
 
-                    <p
-                      className="
+                      <p
+                        className="
                           mt-0.5
 
                           text-[10.5px]
                           leading-[1.4]
                           text-[#777]
                         "
-                    >
-                      {hasChildren
-                        ? `${children.length} danh mục con`
-                        : "Xem sản phẩm"}
-                    </p>
+                      >
+                        {hasChildren
+                          ? `${children.length} danh mục con`
+                          : "Xem sản phẩm"}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <ChevronRight
-                  size={15}
-                  strokeWidth={2.4}
-                  className={`
+                  <ChevronRight
+                    size={15}
+                    strokeWidth={2.4}
+                    className={`
                       mt-1
                       shrink-0
 
@@ -424,18 +422,18 @@ const CategoryDropdown = ({
 
                       ${hasChildren ? "opacity-100" : "opacity-40"}
                     `}
-                />
-              </button>
-            );
-          })
-        )}
+                  />
+                </button>
+              );
+            })
+          )}
 
-        {/* XEM TẤT CẢ */}
-        <div className="px-2.5 pb-1 pt-2">
-          <button
-            type="button"
-            onClick={goToAllProducts}
-            className="
+          {/* XEM TẤT CẢ */}
+          <div className="px-2.5 pb-1 pt-2">
+            <button
+              type="button"
+              onClick={goToAllProducts}
+              className="
               flex
               h-10.5
               w-full
@@ -453,13 +451,14 @@ const CategoryDropdown = ({
 
               hover:bg-[#eef6e8]
             "
-          >
-            <Grid2X2 size={16} className="text-[#5d9d43]" strokeWidth={2.4} />
+            >
+              <Grid2X2 size={16} className="text-[#5d9d43]" strokeWidth={2.4} />
 
-            <span className="text-[12px] font-semibold text-[#5d9d43]">
-              Xem tất cả
-            </span>
-          </button>
+              <span className="text-[12px] font-semibold text-[#5d9d43]">
+                Xem tất cả
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 

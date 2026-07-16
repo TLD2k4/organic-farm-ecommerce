@@ -211,6 +211,8 @@ const SearchBar = () => {
           <button
             type="button"
             onClick={clearKeyword}
+            aria-label="Xóa từ khóa tìm kiếm"
+            title="Xóa từ khóa tìm kiếm"
             className="
               grid
               h-9
@@ -229,6 +231,8 @@ const SearchBar = () => {
 
         <button
           type="submit"
+          aria-label="Tìm kiếm sản phẩm"
+          title="Tìm kiếm sản phẩm"
           className="
             h-9
             md:h-9.5
@@ -261,7 +265,7 @@ const SearchBar = () => {
             left-0
             right-0
             top-[calc(100%+10px)]
-            z-[80]
+            z-80
             overflow-hidden
             rounded-2xl
             border
@@ -290,9 +294,12 @@ const SearchBar = () => {
               ))}
             </div>
           ) : suggestions.length ? (
-            <div className="max-h-[360px] overflow-y-auto p-2">
+            <div className="max-h-90 overflow-y-auto p-2">
               {suggestions.map((product) => {
                 const image = getImage(product);
+                const productPath = product.slug
+                  ? `/products/${product.slug}`
+                  : `/products?keyword=${encodeURIComponent(product.name || trimmedKeyword)}`;
 
                 const priceText =
                   product.final_price_text ||
@@ -300,10 +307,8 @@ const SearchBar = () => {
                   formatMoney(product.final_price ?? product.price);
 
                 return (
-                  <Link
+                  <div
                     key={product.id}
-                    to={`/products/${product.id}`}
-                    onClick={() => setOpenSuggest(false)}
                     className="
                       flex
                       items-center
@@ -314,7 +319,11 @@ const SearchBar = () => {
                       hover:bg-green-50
                     "
                   >
-                    <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#f4faef]">
+                    <Link
+                      to={productPath}
+                      onClick={() => setOpenSuggest(false)}
+                      className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#f4faef]"
+                    >
                       {image ? (
                         <img
                           src={image}
@@ -324,16 +333,30 @@ const SearchBar = () => {
                       ) : (
                         <Leaf size={24} className="text-green-700" />
                       )}
-                    </div>
+                    </Link>
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-black text-slate-900">
+                      <Link
+                        to={productPath}
+                        onClick={() => setOpenSuggest(false)}
+                        className="block truncate text-sm font-black text-slate-900 hover:text-green-700 hover:underline"
+                      >
                         {product.name}
-                      </p>
+                      </Link>
 
-                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-                        {product.farm?.name || "Organic Farm"}
-                      </p>
+                      {product.farm?.slug ? (
+                        <Link
+                          to={`/farms/${product.farm.slug}`}
+                          onClick={() => setOpenSuggest(false)}
+                          className="mt-0.5 block truncate text-xs font-semibold text-slate-500 hover:text-green-700 hover:underline"
+                        >
+                          {product.farm?.name || "Organic Farm"}
+                        </Link>
+                      ) : (
+                        <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                          {product.farm?.name || "Organic Farm"}
+                        </p>
+                      )}
 
                       <div className="mt-1 flex items-center gap-2">
                         <span className="text-sm font-black text-green-700">
@@ -347,7 +370,7 @@ const SearchBar = () => {
                         )}
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>

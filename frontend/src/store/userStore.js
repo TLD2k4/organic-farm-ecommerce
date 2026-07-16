@@ -58,16 +58,16 @@ export const useUserStore = create((set) => ({
     }
   },
 
-  toggleStatus: async (id) => {
-    return userService.toggleStatus(id);
+  toggleStatus: async (id, reason) => {
+    return userService.toggleStatus(id, reason);
   },
 
-  delete: async (id) => {
-    return userService.delete(id);
+  delete: async (id, reason) => {
+    return userService.delete(id, reason);
   },
 
-  forceDelete: async (id) => {
-    return userService.forceDelete(id);
+  forceDelete: async (id, reason) => {
+    return userService.forceDelete(id, reason);
   },
 
   restore: async (id) => {

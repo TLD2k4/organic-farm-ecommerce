@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\SubOrder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class SellerOrderService
@@ -28,6 +29,7 @@ class SellerOrderService
             'order.payment',
             'farm',
             'items',
+            'cancelledBy',
         ])
             ->where('farm_id', $farm->id);
 
@@ -40,6 +42,9 @@ class SellerOrderService
                         $orderQuery->where('order_code', 'like', "%{$keyword}%")
                             ->orWhere('shipping_name', 'like', "%{$keyword}%")
                             ->orWhere('shipping_phone', 'like', "%{$keyword}%");
+                    })
+                    ->orWhereHas('items', function ($itemQuery) use ($keyword) {
+                        $itemQuery->where('product_name', 'like', "%{$keyword}%");
                     });
             });
         }
@@ -129,6 +134,7 @@ class SellerOrderService
 
         return DB::transaction(function () use (
             $farm,
+            $sellerId,
             $subOrderId,
             $newStatus,
             $sellerNote
@@ -167,6 +173,9 @@ class SellerOrderService
                 foreach ($subOrder->items as $orderItem) {
                     $this->inventoryService->restoreLots($orderItem);
                 }
+                $subOrder->cancelled_by = $sellerId;
+                $subOrder->cancelled_at = now();
+                $subOrder->cancel_reason = $sellerNote;
             }
 
             $subOrder->status = $newStatus;
@@ -183,6 +192,10 @@ class SellerOrderService
             if ($newStatus === 3) {
                 // Hoàn thành -> đã thanh toán
                 $subOrder->payment_status = 1;
+
+                if (Schema::hasColumn('sub_orders', 'completed_at')) {
+                    $subOrder->completed_at ??= now();
+                }
             }
 
             if ($newStatus === 4) {
@@ -227,6 +240,20 @@ class SellerOrderService
     private function getStats(int $farmId): array
     {
         $query = SubOrder::where('farm_id', $farmId);
+        $dateColumn = $this->getRevenueDateColumn();
+        $monthRevenueQuery = DB::table('order_items')
+            ->join('sub_orders', 'sub_orders.id', '=', 'order_items.sub_order_id')
+            ->where('sub_orders.farm_id', $farmId)
+            ->where('sub_orders.status', 3)
+            ->whereBetween($dateColumn, [now()->startOfMonth(), now()->endOfMonth()]);
+
+        if (Schema::hasColumn('sub_orders', 'payment_status')) {
+            $monthRevenueQuery->whereIn('sub_orders.payment_status', [0, 1]);
+        }
+
+        $monthRevenue = (float) ($monthRevenueQuery
+            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')
+            ->value('total') ?? 0);
 
         return [
             'total_orders' => (clone $query)->count(),
@@ -255,12 +282,21 @@ class SellerOrderService
                 ->whereDate('created_at', today())
                 ->count(),
 
-            'month_revenue' => (clone $query)
-                ->where('status', 3)
-                ->whereYear('created_at', now()->year)
-                ->whereMonth('created_at', now()->month)
-                ->sum('total'),
+            'month_revenue' => $monthRevenue,
         ];
+    }
+
+    private function getRevenueDateColumn(): string
+    {
+        if (Schema::hasColumn('sub_orders', 'completed_at')) {
+            return 'sub_orders.completed_at';
+        }
+
+        if (Schema::hasColumn('sub_orders', 'delivered_at')) {
+            return 'sub_orders.delivered_at';
+        }
+
+        return 'sub_orders.updated_at';
     }
 
     /**
@@ -396,6 +432,11 @@ class SellerOrderService
             'status' => (int) $subOrder->status,
             'status_text' => $this->getStatusText((int) $subOrder->status),
             'status_class' => $this->getStatusClass((int) $subOrder->status),
+            'cancellation' => $subOrder->cancelled_at ? [
+                'reason' => $subOrder->cancel_reason,
+                'at' => optional($subOrder->cancelled_at)->format('d/m/Y H:i'),
+                'by' => $subOrder->cancelledBy ? ['id' => $subOrder->cancelledBy->id, 'name' => $subOrder->cancelledBy->name] : null,
+            ] : null,
             
             'payment_method' => $subOrder->order?->payment?->payment_method,
             'payment_status' => (int) $subOrder->payment_status,
@@ -439,6 +480,7 @@ class SellerOrderService
                     'product' => $item->product ? [
                         'id' => $item->product->id,
                         'name' => $item->product->name,
+                        'slug' => $item->product->slug,
                         'thumbnail' => $item->product->thumbnail,
                         'status' => (int) $item->product->status,
                     ] : null,

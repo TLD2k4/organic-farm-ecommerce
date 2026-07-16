@@ -25,7 +25,7 @@ class MomoController extends Controller
         }
 
         $order = Order::with(['payment', 'subOrders'])
-            ->where('order_code', $data['orderId'] ?? null)
+            ->whereHas('payment', fn ($query) => $query->where('transaction_code', $data['orderId'] ?? null))
             ->first();
 
         if (!$order || !$order->payment) {
@@ -35,8 +35,15 @@ class MomoController extends Controller
             ], 404);
         }
 
+        if (!$this->callbackMatchesOrder($data, $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment amount or request id does not match.',
+            ], 400);
+        }
+
         if ((int) ($data['resultCode'] ?? -1) === 0) {
-            $order->payment->update([
+            $order->payment()->update([
                 'status' => 1,
                 'paid_at' => now(),
             ]);
@@ -45,13 +52,15 @@ class MomoController extends Controller
                 'payment_status' => 1,
             ]);
         } else {
-            $order->payment->update([
-                'status' => 2,
-            ]);
+            $updated = $order->payment()
+                ->where('status', '!=', 1)
+                ->update(['status' => 2]);
 
-            $order->subOrders()->update([
-                'payment_status' => 2,
-            ]);
+            if ($updated > 0) {
+                $order->subOrders()
+                    ->where('payment_status', '!=', 1)
+                    ->update(['payment_status' => 2]);
+            }
         }
 
         return response()->json([
@@ -118,7 +127,7 @@ class MomoController extends Controller
     }
 
     $order = Order::with(['payment', 'subOrders'])
-        ->where('order_code', $data['orderId'] ?? null)
+        ->whereHas('payment', fn ($query) => $query->where('transaction_code', $data['orderId'] ?? null))
         ->first();
 
     if (!$order || !$order->payment) {
@@ -129,8 +138,16 @@ class MomoController extends Controller
         );
     }
 
+    if (!$this->callbackMatchesOrder($data, $order)) {
+        $frontendUrl = rtrim(config('services.frontend_url'), '/');
+
+        return redirect()->away(
+            $frontendUrl . '/profile?tab=orders&payment=invalid'
+        );
+    }
+
     if ((int) ($data['resultCode'] ?? -1) === 0) {
-        $order->payment->update([
+        $order->payment()->update([
             'status' => 1,
             'paid_at' => now(),
         ]);
@@ -146,13 +163,15 @@ class MomoController extends Controller
         );
     }
 
-    $order->payment->update([
-        'status' => 2,
-    ]);
+    $updated = $order->payment()
+        ->where('status', '!=', 1)
+        ->update(['status' => 2]);
 
-    $order->subOrders()->update([
-        'payment_status' => 2,
-    ]);
+    if ($updated > 0) {
+        $order->subOrders()
+            ->where('payment_status', '!=', 1)
+            ->update(['payment_status' => 2]);
+    }
 
     $frontendUrl = rtrim(config('services.frontend_url'), '/');
 
@@ -161,5 +180,24 @@ class MomoController extends Controller
     );
 }
 
+private function callbackMatchesOrder(array $data, Order $order): bool
+{
+    $expectedAmount = (int) round((float) $order->payment->amount);
+    $callbackAmount = filter_var(
+        $data['amount'] ?? null,
+        FILTER_VALIDATE_INT
+    );
+
+    if ($callbackAmount === false || $callbackAmount !== $expectedAmount) {
+        return false;
+    }
+
+    $requestId = (string) ($data['requestId'] ?? '');
+    $expectedRequestId = (string) ($order->payment->transaction_code ?? '');
+
+    return $requestId !== ''
+        && $expectedRequestId !== ''
+        && hash_equals($expectedRequestId, $requestId);
 }
 
+}

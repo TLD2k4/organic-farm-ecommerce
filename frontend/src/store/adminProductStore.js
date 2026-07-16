@@ -129,6 +129,28 @@ export const useAdminProductStore = create((set) => ({
     }
   },
 
+  suspendProduct: async (id, reason) => {
+    set({ actionLoading: true });
+    try {
+      const response = await adminProductService.suspendProduct(id, reason);
+      set({ product: response?.data ?? null });
+      return response;
+    } finally {
+      set({ actionLoading: false });
+    }
+  },
+
+  reopenProduct: async (id) => {
+    set({ actionLoading: true });
+    try {
+      const response = await adminProductService.reopenProduct(id);
+      set({ product: response?.data ?? null });
+      return response;
+    } finally {
+      set({ actionLoading: false });
+    }
+  },
+
   approveCertificate: async (productId, certificateId) => {
     set({ actionLoading: true });
 

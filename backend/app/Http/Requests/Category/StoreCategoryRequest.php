@@ -14,49 +14,63 @@ class StoreCategoryRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ($this->filled('name')) {
+        $data = [];
 
-            $name = preg_replace('/\s+/u', ' ', trim($this->name));
+        if ($this->has('name')) {
+            $name = preg_replace('/\s+/u', ' ', trim((string) $this->input('name')));
+            $data['name'] = Str::title(mb_strtolower($name));
+        }
 
-            $this->merge([
-                'name' => Str::title(
-                    mb_strtolower($name)
-                ),
-            ]);
+        if ($this->has('description')) {
+            $description = trim((string) $this->input('description', ''));
+            $data['description'] = $description !== '' ? $description : null;
+        }
+
+        if ($this->has('image')) {
+            $image = trim((string) $this->input('image', ''));
+            $data['image'] = $image !== '' ? $image : null;
+        }
+
+        if ($this->input('parent_id') === '') {
+            $data['parent_id'] = null;
+        }
+
+        if ($data !== []) {
+            $this->merge($data);
         }
     }
 
     public function rules(): array
     {
         return [
-            'parent_id' => 'nullable|exists:categories,id',
-
-            'name' => 'required|string|max:50|unique:categories,name',
-
-            'description' => 'nullable|string|max:1000',
-
-            'image' => 'nullable|url|max:255',
-
-            'status' => 'nullable|in:0,1',
+            'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'name' => ['bail', 'required', 'string', 'min:2', 'max:50', 'unique:categories,name'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'image' => ['nullable', 'string', 'url:http,https', 'max:255'],
+            'status' => ['nullable', 'integer', 'in:0,1'],
         ];
     }
 
     public function messages(): array
     {
         return [
+            'parent_id.integer' => 'Danh mục cha không hợp lệ.',
             'parent_id.exists' => 'Danh mục cha không tồn tại.',
 
             'name.required' => 'Tên danh mục không được để trống.',
             'name.string' => 'Tên danh mục phải là chuỗi ký tự.',
+            'name.min' => 'Tên danh mục phải có ít nhất 2 ký tự.',
             'name.max' => 'Tên danh mục tối đa 50 ký tự.',
             'name.unique' => 'Tên danh mục đã tồn tại.',
 
             'description.string' => 'Mô tả phải là chuỗi ký tự.',
             'description.max' => 'Mô tả tối đa 1000 ký tự.',
 
-            'image.url' => 'Ảnh không đúng định dạng URL.',
+            'image.string' => 'Đường dẫn ảnh phải là chuỗi ký tự.',
+            'image.url' => 'Ảnh phải là một URL HTTP hoặc HTTPS hợp lệ.',
             'image.max' => 'Đường dẫn ảnh tối đa 255 ký tự.',
 
+            'status.integer' => 'Trạng thái không hợp lệ.',
             'status.in' => 'Trạng thái chỉ được là 0 (ẩn) hoặc 1 (hiển thị).',
         ];
     }

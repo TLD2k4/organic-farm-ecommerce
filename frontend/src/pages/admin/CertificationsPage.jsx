@@ -130,7 +130,13 @@ export default function CertificationsPage() {
       />
 
       {/* PAGINATION */}
-      <Pagination meta={meta} params={params} setParams={setParams} />
+      <Pagination
+        meta={meta}
+        params={params}
+        setParams={setParams}
+        itemLabel="chứng nhận"
+        loading={loading}
+      />
 
       {/* DRAWER */}
       <CertificationDrawer

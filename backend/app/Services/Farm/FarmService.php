@@ -3,6 +3,7 @@
 namespace App\Services\Farm;
 
 use App\Models\Farm;
+use App\Models\FarmPolicyAcceptance;
 use App\Models\Product;
 use App\Models\SubOrder;
 use App\Models\User;
@@ -13,15 +14,39 @@ use Illuminate\Validation\ValidationException;
 
 class FarmService
 {
+    private const NEW_PRODUCT_DAYS = 7;
+    private const BEST_SELLER_DAYS = 30;
+    private const BEST_SELLER_MIN_QUANTITY = 20;
+
+    public function __construct(
+        private SellerPolicyAccessService $sellerPolicyAccessService,
+    ) {}
     // =====================================================
     // PUBLIC FARM
     // =====================================================
 
     public function getAll(array $filters)
     {
-        return Farm::query()
+        $farms = Farm::query()
             ->with([
                 'seller:id,name,avatar',
+
+                'products' => function ($query) {
+                    $query
+                        ->select([
+                            'id',
+                            'farm_id',
+                        ])
+                        ->where('status', 1)
+                        ->with([
+                            'reviews' => function ($reviewQuery) {
+                                $reviewQuery->where(
+                                    'status',
+                                    1
+                                );
+                            },
+                        ]);
+                },
             ])
             ->withCount([
                 'products as product_count' => function ($query) {
@@ -32,7 +57,6 @@ class FarmService
                 'status',
                 Farm::STATUS_ACTIVE
             )
-
             ->when(
                 !empty($filters['keyword']),
                 function ($query) use ($filters) {
@@ -62,16 +86,55 @@ class FarmService
                     );
                 }
             )
-
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate(
                 $filters['limit'] ?? 12
             );
+
+        $farms->getCollection()->transform(
+            function (Farm $farm) {
+                $orderAvailability = $this->sellerPolicyAccessService
+                    ->availability($farm);
+                $reviews = $farm->products
+                    ->flatMap(function ($product) {
+                        return $product->reviews;
+                    });
+
+                $farm->setAttribute(
+                    'rating',
+                    [
+                        'average' => round(
+                            $reviews->avg('rating') ?? 0,
+                            1
+                        ),
+
+                        'total' => $reviews->count(),
+                    ]
+                );
+
+                $farm->setAttribute(
+                    'accepting_orders',
+                    $orderAvailability['accepting_orders']
+                );
+                $farm->setAttribute(
+                    'order_unavailable_reason',
+                    $orderAvailability['reason']
+                );
+
+                unset($farm->products);
+
+                return $farm;
+            }
+        );
+
+        return $farms;
     }
 
-    public function getBySlug(string $slug): Farm
-    {
+    public function getBySlug(
+        string $slug,
+        array $filters = []
+    ): Farm {
         $farm = Farm::query()
             ->where('slug', $slug)
             ->where(
@@ -80,35 +143,6 @@ class FarmService
             )
             ->with([
                 'seller:id,name,email,avatar',
-
-                'products' => function ($query) {
-                    $query
-                        ->where('status', 1)
-                        ->with([
-                            'category:id,name,slug',
-
-                            'certificates' => function ($certificateQuery) {
-                                $certificateQuery
-                                    ->where('status', 1)
-                                    ->whereDate(
-                                        'expiry_date',
-                                        '>=',
-                                        today()
-                                    )
-                                    ->with([
-                                        'certification:id,name',
-                                    ]);
-                            },
-
-                            'reviews' => function ($reviewQuery) {
-                                $reviewQuery->where(
-                                    'status',
-                                    1
-                                );
-                            },
-                        ])
-                        ->orderByDesc('created_at');
-                },
             ])
             ->withCount([
                 'products as product_count' => function ($query) {
@@ -117,10 +151,141 @@ class FarmService
             ])
             ->firstOrFail();
 
-        return $this->appendRatingAndCertifications(
+        $farm = $this->appendPublicFarmSummary(
             $farm
         );
+        $orderAvailability = $this->sellerPolicyAccessService
+            ->availability($farm);
+        $farm->setAttribute(
+            'accepting_orders',
+            $orderAvailability['accepting_orders']
+        );
+        $farm->setAttribute(
+            'order_unavailable_reason',
+            $orderAvailability['reason']
+        );
+
+        $page = max(
+            1,
+            (int) ($filters['page'] ?? 1)
+        );
+
+        $perPage = min(
+            24,
+            max(
+                1,
+                (int) ($filters['per_page'] ?? 12)
+            )
+        );
+
+        $products = Product::query()
+            ->where(
+                'farm_id',
+                $farm->id
+            )
+            ->where(
+                'status',
+                1
+            )
+            ->with([
+                'category:id,name,slug',
+
+                'certificates' => function ($certificateQuery) {
+                    $certificateQuery
+                        ->where('status', 1)
+                        ->whereDate(
+                            'expiry_date',
+                            '>=',
+                            today()
+                        )
+                        ->with([
+                            'certification:id,name',
+                        ]);
+                },
+            ])
+            ->withCount([
+                'reviews as review_count' => function ($reviewQuery) {
+                    $reviewQuery->where(
+                        'status',
+                        1
+                    );
+                },
+            ])
+            ->withAvg(
+                [
+                    'reviews as rating_avg' => function ($reviewQuery) {
+                        $reviewQuery->where(
+                            'status',
+                            1
+                        );
+                    },
+                ],
+                'rating'
+            )
+            ->withSum(
+                'completedOrderItems as sold_quantity',
+                'quantity'
+            )
+            ->withSum(
+                [
+                    'completedOrderItems as sold_quantity_30_days' =>
+                    function ($orderItemQuery) {
+                        $orderItemQuery->where(
+                            'order_items.created_at',
+                            '>=',
+                            now()->subDays(
+                                self::BEST_SELLER_DAYS
+                            )
+                        );
+                    },
+                ],
+                'quantity'
+            )
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(
+                $perPage,
+                ['*'],
+                'page',
+                $page
+            );
+
+        $products->getCollection()->transform(
+            function (Product $product) use ($orderAvailability) {
+                $product = $this->appendPublicProductCardData($product);
+                $product->setAttribute(
+                    'accepting_orders',
+                    $orderAvailability['accepting_orders']
+                );
+                $product->setAttribute(
+                    'order_unavailable_reason',
+                    $orderAvailability['reason']
+                );
+
+                return $product;
+            }
+        );
+
+        $farm->setRelation(
+            'products',
+            $products->getCollection()
+        );
+
+        $farm->setAttribute(
+            'products_meta',
+            [
+                'total' => $products->total(),
+                'per_page' => $products->perPage(),
+                'current_page' => $products->currentPage(),
+                'last_page' => $products->lastPage(),
+                'from' => $products->firstItem(),
+                'to' => $products->lastItem(),
+            ]
+        );
+
+        return $farm;
     }
+
 
     // =====================================================
     // OWNER FARM
@@ -202,10 +367,11 @@ class FarmService
 
     public function register(
         User $user,
-        array $data
+        array $data,
+        array $policyAcceptance
     ): Farm {
         return DB::transaction(
-            function () use ($user, $data) {
+            function () use ($user, $data, $policyAcceptance) {
                 /*
                  * Khóa User trong lúc kiểm tra và tạo Farm,
                  * tránh hai request đăng ký chạy cùng lúc.
@@ -256,7 +422,7 @@ class FarmService
                     'admin'
                 );
 
-                return Farm::create([
+                $farm = Farm::create([
                     'seller_id' => $lockedUser->id,
 
                     'approved_by' => $isAdmin
@@ -294,6 +460,21 @@ class FarmService
 
                     'rejection_reason' => null,
                 ]);
+
+                FarmPolicyAcceptance::create([
+                    'user_id' => $lockedUser->id,
+                    'farm_id' => $farm->id,
+                    'seller_policy_id' => $policyAcceptance['seller_policy_id'] ?? null,
+                    'policy_version' =>
+                    $policyAcceptance['policy_version'],
+                    'accepted_at' => now(),
+                    'ip_address' =>
+                    $policyAcceptance['ip_address'] ?? null,
+                    'user_agent' =>
+                    $policyAcceptance['user_agent'] ?? null,
+                ]);
+
+                return $farm;
             }
         );
     }
@@ -701,11 +882,12 @@ class FarmService
     }
 
     public function reject(
+        User $admin,
         int $farmId,
         string $reason
     ): Farm {
         return DB::transaction(
-            function () use ($farmId, $reason) {
+            function () use ($admin, $farmId, $reason) {
                 $farm = Farm::query()
                     ->whereKey($farmId)
                     ->lockForUpdate()
@@ -719,16 +901,10 @@ class FarmService
                     ]);
                 }
 
-                /*
-                 * approved_by chỉ lưu người thực sự duyệt.
-                 * Không dùng để lưu người từ chối.
-                 */
                 $farm->update([
                     'status' => Farm::STATUS_REJECTED,
-
-                    'approved_by' => null,
-                    'approved_at' => null,
-
+                    'approved_by' => $admin->id,
+                    'approved_at' => now(),
                     'rejection_reason' => $reason,
                 ]);
 
@@ -741,7 +917,9 @@ class FarmService
     }
 
     public function suspend(
-        int $farmId
+        User $admin,
+        int $farmId,
+        string $reason
     ): Farm {
         $farm = Farm::query()
             ->findOrFail($farmId);
@@ -756,6 +934,9 @@ class FarmService
 
         $farm->update([
             'status' => Farm::STATUS_SUSPENDED,
+            'approved_by' => $admin->id,
+            'approved_at' => now(),
+            'rejection_reason' => trim($reason),
         ]);
 
         /*
@@ -769,6 +950,7 @@ class FarmService
     }
 
     public function reopen(
+        User $admin,
         int $farmId
     ): Farm {
         $farm = Farm::query()
@@ -797,6 +979,9 @@ class FarmService
 
         $farm->update([
             'status' => Farm::STATUS_ACTIVE,
+            'approved_by' => $admin->id,
+            'approved_at' => now(),
+            'rejection_reason' => null,
         ]);
 
         return $farm->fresh([
@@ -818,10 +1003,12 @@ class FarmService
      * - không còn đơn hàng.
      */
     public function adminSoftDelete(
-        int $farmId
+        User $admin,
+        int $farmId,
+        string $reason
     ): Farm {
         return DB::transaction(
-            function () use ($farmId) {
+            function () use ($admin, $farmId, $reason) {
                 $farm = Farm::query()
                     ->whereKey($farmId)
                     ->lockForUpdate()
@@ -861,6 +1048,12 @@ class FarmService
                     $farm->id
                 );
 
+                $farm->update([
+                    'approved_by' => $admin->id,
+                    'approved_at' => now(),
+                    'rejection_reason' => trim($reason),
+                ]);
+
                 $farm->delete();
 
                 return $farm;
@@ -869,10 +1062,11 @@ class FarmService
     }
 
     public function restore(
+        User $admin,
         int $farmId
     ): Farm {
         return DB::transaction(
-            function () use ($farmId) {
+            function () use ($admin, $farmId) {
                 $farm = Farm::withTrashed()
                     ->with('seller')
                     ->whereKey($farmId)
@@ -899,6 +1093,11 @@ class FarmService
                 }
 
                 $farm->restore();
+                $farm->update([
+                    'approved_by' => $admin->id,
+                    'approved_at' => now(),
+                    'rejection_reason' => null,
+                ]);
 
                 /*
                  * Giữ nguyên status cũ.
@@ -1178,6 +1377,200 @@ class FarmService
             ->exists();
     }
 
+    private function appendPublicFarmSummary(
+        Farm $farm
+    ): Farm {
+        $products = Product::query()
+            ->select([
+                'id',
+                'farm_id',
+            ])
+            ->where(
+                'farm_id',
+                $farm->id
+            )
+            ->where(
+                'status',
+                1
+            )
+            ->withCount([
+                'reviews as review_count' => function ($reviewQuery) {
+                    $reviewQuery->where(
+                        'status',
+                        1
+                    );
+                },
+            ])
+            ->withAvg(
+                [
+                    'reviews as rating_avg' => function ($reviewQuery) {
+                        $reviewQuery->where(
+                            'status',
+                            1
+                        );
+                    },
+                ],
+                'rating'
+            )
+            ->with([
+                'certificates' => function ($certificateQuery) {
+                    $certificateQuery
+                        ->where('status', 1)
+                        ->whereDate(
+                            'expiry_date',
+                            '>=',
+                            today()
+                        )
+                        ->with([
+                            'certification:id,name',
+                        ]);
+                },
+            ])
+            ->get();
+
+        $totalReviews = (int) $products->sum(
+            function ($product) {
+                return (int) (
+                    $product->review_count ?? 0
+                );
+            }
+        );
+
+        $ratingTotal = (float) $products->sum(
+            function ($product) {
+                $reviewCount = (int) (
+                    $product->review_count ?? 0
+                );
+
+                $ratingAverage = (float) (
+                    $product->rating_avg ?? 0
+                );
+
+                return $ratingAverage * $reviewCount;
+            }
+        );
+
+        $farm->setAttribute(
+            'rating',
+            [
+                'average' => $totalReviews > 0
+                    ? round(
+                        $ratingTotal / $totalReviews,
+                        1
+                    )
+                    : 0,
+
+                'total' => $totalReviews,
+            ]
+        );
+
+        $certifications = $products
+            ->flatMap(function ($product) {
+                return $product->certificates;
+            })
+            ->pluck('certification.name')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $farm->setAttribute(
+            'certifications',
+            $certifications
+        );
+
+        return $farm;
+    }
+
+    private function appendPublicProductCardData(
+        Product $product
+    ): Product {
+        $soldQuantity = (float) (
+            $product->sold_quantity ?? 0
+        );
+
+        $soldQuantity30Days = (float) (
+            $product->sold_quantity_30_days ?? 0
+        );
+
+        $price = (float) (
+            $product->price ?? 0
+        );
+
+        $salePrice = $product->sale_price !== null
+            ? (float) $product->sale_price
+            : null;
+
+        $discountPercent = 0;
+
+        if (
+            $price > 0 &&
+            $salePrice !== null &&
+            $salePrice > 0 &&
+            $salePrice < $price
+        ) {
+            $discountPercent = (int) round(
+                (($price - $salePrice) / $price) * 100
+            );
+        }
+
+        $isNew = $product->created_at
+            ? $product->created_at->gte(
+                now()->subDays(
+                    self::NEW_PRODUCT_DAYS
+                )
+            )
+            : false;
+
+        $product->setAttribute(
+            'rating',
+            [
+                'average' => round(
+                    (float) (
+                        $product->rating_avg ?? 0
+                    ),
+                    1
+                ),
+
+                'total' => (int) (
+                    $product->review_count ?? 0
+                ),
+            ]
+        );
+
+        $product->setAttribute(
+            'sold_quantity',
+            $soldQuantity
+        );
+
+        $product->setAttribute(
+            'sold_quantity_30_days',
+            $soldQuantity30Days
+        );
+
+        $product->setAttribute(
+            'discount_percent',
+            $discountPercent
+        );
+
+        $product->setAttribute(
+            'is_new',
+            $isNew
+        );
+
+        $product->setAttribute(
+            'is_hot',
+            (bool) $product->is_hot
+        );
+
+        $product->setAttribute(
+            'is_best_seller',
+            $soldQuantity30Days >=
+                self::BEST_SELLER_MIN_QUANTITY
+        );
+
+        return $product;
+    }
+
     private function appendRatingAndCertifications(
         Farm $farm
     ): Farm {
@@ -1200,6 +1593,41 @@ class FarmService
 
         $farm->products->each(
             function ($product) {
+                $soldQuantity = (float) (
+                    $product->sold_quantity ?? 0
+                );
+
+                $soldQuantity30Days = (float) (
+                    $product->sold_quantity_30_days ?? 0
+                );
+
+                $price = (float) ($product->price ?? 0);
+
+                $salePrice = $product->sale_price !== null
+                    ? (float) $product->sale_price
+                    : null;
+
+                $discountPercent = 0;
+
+                if (
+                    $price > 0 &&
+                    $salePrice !== null &&
+                    $salePrice > 0 &&
+                    $salePrice < $price
+                ) {
+                    $discountPercent = (int) round(
+                        (($price - $salePrice) / $price) * 100
+                    );
+                }
+
+                $isNew = $product->created_at
+                    ? $product->created_at->gte(
+                        now()->subDays(
+                            self::NEW_PRODUCT_DAYS
+                        )
+                    )
+                    : false;
+
                 $product->setAttribute(
                     'rating',
                     [
@@ -1213,6 +1641,37 @@ class FarmService
                         $product->reviews
                             ->count(),
                     ]
+                );
+
+                $product->setAttribute(
+                    'sold_quantity',
+                    $soldQuantity
+                );
+
+                $product->setAttribute(
+                    'sold_quantity_30_days',
+                    $soldQuantity30Days
+                );
+
+                $product->setAttribute(
+                    'discount_percent',
+                    $discountPercent
+                );
+
+                $product->setAttribute(
+                    'is_new',
+                    $isNew
+                );
+
+                $product->setAttribute(
+                    'is_hot',
+                    (bool) $product->is_hot
+                );
+
+                $product->setAttribute(
+                    'is_best_seller',
+                    $soldQuantity30Days >=
+                        self::BEST_SELLER_MIN_QUANTITY
                 );
 
                 unset($product->reviews);

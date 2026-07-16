@@ -10,9 +10,9 @@ export const ADMIN_REPORT_DEFAULT_FILTERS = {
 
   to_date: dayjs().format("YYYY-MM-DD"),
 
-  group_by: "day",
+  group_by: "auto",
 
-  limit: 10,
+  limit: 5,
 };
 
 const createInitialReport = () => ({
@@ -23,6 +23,7 @@ const createInitialReport = () => ({
   summary: {
     revenue: 0,
     total_orders: 0,
+    total_sub_orders: 0,
     paid_orders: 0,
     completed_orders: 0,
     cancelled_orders: 0,

@@ -82,7 +82,7 @@ export default function UsersTable({
       "
     >
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[950px]">
+        <table className="w-full min-w-237.5">
           <thead className="bg-slate-100">
             <tr>
               <th className="whitespace-nowrap px-4 py-4 text-left text-sm font-bold">
@@ -120,7 +120,7 @@ export default function UsersTable({
                 <td className="whitespace-nowrap px-4 py-4">#{user.id}</td>
 
                 <td className="px-4 py-4">
-                  <div className="flex min-w-[180px] items-center gap-3">
+                  <div className="flex min-w-45 items-center gap-3">
                     {user.avatar ? (
                       <img
                         src={getImageUrl(user.avatar)}
@@ -156,7 +156,7 @@ export default function UsersTable({
                     )}
 
                     <div className="min-w-0">
-                      <p className="max-w-[220px] truncate font-semibold">
+                      <p className="max-w-55 truncate font-semibold">
                         {highlight(user.name, params.keyword)}
                       </p>
 
@@ -166,13 +166,13 @@ export default function UsersTable({
                 </td>
 
                 <td className="px-4 py-4">
-                  <div className="max-w-[260px] truncate">
+                  <div className="max-w-65 truncate">
                     {highlight(user.email, params.keyword)}
                   </div>
                 </td>
 
                 <td className="px-4 py-4">
-                  <div className="flex min-w-[130px] flex-wrap gap-1">
+                  <div className="flex min-w-32.5 flex-wrap gap-1">
                     {user.roles?.length ? (
                       user.roles.map((role) => (
                         <span

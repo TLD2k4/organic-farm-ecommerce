@@ -52,14 +52,64 @@ class HarvestLotService
             }
         }
 
-        if (!empty($filters['lot_code'])) {
-            $query->where('lot_code', 'like', '%' . $filters['lot_code'] . '%');
+        $keyword = trim((string) ($filters['keyword'] ?? $filters['lot_code'] ?? ''));
+
+        if ($keyword !== '') {
+            $query->where(function ($keywordQuery) use ($keyword) {
+                $keywordQuery
+                    ->where('lot_code', 'like', "%{$keyword}%")
+                    ->orWhereHas('productCertificate.product', function ($productQuery) use ($keyword) {
+                        $productQuery
+                            ->where('name', 'like', "%{$keyword}%")
+                            ->orWhere('slug', 'like', "%{$keyword}%");
+                    })
+                    ->orWhereHas('productCertificate', function ($certificateQuery) use ($keyword) {
+                        $certificateQuery
+                            ->where('certificate_number', 'like', "%{$keyword}%")
+                            ->orWhereHas('certification', function ($certificationQuery) use ($keyword) {
+                                $certificationQuery->where('name', 'like', "%{$keyword}%");
+                            });
+                    });
+            });
         }
 
         $limit = $filters['per_page'] ?? $filters['limit'] ?? 10;
 
         return $query->paginate($limit);
     }
+
+    public function getVendorLotStats(int $sellerId): array
+    {
+        $farm = $this->getSellerFarm($sellerId);
+        $today = today()->toDateString();
+        $warningDate = today()->addDays(7)->toDateString();
+
+        $stats = HarvestLot::query()
+            ->whereHas('productCertificate.product', function ($query) use ($farm) {
+                $query->where('farm_id', $farm->id);
+            })
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw(
+                'SUM(CASE WHEN status = 1 AND quantity_remaining > 0 AND expiry_date >= ? THEN 1 ELSE 0 END) as active',
+                [$today]
+            )
+            ->selectRaw(
+                'SUM(CASE WHEN status = 1 AND quantity_remaining > 0 AND expiry_date BETWEEN ? AND ? THEN 1 ELSE 0 END) as warning',
+                [$today, $warningDate]
+            )
+            ->selectRaw(
+                'SUM(CASE WHEN quantity_remaining <= 0 THEN 1 ELSE 0 END) as out_of_stock'
+            )
+            ->first();
+
+        return [
+            'total' => (int) ($stats?->total ?? 0),
+            'active' => (int) ($stats?->active ?? 0),
+            'warning' => (int) ($stats?->warning ?? 0),
+            'out_of_stock' => (int) ($stats?->out_of_stock ?? 0),
+        ];
+    }
+
     public function getVendorLotOptions(int $sellerId): array
 {
     $farm = $this->getSellerFarm($sellerId);
@@ -194,13 +244,33 @@ public function updateVendorLot(array $data, int $lotId, int $sellerId): Harvest
 
         $finalQuantityRemaining = (float) $lot->quantity_remaining;
 
-        if (array_key_exists('quantity_imported', $data)) {
-            if ((float) $lot->quantity_sold > 0) {
-                throw ValidationException::withMessages([
-                    'quantity_imported' => ['Không được sửa số lượng nhập khi lô đã phát sinh bán hàng.'],
-                ]);
-            }
+        if ((float) $lot->quantity_sold > 0) {
+            $immutableFields = [
+                'harvest_date' => $lot->harvest_date->toDateString(),
+                'expiry_date' => $lot->expiry_date->toDateString(),
+                'quantity_imported' => (float) $lot->quantity_imported,
+            ];
 
+            foreach ($immutableFields as $field => $currentValue) {
+                if (!array_key_exists($field, $data)) {
+                    continue;
+                }
+
+                $nextValue = $field === 'quantity_imported'
+                    ? (float) $data[$field]
+                    : (string) $data[$field];
+
+                if ($nextValue !== $currentValue) {
+                    throw ValidationException::withMessages([
+                        $field => ['Lô đã phát sinh đơn hàng nên không được sửa ngày thu hoạch, hạn sử dụng hoặc số lượng nhập.'],
+                    ]);
+                }
+
+                unset($data[$field]);
+            }
+        }
+
+        if (array_key_exists('quantity_imported', $data)) {
             $data['quantity_remaining'] = $data['quantity_imported'];
             $finalQuantityRemaining = (float) $data['quantity_imported'];
         }

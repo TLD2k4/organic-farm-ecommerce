@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ChevronLeft,
+  AlertTriangle,
   CreditCard,
   Loader2,
   MapPin,
@@ -16,6 +17,8 @@ import {
 import addressService from "../../services/addressService";
 import buyerCartService from "../../services/buyerCartService";
 import checkoutService from "../../services/checkoutService";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 const DEFAULT_SHIPPING_FEE = 30000;
 
@@ -60,10 +63,11 @@ export default function CheckoutPage() {
 
       const response = await buyerCartService.getCart();
       const payload = response.data ?? response;
-
-      setCart(normalizeCart(payload.cart || payload));
+      const normalized = normalizeCart(payload.cart || payload);
+      const selectedIds = JSON.parse(sessionStorage.getItem("checkout_cart_item_ids") || "[]").map(Number);
+      setCart({ ...normalized, items: selectedIds.length ? normalized.items.filter((item) => selectedIds.includes(Number(item.id))) : [] });
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Không thể tải giỏ hàng.");
+      toast.error(getApiErrorMessage(error, "Không thể tải giỏ hàng."));
     } finally {
       setLoading(false);
     }
@@ -96,6 +100,10 @@ export default function CheckoutPage() {
   const groups = useMemo(() => {
     return groupItemsByFarm(cart.items || []);
   }, [cart.items]);
+  const unavailableItems = useMemo(
+    () => (cart.items || []).filter((item) => !item.is_available),
+    [cart.items],
+  );
 
   const itemsTotal = useMemo(() => {
     return groups.reduce((total, group) => {
@@ -139,6 +147,14 @@ export default function CheckoutPage() {
       return false;
     }
 
+    if (unavailableItems.length > 0) {
+      toast.error(
+        unavailableItems[0].availability_reason ||
+          "Có gian hàng hiện đang tạm ngừng nhận đơn mới.",
+      );
+      return false;
+    }
+
     if (addresses.length === 0) {
       toast.error("Bạn cần thêm địa chỉ nhận hàng trước khi thanh toán.");
       navigate("/profile?tab=addresses");
@@ -167,6 +183,7 @@ export default function CheckoutPage() {
         shipping_address: shippingForm.shipping_address,
         note: shippingForm.note || null,
         payment_method: paymentMethod,
+        cart_item_ids: cart.items.map((item) => item.id),
 
         split_orders: groups.map((group) => ({
           farm_id: group.farmId,
@@ -187,6 +204,8 @@ export default function CheckoutPage() {
       const data = payloadData.data ?? payloadData;
 
       toast.success(payloadData.message || "Tạo đơn hàng thành công.");
+      sessionStorage.removeItem("checkout_cart_item_ids");
+      window.dispatchEvent(new Event("cart:updated"));
 
       const momoUrl =
         data.payment_url ||
@@ -206,14 +225,7 @@ export default function CheckoutPage() {
       `/order-success?order=${orderId || ""}&method=${paymentMethod}`
     );
     } catch (error) {
-      const errors = error?.response?.data?.errors;
-      const firstError = errors ? Object.values(errors)?.[0]?.[0] : null;
-
-      toast.error(
-        firstError ||
-          error?.response?.data?.message ||
-          "Thanh toán thất bại."
-      );
+      toast.error(getApiErrorMessage(error, "Thanh toán thất bại."));
     } finally {
       setCheckoutLoading(false);
     }
@@ -281,6 +293,18 @@ export default function CheckoutPage() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="space-y-5 xl:col-span-8">
+          {unavailableItems.length > 0 && (
+            <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+              <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+              <div>
+                <p>Không thể tạo đơn mới cho một gian hàng đang tạm ngừng nhận đơn.</p>
+                <p className="mt-1 font-semibold">
+                  {unavailableItems[0].availability_reason ||
+                    "Vui lòng quay lại giỏ hàng và bỏ chọn sản phẩm này."}
+                </p>
+              </div>
+            </div>
+          )}
           <ShippingInfo
             form={shippingForm}
             addresses={addresses}
@@ -301,6 +325,7 @@ export default function CheckoutPage() {
             paymentMethod={paymentMethod}
             onPaymentChange={setPaymentMethod}
             loading={checkoutLoading}
+            unavailable={unavailableItems.length > 0}
             onCheckout={handleCheckout}
           />
         </div>
@@ -335,18 +360,16 @@ function ShippingInfo({
               Chọn địa chỉ đã lưu
             </label>
 
-        <select
+        <ResponsiveSelect
           value={selectedAddressId}
-          onChange={(e) => onSelectAddress(e.target.value)}
-          className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50"
-        >
-          {addresses.map((address) => (
-            <option key={address.id} value={address.id}>
-              {address.receiver_name} - {address.phone} - {getFullAddress(address)}
-              {address.is_default ? " (Mặc định)" : ""}
-            </option>
-          ))}
-        </select>
+          onChange={onSelectAddress}
+          options={addresses.map((address) => ({
+            value: address.id,
+            label: `${address.receiver_name} - ${address.phone} - ${getFullAddress(address)}${
+              address.is_default ? " (Mặc định)" : ""
+            }`,
+          }))}
+        />
           </div>
         )}
 
@@ -461,7 +484,16 @@ function SplitOrderPreview({ groups }) {
 
                   <Store size={18} className="text-[#6BAE4F]" />
 
-                  <span>{group.farmName}</span>
+                  {group.farmSlug ? (
+                    <Link
+                      to={`/farms/${group.farmSlug}`}
+                      className="hover:text-[#6BAE4F] hover:underline"
+                    >
+                      {group.farmName}
+                    </Link>
+                  ) : (
+                    <span>{group.farmName}</span>
+                  )}
                 </div>
 
                 <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">
@@ -483,19 +515,41 @@ function SplitOrderPreview({ groups }) {
                     className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-12 md:items-center"
                   >
                     <div className="flex gap-3 md:col-span-5">
-                      <img
-                        src={
-                          item.product_image ||
-                          "https://placehold.co/100x100?text=Product"
-                        }
-                        alt={item.product_name}
-                        className="h-20 w-20 rounded-2xl border border-slate-100 object-cover"
-                      />
+                      {item.is_publicly_visible && item.product_slug ? (
+                        <Link to={`/products/${item.product_slug}`} className="flex-none">
+                          <img
+                            src={
+                              item.product_image ||
+                              "https://placehold.co/100x100?text=Product"
+                            }
+                            alt={item.product_name}
+                            className="h-20 w-20 rounded-2xl border border-slate-100 object-cover"
+                          />
+                        </Link>
+                      ) : (
+                        <img
+                          src={
+                            item.product_image ||
+                            "https://placehold.co/100x100?text=Product"
+                          }
+                          alt={item.product_name}
+                          className="h-20 w-20 rounded-2xl border border-slate-100 object-cover"
+                        />
+                      )}
 
                       <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 font-extrabold text-slate-900">
-                          {item.product_name}
-                        </p>
+                        {item.is_publicly_visible && item.product_slug ? (
+                          <Link
+                            to={`/products/${item.product_slug}`}
+                            className="line-clamp-2 font-extrabold text-slate-900 hover:text-[#6BAE4F] hover:underline"
+                          >
+                            {item.product_name}
+                          </Link>
+                        ) : (
+                          <p className="line-clamp-2 font-extrabold text-slate-900">
+                            {item.product_name}
+                          </p>
+                        )}
 
                         {item.unit && (
                           <p className="mt-1 text-sm font-semibold text-slate-400">
@@ -575,6 +629,7 @@ function CheckoutSummary({
   paymentMethod,
   onPaymentChange,
   loading,
+  unavailable,
   onCheckout,
 }) {
   const totalProducts = groups.reduce((total, group) => {
@@ -630,7 +685,7 @@ function CheckoutSummary({
       <button
         type="button"
         onClick={onCheckout}
-        disabled={loading}
+        disabled={loading || unavailable}
         className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#6BAE4F] text-sm font-extrabold text-white shadow-lg shadow-green-100 transition hover:bg-[#5d9d43] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {loading && <Loader2 size={18} className="animate-spin" />}
@@ -710,7 +765,7 @@ function PaymentMethodInSummary({ value, onChange }) {
         <button
           type="button"
           onClick={() => onChange("MOMO")}
-          className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
+          className={`payment-option-momo flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
             value === "MOMO"
               ? "border-pink-500 bg-pink-50"
               : "border-slate-200 bg-white hover:bg-slate-50"
@@ -729,10 +784,12 @@ function PaymentMethodInSummary({ value, onChange }) {
           <Wallet size={22} className="text-pink-500" />
 
           <div>
-            <p className="font-extrabold text-slate-900">Ví MoMo</p>
+            <p className="font-extrabold text-slate-900">
+              MoMo Sandbox · Thẻ ATM nội địa
+            </p>
 
             <p className="text-xs font-semibold text-slate-500">
-              Thanh toán online qua cổng MoMo.
+              Chuyển sang cổng MoMo payWithATM để thanh toán online.
             </p>
           </div>
         </button>
@@ -787,12 +844,14 @@ function normalizeCart(payload) {
     return {
       id: item.id,
       product_id: item.product_id || product.id,
+      product_slug: item.product_slug || product.slug || "",
       product_name: item.product_name || product.name || "Sản phẩm",
       product_image:
         item.product_image ||
         product.thumbnail ||
         product.image ||
         "https://placehold.co/120x120?text=Product",
+      is_publicly_visible: item.is_publicly_visible !== false,
       unit: item.unit || product.unit || "",
       quantity,
       price,
@@ -803,6 +862,14 @@ function normalizeCart(payload) {
         item.farm?.name ||
         product.farm?.name ||
         "Nông trại",
+      farm_slug:
+        item.farm_slug || item.farm?.slug || product.farm?.slug || "",
+      is_available: item.is_available !== false,
+      availability_reason:
+        item.availability_reason ||
+        item.order_unavailable_reason ||
+        product.order_unavailable_reason ||
+        null,
       shipping_fee: Number(
         item.shipping_fee ??
           item.farm?.shipping_fee ??
@@ -829,6 +896,7 @@ function groupItemsByFarm(items) {
         farmKey,
         farmId: item.farm_id,
         farmName: item.farm_name || "Nông trại",
+        farmSlug: item.farm_slug || "",
         shipping_fee: item.shipping_fee ?? DEFAULT_SHIPPING_FEE,
         items: [],
       });

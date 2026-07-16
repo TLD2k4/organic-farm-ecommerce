@@ -26,9 +26,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex justify-center items-center bg-linear-to-br  from-green-50 via-white to-green-100">
+    <div className="auth-page-shell flex min-h-screen items-center justify-center bg-linear-to-br from-green-50 via-white to-green-100 px-3 py-8 sm:px-6">
       <div
         className="
+auth-card
 w-full
 max-w-lg
 p-8
@@ -46,6 +47,7 @@ font-bold
 text-center
 mb-6
 text-green-500
+auth-title
 "
         >
           Đăng nhập

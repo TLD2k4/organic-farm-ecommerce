@@ -66,7 +66,13 @@ export default function UsersPage() {
       />
 
       {/* PAGINATION */}
-      <Pagination meta={meta} params={params} setParams={setParams} />
+      <Pagination
+        meta={meta}
+        params={params}
+        setParams={setParams}
+        itemLabel="tài khoản"
+        loading={loading}
+      />
 
       {/* DRAWER */}
       <UserDrawer

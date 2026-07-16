@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { Camera, Loader2, Trash2, UploadCloud } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import uploadService from "@/services/uploadService";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 // 🌟 BƯỚC 1: Chuyển uploadMap ra ngoài này.
 // Nó sẽ được khởi tạo ĐÚNG 1 LẦN duy nhất khi app chạy, không lo bị re-render tạo lại nữa!
@@ -26,6 +27,7 @@ export default function UploadImage({
   uploadType = "user_avatar",
 }) {
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const setUploadState = useCallback(
     (state) => {
@@ -42,33 +44,42 @@ export default function UploadImage({
     async (file) => {
       if (!file) return;
 
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Ảnh không được vượt quá 5MB.");
+      const maxFileSizeMb = 5;
+      if (file.size > maxFileSizeMb * 1024 * 1024) {
+        toast.error(`Ảnh không được vượt quá ${maxFileSizeMb}MB.`);
         return;
       }
 
       try {
         setUploadState(true);
+        setProgress(0);
         let response;
+        const uploadOptions = {
+          onUploadProgress: (event) => {
+            if (!event.total) return;
+            setProgress(Math.min(100, Math.round((event.loaded * 100) / event.total)));
+          },
+        };
 
         if (publicRegister) {
-          response = await uploadService.uploadRegisterAvatar(file);
+          response = await uploadService.uploadRegisterAvatar(file, uploadOptions);
         } else {
           // Dùng object viết hoa khai báo bên ngoài scope component
           const uploadFn = UPLOAD_MAP[uploadType];
           if (!uploadFn) {
             throw new Error("Loại upload không hợp lệ.");
           }
-          response = await uploadFn(file);
+          response = await uploadFn(file, uploadOptions);
         }
 
         const uploaded = response.data ?? response;
         onChange(uploaded.url);
         toast.success(response.message || "Upload ảnh thành công.");
       } catch (error) {
-        toast.error(error?.message || "Upload ảnh thất bại.");
+        toast.error(getApiErrorMessage(error, "Upload ảnh thất bại."));
       } finally {
         setUploadState(false);
+        setProgress(0);
       }
     },
     [publicRegister, uploadType, onChange, setUploadState],
@@ -140,7 +151,13 @@ export default function UploadImage({
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-green-500 px-4 text-sm font-semibold text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading && <Loader2 size={16} className="animate-spin" />}
-            {uploading ? "Đang tải lên..." : "Chọn hoặc Kéo ảnh vào đây"}
+            {uploading
+              ? progress === 0
+                ? "Đang tối ưu ảnh..."
+                : progress < 100
+                  ? `Đang tải ${progress}%`
+                  : "Đang lưu ảnh..."
+              : "Chọn hoặc Kéo ảnh vào đây"}
           </button>
 
           {value && (

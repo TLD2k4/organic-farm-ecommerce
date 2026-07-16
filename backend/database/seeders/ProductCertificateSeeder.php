@@ -2,55 +2,69 @@
 
 namespace Database\Seeders;
 
+use App\Models\Certification;
 use App\Models\Product;
 use App\Models\ProductCertificate;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 class ProductCertificateSeeder extends Seeder
 {
     public function run(): void
     {
-        for ($i = 1; $i <= 20; $i++) {
-            $product = Product::find($i);
+        $admin = User::role('admin')->orderBy('id')->first();
+        $certificationIds = Certification::query()
+            ->where('status', 1)
+            ->orderBy('id')
+            ->pluck('id')
+            ->values();
 
-            if (!$product) {
-                continue;
+        if (!$admin || $certificationIds->isEmpty()) {
+            throw new RuntimeException(
+                'Không thể seed chứng chỉ: thiếu admin hoặc loại chứng chỉ đang hoạt động.'
+            );
+        }
+
+        $products = Product::query()
+            ->where('status', 1)
+            ->whereHas('farm', fn ($query) => $query->where('status', 1))
+            ->orderBy('id')
+            ->take(20)
+            ->get();
+
+        foreach ($products as $index => $product) {
+            $certificateNumber = 'GCN-NS-'
+                . str_pad((string) $product->id, 6, '0', STR_PAD_LEFT);
+            $dayOffset = $index === 0 ? 0 : (($index * 3) % 30);
+            $issuedDate = today()->subDays($dayOffset);
+            $approvedAt = $issuedDate->copy()->setTime(8, 0)->addMinutes($index);
+            if ($approvedAt->isFuture()) {
+                $approvedAt = now();
             }
-
-            $certificateNumber = 'GCN-NS-' . str_pad($i, 5, '0', STR_PAD_LEFT);
-
-            // Chứng nhận được duyệt sau khi sản phẩm được tạo 1 ngày
-            $approvedAt = $product->created_at->copy()->addDay();
-
-            // Ngày cấp chứng nhận trước ngày duyệt 1 tháng
-            $issuedDate = $approvedAt->copy()->subMonth();
-
-            // Hết hạn sau 1 năm kể từ ngày cấp
             $expiryDate = $issuedDate->copy()->addYear();
 
-            ProductCertificate::create([
-                'product_id' => $i,
-
-                // 1 = VietGAP, 2 = GlobalGAP, 3 = Organic
-                'certification_id' => (($i - 1) % 3) + 1,
-
+            $certificate = ProductCertificate::withTrashed()->firstOrNew([
                 'certificate_number' => $certificateNumber,
-                'certificate_file' => 'certificates/' . strtolower($certificateNumber) . '.pdf',
+            ]);
 
+            $certificate->fill([
+                'product_id' => $product->id,
+                'certification_id' => $certificationIds[
+                    $index % $certificationIds->count()
+                ],
+                'certificate_file' => 'certificates/'
+                    . strtolower($certificateNumber)
+                    . '.pdf',
                 'issued_date' => $issuedDate->toDateString(),
                 'expiry_date' => $expiryDate->toDateString(),
-
                 'status' => 1,
-
-                // admin id = 1 duyệt
-                'approved_by' => 1,
+                'approved_by' => $admin->id,
                 'approved_at' => $approvedAt,
-
                 'rejection_reason' => null,
-
-                'created_at' => $approvedAt,
-                'updated_at' => $approvedAt,
             ]);
+            $certificate->deleted_at = null;
+            $certificate->save();
         }
     }
 }

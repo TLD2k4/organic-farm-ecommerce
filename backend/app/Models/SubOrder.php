@@ -20,6 +20,10 @@ class SubOrder extends Model
         'status',
         'payment_status',
         'seller_note',
+        'cancelled_by',
+        'cancelled_at',
+        'completed_at',
+        'cancel_reason',
     ];
 
     protected $casts = [
@@ -28,6 +32,8 @@ class SubOrder extends Model
         'total' => 'decimal:2',
         'status' => 'integer',
         'payment_status' => 'integer',
+        'cancelled_at' => 'datetime',
+        'completed_at' => 'datetime',
     ];
 
     public function order()
@@ -43,5 +49,10 @@ class SubOrder extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by')->withTrashed();
     }
 }

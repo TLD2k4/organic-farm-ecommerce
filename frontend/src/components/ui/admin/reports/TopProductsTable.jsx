@@ -1,6 +1,8 @@
 import { ImageIcon, Trophy } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { getImageUrl } from "@/utils/image";
+import { getAdminProductLink } from "@/utils/adminEntityLink";
 
 const formatNumber = (value, maximumFractionDigits = 0) => {
   return new Intl.NumberFormat("vi-VN", {
@@ -43,7 +45,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px]">
+          <table className="w-full min-w-212.5">
             <thead className="bg-slate-50">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3 text-left text-sm font-bold">
@@ -69,8 +71,10 @@ export default function TopProductsTable({ products = [], loading = false }) {
             </thead>
 
             <tbody>
-              {products.map((product, index) => (
-                <tr
+              {products.map((product, index) => {
+                const productLink = getAdminProductLink(product);
+
+                return <tr
                   key={`${product.product_id}-${index}`}
                   className="border-t border-slate-100 transition hover:bg-slate-50"
                 >
@@ -106,7 +110,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="flex min-w-[230px] items-center gap-3">
+                    <div className="flex min-w-57.5 items-center gap-3">
                       {product.product_image ? (
                         <img
                           src={getImageUrl(product.product_image)}
@@ -120,9 +124,19 @@ export default function TopProductsTable({ products = [], loading = false }) {
                       )}
 
                       <div className="min-w-0">
-                        <p className="max-w-[260px] break-words font-semibold text-slate-900">
-                          {product.product_name}
-                        </p>
+                        {productLink ? (
+                          <Link
+                            to={productLink.to}
+                            title={productLink.title}
+                            className={`block max-w-65 wrap-break-word font-semibold hover:underline ${productLink.isPublic ? "text-slate-900 hover:text-green-700" : "text-slate-900 hover:text-sky-600"}`}
+                          >
+                            {product.product_name}
+                          </Link>
+                        ) : (
+                          <p className="max-w-65 wrap-break-word font-semibold text-slate-900">
+                            {product.product_name}
+                          </p>
+                        )}
 
                         <p className="mt-0.5 text-xs text-slate-500">
                           ID: #{product.product_id}
@@ -142,8 +156,8 @@ export default function TopProductsTable({ products = [], loading = false }) {
                   <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-green-700">
                     {formatCurrency(product.revenue)}
                   </td>
-                </tr>
-              ))}
+                </tr>;
+              })}
             </tbody>
           </table>
         </div>

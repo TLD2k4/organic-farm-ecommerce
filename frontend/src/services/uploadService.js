@@ -1,4 +1,5 @@
 import axiosClient from "../api/axiosClient";
+import { optimizeImageForUpload } from "../utils/imageUpload";
 
 const unwrapResponse = (response) => {
   if (response?.success !== undefined) {
@@ -9,64 +10,63 @@ const unwrapResponse = (response) => {
 };
 
 const uploadService = {
-  uploadFile: async (file, type) => {
+  uploadFile: async (file, type, options = {}) => {
     const formData = new FormData();
+    const optimizedFile = await optimizeImageForUpload(file, type);
 
-    formData.append("file", file);
+    formData.append("file", optimizedFile);
     formData.append("type", type);
 
     const response = await axiosClient.post("/uploads", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      onUploadProgress: options.onUploadProgress,
     });
 
     return unwrapResponse(response);
   },
 
-  uploadRegisterAvatar: async (file) => {
+  uploadRegisterAvatar: async (file, options = {}) => {
     const formData = new FormData();
+    const optimizedFile = await optimizeImageForUpload(file, "register_avatar");
 
-    formData.append("file", file);
+    formData.append("file", optimizedFile);
 
     const response = await axiosClient.post("/uploads/register-avatar", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      onUploadProgress: options.onUploadProgress,
     });
 
     return unwrapResponse(response);
   },
 
-  uploadUserAvatar: async (file) => {
-    return uploadService.uploadFile(file, "user_avatar");
+  uploadUserAvatar: async (file, options) => {
+    return uploadService.uploadFile(file, "user_avatar", options);
   },
 
-  uploadFarmLogo: async (file) => {
-    return uploadService.uploadFile(file, "farm_logo");
+  uploadFarmLogo: async (file, options) => {
+    return uploadService.uploadFile(file, "farm_logo", options);
   },
 
-  uploadFarmCover: async (file) => {
-    return uploadService.uploadFile(file, "farm_cover");
+  uploadFarmCover: async (file, options) => {
+    return uploadService.uploadFile(file, "farm_cover", options);
   },
   
-  uploadProductThumbnail: async (file) => {
-    return uploadService.uploadFile(file, "product_thumbnail");
+  uploadProductThumbnail: async (file, options) => {
+    return uploadService.uploadFile(file, "product_thumbnail", options);
   },
 
-  uploadProductDetail: async (file) => {
-    return uploadService.uploadFile(file, "product_detail");
+  uploadProductDetail: async (file, options) => {
+    return uploadService.uploadFile(file, "product_detail", options);
   },
 
-  uploadCategoryImage: async (file) => {
+  uploadCategoryImage: async (file, options) => {
     return uploadService.uploadFile(
       file,
       "category_image",
+      options,
     );
   },
 
-  uploadCertificateFile: async (file) => {
-    return uploadService.uploadFile(file, "certificate_file");
+  uploadCertificateFile: async (file, options) => {
+    return uploadService.uploadFile(file, "certificate_file", options);
   },
 };
 

@@ -1,4 +1,7 @@
+//src\pages\admin\FarmsPage.jsx
+
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { Building2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -11,10 +14,12 @@ import FarmsTable from "@/components/ui/admin/farms/FarmsTable";
 import FarmDrawer from "@/components/ui/admin/farms/FarmDrawer";
 import FarmRejectModal from "@/components/ui/admin/farms/FarmRejectModal";
 import Pagination from "@/components/common/Pagination";
+import { requestReason } from "@/utils/actionDialog";
 
 import { handleApi } from "@/utils/api";
 
 export default function FarmsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     farms,
     meta,
@@ -46,6 +51,15 @@ export default function FarmsPage() {
   const [rejectingFarm, setRejectingFarm] = useState(null);
 
   const debouncedKeyword = useDebounce(params.keyword, 500);
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+
+    if (Number.isInteger(requestedId) && requestedId > 0) {
+      setSelectedFarmId(requestedId);
+      setOpenDrawer(true);
+    }
+  }, [searchParams]);
 
   const requestParams = {
     page: params.page,
@@ -125,14 +139,26 @@ export default function FarmsPage() {
         onView={handleView}
         onReject={setRejectingFarm}
         onApprove={(farm) => runAction(() => approve(farm.id))}
-        onSuspend={(farm) => runAction(() => suspend(farm.id))}
+        onSuspend={async (farm) => {
+          const reason = await requestReason({ title: `Đình chỉ ${farm.name}`, description: "Người bán sẽ nhìn thấy người thao tác, thời gian và lý do đình chỉ.", placeholder: "Nhập lý do đình chỉ...", confirmLabel: "Đình chỉ" });
+          if (reason) runAction(() => suspend(farm.id, reason));
+        }}
         onReopen={(farm) => runAction(() => reopen(farm.id))}
-        onDelete={(farm) => runAction(() => deleteFarm(farm.id))}
+        onDelete={async (farm) => {
+          const reason = await requestReason({ title: `Xóa ${farm.name}`, description: "Nông trại sẽ được xóa mềm và có thể khôi phục.", placeholder: "Nhập lý do xóa...", confirmLabel: "Xóa nông trại" });
+          if (reason) runAction(() => deleteFarm(farm.id, reason));
+        }}
         onRestore={(farm) => runAction(() => restore(farm.id))}
         onForceDelete={(farm) => runAction(() => forceDelete(farm.id))}
       />
 
-      <Pagination meta={meta} params={params} setParams={setParams} />
+      <Pagination
+        meta={meta}
+        params={params}
+        setParams={setParams}
+        itemLabel="gian hàng"
+        loading={loading}
+      />
 
       <FarmDrawer
         open={openDrawer}
@@ -140,6 +166,12 @@ export default function FarmsPage() {
         onClose={() => {
           setOpenDrawer(false);
           setSelectedFarmId(null);
+
+          if (searchParams.has("view")) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("view");
+            setSearchParams(nextParams, { replace: true });
+          }
         }}
       />
 

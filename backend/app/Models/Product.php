@@ -26,6 +26,9 @@ class Product extends Model
         'approved_by',
         'approved_at',
         'rejection_reason',
+        'admin_locked_by',
+        'admin_locked_at',
+        'admin_lock_reason',
     ];
 
     protected $casts = [ // thêm ở đây
@@ -35,6 +38,7 @@ class Product extends Model
         'is_hot' => 'boolean',
         'status' => 'integer',
         'approved_at' => 'datetime',
+        'admin_locked_at' => 'datetime',
     ];
 
     // khi farm bị xóa mềm thì sản phẩm cũg ko hiển thị nhưg order vẫn còn ko ảh hưởg nghiệp vụ 
@@ -81,6 +85,11 @@ class Product extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    public function adminLocker()
+    {
+        return $this->belongsTo(User::class, 'admin_locked_by')->withTrashed();
+    }
+
     public function approvedCertificate()
     {
         return $this->hasOne(ProductCertificate::class)
@@ -115,29 +124,57 @@ class Product extends Model
         return $this->hasMany(OrderItem::class)
             ->whereHas('subOrder', function ($q) {
                 $q->where('status', 3) // 3 = Hoàn tất
-                    ->where('payment_status', '!=', 3); // không tính hoàn tiền
+                    ->where('payment_status', 1)
+                    ->whereNotNull('completed_at');
+            })
+            ->whereHas('subOrder.order', function ($q) {
+                $q->where('status', 3);
             });
     }
 
     public function reviews()
     {
-        return $this->hasManyThrough(
-            Review::class,
-            OrderItem::class,
-            'product_id',      // order_items.product_id
-            'order_item_id',   // reviews.order_item_id
-            'id',              // products.id
-            'id'               // order_items.id
-        );
+        return $this->hasMany(Review::class);
     }
 
     public function visibleReviews()
     {
         return $this->reviews()
             ->where('reviews.status', 1)
-            ->whereHas('orderItem.subOrder', function ($q) {
-                $q->where('status', 3)
-                    ->where('payment_status', '!=', 3);
+            ->where(function ($query) {
+                $query->whereNull('order_item_id')
+                    ->orWhereHas('orderItem.subOrder', function ($q) {
+                        $q->where('status', 3)
+                            ->where('payment_status', 1)
+                            ->whereNotNull('completed_at')
+                            ->whereHas('order', function ($orderQuery) {
+                                $orderQuery->where('status', 3);
+                            });
+                    });
             });
+    }
+
+    public function visibleRatingReviews()
+    {
+        return $this->reviews()
+            ->where('reviews.status', 1)
+            ->whereNotNull('reviews.order_item_id')
+            ->whereNotNull('reviews.rating')
+            ->whereHas('orderItem.subOrder', function ($query) {
+                $query->where('status', 3)
+                    ->where('payment_status', 1)
+                    ->whereNotNull('completed_at')
+                    ->whereHas('order', function ($orderQuery) {
+                        $orderQuery->where('status', 3);
+                    });
+            });
+    }
+
+    public function visibleComments()
+    {
+        return $this->reviews()
+            ->where('reviews.status', 1)
+            ->whereNull('reviews.order_item_id')
+            ->whereNull('reviews.rating');
     }
 }

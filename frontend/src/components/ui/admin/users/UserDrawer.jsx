@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import useUser from "@/hooks/useUser";
 
 import { getImageUrl } from "@/utils/image";
 import { formatDate } from "@/utils/date";
 import { roleBadgeClass, roleLabel } from "@/utils/role";
+import { getAdminFarmLink } from "@/utils/adminEntityLink";
 
 import StatusBadge from "@/components/common/StatusBadge";
 
@@ -33,6 +35,8 @@ export default function UserDrawer({ open, onClose, userId }) {
   if (!open) {
     return null;
   }
+
+  const farmLink = getAdminFarmLink(user?.farm);
 
   return (
     <div className="fixed inset-0 z-60">
@@ -216,7 +220,24 @@ export default function UserDrawer({ open, onClose, userId }) {
 
                   <DetailItem label="ID" value={`#${user.farm.id}`} />
 
-                  <DetailItem label="Tên nông trại" value={user.farm.name} />
+                  <DetailItem
+                    label="Tên nông trại"
+                    value={
+                      farmLink ? (
+                        <Link
+                          to={farmLink.to}
+                          title={farmLink.title}
+                          className={`hover:underline ${
+                            farmLink.isPublic
+                              ? "hover:text-green-700"
+                              : "hover:text-sky-600"
+                          }`}
+                        >
+                          {user.farm.name}
+                        </Link>
+                      ) : user.farm.name
+                    }
+                  />
 
                   <DetailItem label="Slug" value={user.farm.slug} breakWord />
 

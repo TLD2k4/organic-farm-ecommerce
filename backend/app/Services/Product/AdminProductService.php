@@ -32,11 +32,18 @@ class AdminProductService
 
         if (!empty($filters['keyword'])) {
             $keyword = trim((string) $filters['keyword']);
+            $productId = $this->extractProductId($keyword);
 
-            $query->where(function (Builder $subQuery) use ($keyword) {
+            $query->where(function (Builder $subQuery) use ($keyword, $productId) {
                 $subQuery
                     ->where('products.name', 'like', "%{$keyword}%")
                     ->orWhere('products.slug', 'like', "%{$keyword}%")
+                    ->when($productId !== null, function (Builder $idQuery) use ($productId) {
+                        $idQuery->orWhere('products.id', $productId);
+                    })
+                    ->orWhereHas('category', function (Builder $categoryQuery) use ($keyword) {
+                        $categoryQuery->where('name', 'like', "%{$keyword}%");
+                    })
                     ->orWhereHas('farm', function (Builder $farmQuery) use ($keyword) {
                         $farmQuery
                             ->withTrashed()
@@ -105,6 +112,21 @@ class AdminProductService
         );
 
         return $products;
+    }
+
+    private function extractProductId(string $keyword): ?int
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', '', $keyword));
+
+        if (preg_match('/^SP0*(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        if (preg_match('/^#?(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
     }
 
     public function getStats(): array
@@ -352,6 +374,70 @@ class AdminProductService
         return $this->getById($productId);
     }
 
+    public function suspendProduct(User $admin, int $productId, string $reason): array
+    {
+        DB::transaction(function () use ($admin, $productId, $reason) {
+            $product = $this->findProductForUpdate($productId);
+
+            if (!in_array((int) $product->status, [self::PRODUCT_ACTIVE, self::PRODUCT_HIDDEN], true)) {
+                throw ValidationException::withMessages([
+                    'product' => ['Chỉ sản phẩm đã duyệt mới được đình chỉ.'],
+                ]);
+            }
+
+            if ($product->admin_locked_at) {
+                throw ValidationException::withMessages([
+                    'product' => ['Sản phẩm đã bị quản trị viên đình chỉ trước đó.'],
+                ]);
+            }
+
+            $product->update([
+                'status' => self::PRODUCT_HIDDEN,
+                'admin_locked_by' => $admin->id,
+                'admin_locked_at' => now(),
+                'admin_lock_reason' => $this->normalizeReason($reason),
+            ]);
+        });
+
+        return $this->getById($productId);
+    }
+
+    public function reopenProduct(User $admin, int $productId): array
+    {
+        DB::transaction(function () use ($productId) {
+            $product = $this->findProductForUpdate($productId);
+
+            if (!$product->admin_locked_at) {
+                throw ValidationException::withMessages([
+                    'product' => ['Sản phẩm không ở trạng thái đình chỉ bởi admin.'],
+                ]);
+            }
+
+            $this->assertProductDependenciesAreActive($product);
+
+            $hasValidCertificate = ProductCertificate::query()
+                ->where('product_id', $product->id)
+                ->where('status', self::CERTIFICATE_APPROVED)
+                ->whereDate('expiry_date', '>=', today())
+                ->exists();
+
+            if (!$hasValidCertificate) {
+                throw ValidationException::withMessages([
+                    'certificate' => ['Không thể mở lại vì sản phẩm không có chứng chỉ đã duyệt còn hạn.'],
+                ]);
+            }
+
+            $product->update([
+                'status' => self::PRODUCT_ACTIVE,
+                'admin_locked_by' => null,
+                'admin_locked_at' => null,
+                'admin_lock_reason' => null,
+            ]);
+        });
+
+        return $this->getById($productId);
+    }
+
     private function adminProductQuery(): Builder
     {
         return Product::withoutGlobalScope('farm_not_deleted')
@@ -372,6 +458,10 @@ class AdminProductService
                 },
 
                 'approver' => function ($query) {
+                    $query->withTrashed();
+                },
+
+                'adminLocker' => function ($query) {
                     $query->withTrashed();
                 },
 
@@ -683,6 +773,16 @@ class AdminProductService
                 (int) ($product->pending_certificate_count ?? 0),
 
             'rejection_reason' => $product->rejection_reason,
+            'admin_locked_at' => optional($product->admin_locked_at)
+                ->format('Y-m-d H:i:s'),
+            'admin_lock_reason' => $product->admin_lock_reason,
+            'admin_locker' => $product->adminLocker
+                ? [
+                    'id' => $product->adminLocker->id,
+                    'name' => $product->adminLocker->name,
+                    'email' => $product->adminLocker->email,
+                ]
+                : null,
             'approved_at' => optional($product->approved_at)
                 ->format('Y-m-d H:i:s'),
             'created_at' => optional($product->created_at)

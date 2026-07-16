@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
-import { useSearchParams } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  CalendarDays,
   CheckCircle2,
-  ChevronRight,
   ClipboardList,
   Loader2,
   PackageOpen,
@@ -19,6 +16,12 @@ import {
 } from "lucide-react";
 
 import buyerOrderService from "../../../../services/buyerOrderService";
+import buyerCartService from "../../../../services/buyerCartService";
+import {
+  getPublicFarmPath,
+  getPublicProductPath,
+} from "../../../../utils/entityLink";
+import ResponsiveSelect from "../../../common/ResponsiveSelect";
 
 const ORDER_TABS = [
   { label: "Tất cả", value: "" },
@@ -55,6 +58,8 @@ export default function OrderSection() {
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [retryPaymentId, setRetryPaymentId] = useState(null);
+  const [orderActionId, setOrderActionId] = useState(null);
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -89,6 +94,64 @@ export default function OrderSection() {
     }
   }, [filters]);
 
+  const handleRetryMomo = async (order) => {
+    try {
+      setRetryPaymentId(order.id);
+      const response = await buyerOrderService.retryMomo(order.id);
+      const data = response.data ?? response;
+      const url = data.payment_url || data.payUrl || data.pay_url;
+      if (!url) throw new Error("Không nhận được đường dẫn MoMo.");
+      window.location.href = url;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || "Không thể thanh toán lại.");
+    } finally {
+      setRetryPaymentId(null);
+    }
+  };
+
+  const handleChangePaymentMethod = async (order) => {
+    const currentMethod = order.payment?.payment_method || order.payment_method || "COD";
+    const nextMethod = currentMethod === "MOMO" ? "COD" : "MOMO";
+    try {
+      setOrderActionId(order.id);
+      const response = await buyerOrderService.changePaymentMethod(order.id, nextMethod);
+      const data = response.data ?? response;
+      toast.success(response.message || `Đã đổi sang ${nextMethod}.`);
+      if (nextMethod === "MOMO") {
+        const url = data.payment_url || data.payUrl || data.pay_url;
+        if (!url) throw new Error("Đã đổi sang MoMo nhưng không nhận được đường dẫn thanh toán.");
+        window.location.href = url;
+        return;
+      }
+      await fetchOrders();
+    } catch (error) {
+      toast.error(Object.values(error?.errors || {})[0]?.[0] || error?.message || "Không thể đổi phương thức thanh toán.");
+    } finally {
+      setOrderActionId(null);
+    }
+  };
+
+  const handleRebuy = async (order) => {
+    const items = getOrderItems(order).filter((item) => item.product_id || item.product?.id);
+    if (!items.length) {
+      toast.error("Đơn hàng không còn sản phẩm để mua lại.");
+      return;
+    }
+    try {
+      setOrderActionId(order.id);
+      const results = await Promise.allSettled(items.map((item) => buyerCartService.addItem(item.product_id || item.product?.id, Number(item.quantity) || 1)));
+      const added = results.filter((result) => result.status === "fulfilled").length;
+      if (!added) throw results.find((result) => result.status === "rejected")?.reason || new Error("Không thể mua lại sản phẩm.");
+      window.dispatchEvent(new Event("cart:updated"));
+      toast.success(`Đã thêm ${added}/${items.length} sản phẩm vào giỏ.`);
+      navigate("/cart");
+    } catch (error) {
+      toast.error(error?.message || "Không thể thêm lại sản phẩm vào giỏ.");
+    } finally {
+      setOrderActionId(null);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
@@ -96,8 +159,6 @@ export default function OrderSection() {
   if (handledPaymentRedirect.current) return;
 
   const payment = searchParams.get("payment");
-  const orderId = searchParams.get("order");
-
   if (!payment) return;
 
   handledPaymentRedirect.current = true;
@@ -298,6 +359,12 @@ export default function OrderSection() {
               order={order}
               onViewDetail={handleViewDetail}
               onCancel={openCancelModal}
+              onReview={() => navigate("/profile?tab=reviews")}
+              onRetryMomo={handleRetryMomo}
+              retrying={retryPaymentId === order.id}
+              actionLoading={orderActionId === order.id}
+              onChangePaymentMethod={handleChangePaymentMethod}
+              onRebuy={handleRebuy}
             />
           ))}
         </div>
@@ -382,7 +449,7 @@ function OrderTabs({ value, stats, onChange }) {
               )}
 
               {active && (
-                <span className="absolute bottom-0 left-6 right-6 h-[3px] rounded-full bg-[#5fa846]" />
+                <span className="absolute bottom-0 left-6 right-6 h-0.75 rounded-full bg-[#5fa846]" />
               )}
             </button>
           );
@@ -396,23 +463,20 @@ function OrderFilters({ keyword, setKeyword, filters, loading, onChange }) {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
       <div className="lg:col-span-3">
-        <div className="relative">
-          <CalendarDays
-            size={17}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-          />
-
-          <select
+        <div>
+          <ResponsiveSelect
             value={filters.date_from}
-            onChange={(e) => onChange("date_from", e.target.value)}
+            onChange={(value) => onChange("date_from", value)}
             disabled={loading}
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50 disabled:opacity-60"
-          >
-            <option value="">Tất cả thời gian</option>
-            <option value={new Date().toISOString().slice(0, 10)}>
-              Hôm nay
-            </option>
-          </select>
+            className="w-full"
+            options={[
+              { value: "", label: "Tất cả thời gian" },
+              {
+                value: new Date().toISOString().slice(0, 10),
+                label: "Hôm nay",
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -433,44 +497,44 @@ function OrderFilters({ keyword, setKeyword, filters, loading, onChange }) {
       </div>
 
       <div className="lg:col-span-2">
-        <select
+        <ResponsiveSelect
           value={filters.payment_status}
-          onChange={(e) => onChange("payment_status", e.target.value)}
+          onChange={(value) => onChange("payment_status", value)}
           disabled={loading}
-          className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50 disabled:opacity-60"
-        >
-          <option value="">Thanh toán</option>
-          <option value="0">Chờ thanh toán</option>
-          <option value="1">Đã thanh toán</option>
-          <option value="2">Thất bại</option>
-          <option value="3">Hoàn tiền</option>
-        </select>
+          options={[
+            { value: "", label: "Thanh toán" },
+            { value: "0", label: "Chờ thanh toán" },
+            { value: "1", label: "Đã thanh toán" },
+            { value: "2", label: "Thất bại" },
+            { value: "3", label: "Hoàn tiền" },
+          ]}
+        />
       </div>
 
       <div className="lg:col-span-2">
-        <select
+        <ResponsiveSelect
           value={filters.per_page}
-          onChange={(e) => onChange("per_page", Number(e.target.value))}
+          onChange={(value) => onChange("per_page", Number(value))}
           disabled={loading}
-          className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50 disabled:opacity-60"
-        >
-          <option value={5}>5 đơn / trang</option>
-          <option value={10}>10 đơn / trang</option>
-          <option value={15}>15 đơn / trang</option>
-        </select>
+          options={[
+            { value: 5, label: "5 đơn / trang" },
+            { value: 10, label: "10 đơn / trang" },
+            { value: 15, label: "15 đơn / trang" },
+          ]}
+        />
       </div>
     </div>
   );
 }
 
-function OrderCard({ order, onViewDetail, onCancel }) {
+function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retrying, actionLoading, onChangePaymentMethod, onRebuy }) {
   const subOrders = getSubOrders(order);
   const allItems = getOrderItems(order);
   const previewItems = allItems.slice(0, 2);
   const itemCount = getOrderItemCount(order);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-[1px] hover:shadow-md">
+    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-px hover:shadow-md">
       <div className="flex flex-col gap-3 border-b border-slate-100 bg-white px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -564,17 +628,31 @@ function OrderCard({ order, onViewDetail, onCancel }) {
             Xem chi tiết
           </button>
 
+          {canRetryMomo(order) && (
+            <button disabled={retrying} onClick={() => onRetryMomo(order)} className="h-10 rounded-xl bg-fuchsia-600 px-4 text-sm font-bold text-white hover:bg-fuchsia-700 disabled:opacity-60">
+              {retrying ? "Đang tạo link..." : "Thanh toán lại MoMo"}
+            </button>
+          )}
+
+          {canChangePaymentMethod(order) && (
+            <button disabled={actionLoading} onClick={() => onChangePaymentMethod(order)} className="h-10 rounded-xl border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+              {(order.payment?.payment_method || order.payment_method) === "MOMO" ? "Đổi sang COD" : "Đổi sang MoMo"}
+            </button>
+          )}
+
           {Number(order.status) === 3 && (
-            <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6BAE4F] px-4 text-sm font-bold text-white transition hover:bg-[#5d9d43]">
+            <button disabled={actionLoading} onClick={() => onRebuy(order)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6BAE4F] px-4 text-sm font-bold text-white transition hover:bg-[#5d9d43] disabled:opacity-50">
               <RotateCcw size={16} />
               Mua lại
             </button>
           )}
 
           {Number(order.status) === 3 && (
-            <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-green-200 bg-white px-4 text-sm font-bold text-[#5fa846] transition hover:bg-green-50">
+            <button
+              onClick={onReview}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-green-200 bg-white px-4 text-sm font-bold text-[#5fa846] transition hover:bg-green-50"
+            >
               <Star size={16} />
-              onClick={() => navigate("/profile?tab=reviews")}
               Đánh giá
             </button>
           )}
@@ -594,22 +672,47 @@ function OrderCard({ order, onViewDetail, onCancel }) {
 }
 
 function ProductLine({ item }) {
+  const productPath = getPublicProductPath(item.product);
+
   return (
     <div className="flex gap-3">
-      <img
-        src={
-          item.product_image ||
-          item.product?.thumbnail ||
-          "https://placehold.co/100x100?text=Product"
-        }
-        alt={item.product_name}
-        className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
-      />
+      {productPath ? (
+        <Link to={productPath} className="flex-none">
+          <img
+            src={
+              item.product_image ||
+              item.product?.thumbnail ||
+              "https://placehold.co/100x100?text=Product"
+            }
+            alt={item.product_name}
+            className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
+          />
+        </Link>
+      ) : (
+        <img
+          src={
+            item.product_image ||
+            item.product?.thumbnail ||
+            "https://placehold.co/100x100?text=Product"
+          }
+          alt={item.product_name}
+          className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
+        />
+      )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-base font-bold text-slate-900">
-          {item.product_name}
-        </p>
+        {productPath ? (
+          <Link
+            to={productPath}
+            className="block truncate text-base font-bold text-slate-900 hover:text-[#5fa846] hover:underline"
+          >
+            {item.product_name}
+          </Link>
+        ) : (
+          <p className="truncate text-base font-bold text-slate-900">
+            {item.product_name}
+          </p>
+        )}
 
         <p className="mt-1 text-sm font-semibold text-slate-400">
           {item.unit || "sản phẩm"}
@@ -643,7 +746,7 @@ function PaymentText({ order }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1.5 text-xs font-bold text-green-600">
         <CheckCircle2 size={14} />
-        Đã thanh toán
+        {paymentMethod === "MOMO" ? "MoMo · Đã thanh toán" : "COD · Đã thu khi giao"}
       </span>
     );
   }
@@ -759,17 +862,18 @@ function Pagination({ pagination, loading, onChangePage }) {
 
 function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
   const subOrders = order?.sub_orders || [];
-  const items = subOrders.flatMap((subOrder) => subOrder.items || []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm">
       <button
         type="button"
         onClick={onClose}
+        aria-label="Đóng chi tiết đơn hàng"
+        title="Đóng chi tiết đơn hàng"
         className="absolute inset-0 h-full w-full cursor-default"
       />
 
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-[520px] flex-col bg-white shadow-2xl">
+      <div className="absolute right-0 top-0 flex h-full w-full max-w-130 flex-col bg-white shadow-2xl">
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <p className="text-sm font-semibold text-slate-500">
@@ -782,6 +886,8 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
 
           <button
             onClick={onClose}
+            aria-label="Đóng chi tiết đơn hàng"
+            title="Đóng chi tiết đơn hàng"
             className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-500 transition hover:bg-red-50 hover:text-red-500"
           >
             <X size={20} />
@@ -813,6 +919,8 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
                 />
               </div>
 
+              {order.cancellation && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm"><p className="font-black text-red-700">Đơn đã bị hủy</p><p className="mt-2 font-semibold text-slate-700">Bởi {order.cancellation.by?.name || "Tài khoản đã xóa"} · {order.cancellation.at}</p><p className="mt-1 text-slate-600">Lý do: {order.cancellation.reason || "Không ghi lý do"}</p></div>}
+
               <div className="space-y-4">
                 {subOrders.map((subOrder) => (
                   <div
@@ -822,7 +930,16 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <div className="flex items-center gap-2 font-bold text-slate-900">
                         <Store size={17} className="text-[#5fa846]" />
-                        {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
+                        {getPublicFarmPath(subOrder.farm) ? (
+                          <Link
+                            to={getPublicFarmPath(subOrder.farm)}
+                            className="hover:text-[#5fa846] hover:underline"
+                          >
+                            {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
+                          </Link>
+                        ) : (
+                          subOrder.farm?.name || subOrder.farm_name || "Nông trại"
+                        )}
                       </div>
 
                       <StatusBadge
@@ -895,7 +1012,7 @@ function CancelOrderModal({
   onSubmit,
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="px-6 py-5">
           <h3 className="text-xl font-extrabold text-slate-900">
@@ -1066,15 +1183,16 @@ function canCancelOrder(order) {
   return true;
 }
 
-function getTotalItems(order) {
-  return (order.sub_orders || []).reduce((total, subOrder) => {
-    return (
-      total +
-      (subOrder.items || []).reduce((sum, item) => {
-        return sum + Number(item.quantity || 0);
-      }, 0)
-    );
-  }, 0);
+function canRetryMomo(order) {
+  const method = order?.payment?.payment_method || order?.payment_method;
+  const status = Number(order?.payment_status ?? order?.payment?.status ?? 0);
+  return method === "MOMO" && status !== 1 && canChangePaymentMethod(order);
+}
+
+function canChangePaymentMethod(order) {
+  const paymentStatus = Number(order?.payment_status ?? order?.payment?.status ?? 0);
+  const subOrders = getSubOrders(order);
+  return paymentStatus !== 1 && Number(order?.status) === 0 && subOrders.every((subOrder) => Number(subOrder.status) === 0);
 }
 
 function getSubOrders(order) {
