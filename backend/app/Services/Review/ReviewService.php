@@ -37,27 +37,23 @@ class ReviewService
 
     public function getProductEligibility(User $user, int $productId): array
     {
-        $purchasedItems = OrderItem::query()
-            ->select(['id', 'product_id'])
-            ->where('product_id', $productId)
-            ->whereHas('subOrder.order', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
-            })
-            ->whereHas('subOrder', function ($query) {
-                $query->where('status', 3)
-                    ->whereIn('payment_status', [0, 1]);
-            })
+        $purchasedItems = $this->completedPurchaseItemsQuery($user, $productId)
+            ->select(['id', 'sub_order_id', 'product_id'])
+            ->with('subOrder:id,order_id')
             ->latest('id')
-            ->get();
+            ->get()
+            ->unique(fn (OrderItem $item) => (int) $item->subOrder?->order_id)
+            ->values();
 
-        $reviewedOrderItemIds = Review::withTrashed()
-            ->whereIn('order_item_id', $purchasedItems->pluck('id'))
-            ->pluck('order_item_id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        $reviewedKeys = $this->getReviewedOrderProductKeys($user);
 
         $reviewableItem = $purchasedItems->first(
-            fn (OrderItem $item) => !in_array((int) $item->id, $reviewedOrderItemIds, true)
+            fn (OrderItem $item) => !isset($reviewedKeys[
+                $this->ratingKey(
+                    (int) $item->subOrder?->order_id,
+                    (int) $item->product_id
+                )
+            ])
         );
 
         return [
@@ -65,36 +61,37 @@ class ReviewService
             'can_comment' => $purchasedItems->isNotEmpty(),
             'can_rate' => $reviewableItem !== null,
             'order_item_id' => $reviewableItem?->id,
+            'order_id' => $reviewableItem?->subOrder?->order_id,
         ];
     }
 
     public function getReviewableItems(User $user)
     {
-        return OrderItem::query()
+        $items = $this->completedPurchaseItemsQuery($user)
             ->with([
                 'product.farm',
                 'product.approvedCertificate',
                 'product.category',
-                'review',
                 'subOrder.order',
             ])
-            ->whereHas('subOrder.order', function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            })
-
-            // Đơn gian hàng đã hoàn thành
-            ->whereHas('subOrder', function ($q) {
-                $q->where('status', 3)
-                    ->whereIn('payment_status', [0, 1]);
-            })
-
-            // Chưa đánh giá
-            ->whereDoesntHave('review', function ($query) {
-                $query->withTrashed();
-            })
-
             ->orderByDesc('id')
-            ->get()
+            ->get();
+
+        $reviewedKeys = $this->getReviewedOrderProductKeys($user);
+
+        return $items
+            // Một sản phẩm chỉ xuất hiện một lần trong mỗi đơn, dù số lượng
+            // mua hoặc số dòng order_items của sản phẩm đó là bao nhiêu.
+            ->unique(fn (OrderItem $item) => $this->ratingKey(
+                (int) $item->subOrder?->order_id,
+                (int) $item->product_id
+            ))
+            ->reject(fn (OrderItem $item) => isset($reviewedKeys[
+                $this->ratingKey(
+                    (int) $item->subOrder?->order_id,
+                    (int) $item->product_id
+                )
+            ]))
             ->map(fn ($item) => $this->formatReviewableItem($item))
             ->values();
     }
@@ -105,24 +102,31 @@ class ReviewService
             return $this->createBuyerComment($user, $data);
         }
 
-        $orderItem = $this->findReviewableOrderItem(
-            user: $user,
-            orderItemId: (int) $data['order_item_id']
-        );
+        return DB::transaction(function () use ($user, $data) {
+            $orderItem = $this->findReviewableOrderItem(
+                user: $user,
+                orderItemId: (int) $data['order_item_id']
+            );
 
-        $hasReview = Review::withTrashed()
-            ->where('order_item_id', $orderItem->id)
-            ->exists();
+            // Khóa đơn gian hàng để hai request đồng thời không thể tạo hai
+            // đánh giá cho cùng một sản phẩm trong cùng một đơn.
+            $subOrder = $orderItem->subOrder()
+                ->lockForUpdate()
+                ->firstOrFail();
+            $orderId = (int) $subOrder->order_id;
 
-        if ($hasReview) {
-            throw ValidationException::withMessages([
-                'order_item_id' => [
-                    'Sản phẩm trong đơn hàng này đã được đánh giá.',
-                ],
-            ]);
-        }
+            if ($this->hasRatingForOrderProduct(
+                $user,
+                $orderId,
+                (int) $orderItem->product_id
+            )) {
+                throw ValidationException::withMessages([
+                    'order_item_id' => [
+                        'Sản phẩm này đã được đánh giá trong đơn hàng đã chọn.',
+                    ],
+                ]);
+            }
 
-        return DB::transaction(function () use ($user, $data, $orderItem) {
             $review = Review::create([
                 'user_id' => $user->id,
                 'order_item_id' => $orderItem->id,
@@ -192,7 +196,7 @@ class ReviewService
 
     private function findReviewableOrderItem(User $user, int $orderItemId): OrderItem
     {
-        $orderItem = OrderItem::query()
+        $orderItem = $this->completedPurchaseItemsQuery($user)
             ->with([
                 'product.farm',
                 'product.approvedCertificate',
@@ -200,13 +204,6 @@ class ReviewService
                 'subOrder.order',
             ])
             ->where('id', $orderItemId)
-            ->whereHas('subOrder.order', function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            })
-            ->whereHas('subOrder', function ($q) {
-                $q->where('status', 3)
-                    ->whereIn('payment_status', [0, 1]);
-            })
             ->first();
 
         if (!$orderItem) {
@@ -261,16 +258,67 @@ class ReviewService
 
     private function hasCompletedPurchase(User $user, int $productId): bool
     {
+        return $this->completedPurchaseItemsQuery($user, $productId)
+            ->exists();
+    }
+
+    private function completedPurchaseItemsQuery(User $user, ?int $productId = null)
+    {
         return OrderItem::query()
-            ->where('product_id', $productId)
+            ->when($productId !== null, fn ($query) => $query->where('product_id', $productId))
             ->whereHas('subOrder.order', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
+                $query->where('user_id', $user->id)
+                    ->where('status', 3);
             })
             ->whereHas('subOrder', function ($query) {
                 $query->where('status', 3)
-                    ->whereIn('payment_status', [0, 1]);
+                    ->where('payment_status', 1)
+                    ->whereNotNull('completed_at');
+            });
+    }
+
+    private function getReviewedOrderProductKeys(User $user): array
+    {
+        return Review::withTrashed()
+            ->join('order_items', 'reviews.order_item_id', '=', 'order_items.id')
+            ->join('sub_orders', 'order_items.sub_order_id', '=', 'sub_orders.id')
+            ->where('reviews.user_id', $user->id)
+            ->whereNotNull('reviews.order_item_id')
+            ->whereNotNull('reviews.rating')
+            ->get([
+                'sub_orders.order_id as reviewed_order_id',
+                'order_items.product_id as reviewed_product_id',
+            ])
+            ->mapWithKeys(fn ($review) => [
+                $this->ratingKey(
+                    (int) $review->reviewed_order_id,
+                    (int) $review->reviewed_product_id
+                ) => true,
+            ])
+            ->all();
+    }
+
+    private function hasRatingForOrderProduct(
+        User $user,
+        int $orderId,
+        int $productId
+    ): bool {
+        return Review::withTrashed()
+            ->where('user_id', $user->id)
+            ->whereNotNull('order_item_id')
+            ->whereNotNull('rating')
+            ->whereHas('orderItem', function ($query) use ($orderId, $productId) {
+                $query->where('product_id', $productId)
+                    ->whereHas('subOrder', function ($subOrderQuery) use ($orderId) {
+                        $subOrderQuery->where('order_id', $orderId);
+                    });
             })
             ->exists();
+    }
+
+    private function ratingKey(int $orderId, int $productId): string
+    {
+        return $orderId . ':' . $productId;
     }
 
     private function ensureReviewOwner(User $user, Review $review): void
@@ -294,6 +342,8 @@ class ReviewService
         return [
             'id' => $item->id,
             'order_item_id' => $item->id,
+            'order_id' => $item->subOrder?->order?->id,
+            'order_code' => $item->subOrder?->order?->order_code,
             'quantity' => (float) $item->quantity,
             'price' => (float) $item->price,
 

@@ -42,11 +42,20 @@ class ReviewSeeder extends Seeder
         ];
 
         $orderItems = OrderItem::whereHas('subOrder.order', function ($query) {
-                $query->where('status', 3); // Chỉ đơn đã giao mới được đánh giá
+                $query->where('status', 3); // Đơn cha đã hoàn thành
+            })
+            ->whereHas('subOrder', function ($query) {
+                $query->where('status', 3)
+                    ->where('payment_status', 1)
+                    ->whereNotNull('completed_at');
             })
             ->with('subOrder.order')
-            ->limit(25)
-            ->get();
+            ->get()
+            // Một sản phẩm trong một đơn chỉ có một lượt đánh giá,
+            // không phụ thuộc số lượng hoặc số dòng dữ liệu lặp.
+            ->unique(fn (OrderItem $item) => $item->subOrder->order_id . ':' . $item->product_id)
+            ->take(25)
+            ->values();
 
         foreach ($orderItems as $index => $orderItem) {
             $order = $orderItem->subOrder->order;
