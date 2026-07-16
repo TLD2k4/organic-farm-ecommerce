@@ -8,17 +8,36 @@ import {
   SELLER_POLICY_SUMMARY,
   SELLER_POLICY_VERSION,
 } from "@/constants/sellerPolicy";
+import sellerPolicyService from "@/services/sellerPolicyService";
 
 export default function SellerPolicyAgreement({
   checked,
   disabled = false,
   error = null,
   onChange,
+  onPolicyLoaded,
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const checkboxId = useId();
   const closeButtonRef = useRef(null);
+  const [policy, setPolicy] = useState(null);
+
+  useEffect(() => {
+    sellerPolicyService.current().then((response) => {
+      const current = response?.data || null;
+      setPolicy(current);
+      onPolicyLoaded?.(current);
+    }).catch(() => onPolicyLoaded?.(null));
+  }, [onPolicyLoaded]);
+
+  const summaryItems = policy?.summary
+    ? policy.summary.split("\n").map((item) => item.trim()).filter(Boolean)
+    : SELLER_POLICY_SUMMARY;
+  const version = policy?.version || SELLER_POLICY_VERSION;
+  const effectiveDate = policy?.effective_at
+    ? new Intl.DateTimeFormat("vi-VN").format(new Date(policy.effective_at))
+    : SELLER_POLICY_EFFECTIVE_DATE;
 
   useEffect(() => {
     if (!open) {
@@ -71,7 +90,7 @@ export default function SellerPolicyAgreement({
         </div>
 
         <ul className="mt-4 grid gap-2 text-sm leading-5 text-slate-700 sm:grid-cols-2">
-          {SELLER_POLICY_SUMMARY.map((item) => (
+          {summaryItems.map((item) => (
             <li key={item} className="flex min-w-0 items-start gap-2">
               <CheckCircle2
                 size={16}
@@ -113,8 +132,8 @@ export default function SellerPolicyAgreement({
                 </button>
 
                 <span className="text-xs text-slate-500">
-                  Phiên bản {SELLER_POLICY_VERSION} · Hiệu lực {" "}
-                  {SELLER_POLICY_EFFECTIVE_DATE}
+                  Phiên bản {version} · Hiệu lực {" "}
+                  {effectiveDate}
                 </span>
               </div>
             </div>
@@ -158,8 +177,8 @@ export default function SellerPolicyAgreement({
                     </h2>
 
                     <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-                      Phiên bản {SELLER_POLICY_VERSION} · Hiệu lực từ {" "}
-                      {SELLER_POLICY_EFFECTIVE_DATE}
+                      Phiên bản {version} · Hiệu lực từ {" "}
+                      {effectiveDate}
                     </p>
                   </div>
 
@@ -181,7 +200,9 @@ export default function SellerPolicyAgreement({
                     quảng cáo hoặc chia sẻ dữ liệu cho mục đích tiếp thị.
                   </div>
 
-                  <div className="mt-5 space-y-5">
+                  {policy?.content ? (
+                    <div className="mt-5 whitespace-pre-wrap text-sm font-medium leading-7 text-slate-700 sm:text-base">{policy.content}</div>
+                  ) : <div className="mt-5 space-y-5">
                     {SELLER_POLICY_SECTIONS.map((section) => (
                       <article key={section.title} className="seller-policy-section">
                         <h3 className="font-extrabold text-slate-900 sm:text-lg">
@@ -198,7 +219,7 @@ export default function SellerPolicyAgreement({
                         </ul>
                       </article>
                     ))}
-                  </div>
+                  </div>}
                 </div>
 
                 <footer className="seller-policy-footer shrink-0 border-t border-slate-200 bg-white p-4 sm:px-6">

@@ -12,6 +12,7 @@ class FarmPolicyAcceptance extends Model
     protected $fillable = [
         'user_id',
         'farm_id',
+        'seller_policy_id',
         'policy_version',
         'accepted_at',
         'ip_address',
@@ -30,5 +31,10 @@ class FarmPolicyAcceptance extends Model
     public function farm()
     {
         return $this->belongsTo(Farm::class);
+    }
+
+    public function policy()
+    {
+        return $this->belongsTo(SellerPolicy::class, 'seller_policy_id')->withTrashed();
     }
 }
