@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\SubOrder;
 use App\Models\OrderItem;
+use App\Services\Farm\SellerPolicyAccessService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,7 @@ class OrderBuilderService
     public function __construct(
         private InventoryService $inventoryService,
         private OrderCodeService $orderCodeService,
+        private SellerPolicyAccessService $sellerPolicyAccessService,
     ) {
     }
 
@@ -30,6 +32,7 @@ class OrderBuilderService
     ): Order {
         $cart->loadMissing([
             'items.product.certificate',
+            'items.product.farm',
         ]);
 
         if ($cart->items->isEmpty()) {
@@ -305,6 +308,10 @@ class OrderBuilderService
                 ]
             ]);
         }
+
+        // Chỉ áp dụng khi tạo đơn mới. Đơn đã tạo không đi qua kiểm tra này,
+        // nên seller vẫn có thể hoàn tất nghĩa vụ giao hàng sau khi chính sách đổi.
+        $this->sellerPolicyAccessService->ensureCanReceiveNewOrder($product->farm);
     }
 
     /**

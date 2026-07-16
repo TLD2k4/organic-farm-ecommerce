@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import StatusBadge from "@/components/common/StatusBadge";
 import { formatDate } from "@/utils/date";
 import { getImageUrl } from "@/utils/image";
+import { getAdminProductLink } from "@/utils/adminEntityLink";
 import {
   formatMoney,
   orderStatusConfig,
@@ -58,6 +59,8 @@ export default function AdminSubOrderDrawer({
             <button
               type="button"
               onClick={onClose}
+              aria-label="Đóng chi tiết đơn gian hàng"
+              title="Đóng chi tiết đơn gian hàng"
               className="rounded-lg p-2 hover:bg-slate-100"
             >
               <X size={21} />
@@ -165,7 +168,7 @@ export default function AdminSubOrderDrawer({
                                 />
                               )}
                               <div>
-                                {item.current_product?.slug ? <Link to={`/products/${item.current_product.slug}`} className="font-semibold hover:text-green-700 hover:underline">{item.product_name}</Link> : <p className="font-semibold">{item.product_name}</p>}
+                                <ProductNameLink item={item} />
                                 <p className="text-xs text-slate-500">
                                   Product #{item.product_id}
                                   {item.current_product?.deleted_at
@@ -219,6 +222,28 @@ export default function AdminSubOrderDrawer({
         </div>
       </div>
     </div>
+  );
+}
+
+function ProductNameLink({ item }) {
+  const productLink = getAdminProductLink(
+    item.current_product,
+  );
+
+  if (!productLink) {
+    return <p className="font-semibold">{item.product_name}</p>;
+  }
+
+  return (
+    <Link
+      to={productLink.to}
+      title={productLink.title}
+      className={`font-semibold hover:underline ${
+        productLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"
+      }`}
+    >
+      {item.product_name}
+    </Link>
   );
 }
 

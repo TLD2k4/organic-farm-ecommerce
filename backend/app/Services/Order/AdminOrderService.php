@@ -9,6 +9,7 @@ use App\Models\SubOrder;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class AdminOrderService
@@ -160,6 +161,10 @@ class AdminOrderService
 
             if ($newStatus === 3) {
                 $subOrder->payment_status = 1;
+
+                if (Schema::hasColumn('sub_orders', 'completed_at')) {
+                    $subOrder->completed_at ??= now();
+                }
             }
 
             if ($newStatus === 4) {
@@ -535,9 +540,16 @@ class AdminOrderService
     private function formatOrderItem(OrderItem $item): array
     {
         $item->loadMissing([
-            'product',
             'orderItemLots.harvestLot',
         ]);
+        $product = $item->product;
+        $isPubliclyVisible = $product
+            && !$product->trashed()
+            && (int) $product->status === 1
+            && $product->farm
+            && !$product->farm->trashed()
+            && (int) $product->farm->status === Farm::STATUS_ACTIVE
+            && $product->approvedCertificate !== null;
 
         return [
             'id' => $item->id,
@@ -548,13 +560,14 @@ class AdminOrderService
             'quantity' => (float) $item->quantity,
             'price' => (float) $item->price,
             'subtotal' => (float) $item->subtotal,
-            'current_product' => $item->product ? [
-                'id' => $item->product->id,
-                'name' => $item->product->name,
-                'slug' => $item->product->slug,
-                'thumbnail' => $item->product->thumbnail,
-                'status' => (int) $item->product->status,
-                'deleted_at' => $item->product->deleted_at,
+            'current_product' => $product ? [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'thumbnail' => $product->thumbnail,
+                'status' => (int) $product->status,
+                'deleted_at' => $product->deleted_at,
+                'is_publicly_visible' => (bool) $isPubliclyVisible,
             ] : null,
             'allocated_lots' => $item->orderItemLots
                 ->map(function ($itemLot) {
@@ -645,7 +658,11 @@ class AdminOrderService
                 ->with(['seller' => fn ($sellerQuery) => $sellerQuery->withTrashed()]),
             'items.product' => fn ($query) => $query
                 ->withoutGlobalScope('farm_not_deleted')
-                ->withTrashed(),
+                ->withTrashed()
+                ->with([
+                    'farm' => fn ($farmQuery) => $farmQuery->withTrashed(),
+                    'approvedCertificate',
+                ]),
             'items.orderItemLots' => fn ($query) => $query->withTrashed(),
             'items.orderItemLots.harvestLot' => fn ($query) => $query->withTrashed(),
         ];

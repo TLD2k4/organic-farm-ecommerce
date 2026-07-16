@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -11,53 +11,85 @@ import {
   MapPin,
   PackageCheck,
   PackageSearch,
+  RefreshCw,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
+  Store,
   Truck,
   Wallet,
+  XCircle,
 } from "lucide-react";
 
 import buyerOrderService from "../../services/buyerOrderService";
+import { getPublicFarmPath } from "../../utils/entityLink";
 
 export default function OrderSuccessPage() {
   const [searchParams] = useSearchParams();
 
   const orderId = searchParams.get("order");
-  const payment = searchParams.get("payment");
   const method = searchParams.get("method");
 
   const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  const isMomo = method === "MOMO" || payment === "success";
+  const fetchOrder = useCallback(async ({ background = false } = {}) => {
+    if (!orderId) {
+      setLoadError("Thiếu mã đơn hàng nên không thể tải tiến trình.");
+      setLoading(false);
+      return;
+    }
 
-  useEffect(() => {
-    if (!orderId) return;
+    try {
+      if (background) setRefreshing(true);
+      else setLoading(true);
 
-    const fetchOrder = async () => {
-      try {
-        setLoading(true);
+      const response = await buyerOrderService.getOrder(orderId);
+      const payload = response.data ?? response;
+      const nextOrder = payload.data ?? payload;
 
-        const response = await buyerOrderService.getOrder(orderId);
-        const payload = response.data ?? response;
-
-        setOrder(payload.data ?? payload);
-      } catch (error) {
-        console.log("LOAD ORDER SUCCESS DETAIL ERROR:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrder();
+      setOrder(nextOrder);
+      setLoadError("");
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.log("LOAD ORDER SUCCESS DETAIL ERROR:", error);
+      setLoadError(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Không thể cập nhật trạng thái đơn hàng.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [orderId]);
 
+  useEffect(() => {
+    fetchOrder();
+  }, [fetchOrder]);
+
+  useEffect(() => {
+    if (!orderId || [3, 4].includes(Number(order?.status))) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      fetchOrder({ background: true });
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [fetchOrder, order?.status, orderId]);
+
+  const paymentMethod =
+    order?.payment_method || order?.payment?.payment_method || method || "COD";
+  const isMomo = paymentMethod === "MOMO";
+
   const paymentStatus = Number(
-    order?.payment_status ?? order?.payment?.status ?? (isMomo ? 1 : 0)
+    order?.payment_status ?? order?.payment?.status ?? 0
   );
 
-  const isPaid = paymentStatus === 1 || isMomo;
+  const isPaid = paymentStatus === 1;
 
   const orderCode = useMemo(() => {
     if (order?.order_code) return order.order_code;
@@ -77,13 +109,19 @@ export default function OrderSuccessPage() {
 
   const paymentDesc = useMemo(() => {
     if (isMomo) {
-      return "Hệ thống đã ghi nhận thanh toán online của bạn.";
+      if (isPaid) return "Hệ thống đã ghi nhận thanh toán online của bạn.";
+      if (paymentStatus === 2) return "Thanh toán chưa thành công. Bạn có thể thử lại trong hồ sơ đơn hàng.";
+      return "Giao dịch đang chờ hệ thống thanh toán xác nhận.";
     }
 
     return "Bạn sẽ thanh toán khi nhận và kiểm tra hàng.";
-  }, [isMomo]);
+  }, [isMomo, isPaid, paymentStatus]);
 
-  const statusText = order?.status_text || "Chờ xác nhận";
+  const statusText = order?.id
+    ? getOrderStatusText(order.status)
+    : loading
+      ? "Đang cập nhật"
+      : "Chưa xác định";
 
   const itemsTotal = Number(order?.items_total ?? 0);
   const shippingFee = Number(order?.shipping_fee ?? 0);
@@ -107,7 +145,7 @@ export default function OrderSuccessPage() {
       <div className="container-main relative z-10">
         <div className="mx-auto max-w-7xl">
           <div className="overflow-hidden rounded-[32px] border border-green-100 bg-white shadow-[0_24px_90px_rgba(34,100,34,0.13)]">
-            <SuccessHero orderCode={orderCode} onCopy={copyOrderCode} />
+            <SuccessHero orderCode={orderCode} onCopy={copyOrderCode} status={order?.status} />
 
             <div className="space-y-6 p-5 md:p-7">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -138,6 +176,7 @@ export default function OrderSuccessPage() {
                   label="Trạng thái"
                   value={statusText}
                   badge
+                  badgeClass={getStatusBadgeClass(order?.status)}
                 />
 
                 <InfoBox
@@ -147,7 +186,27 @@ export default function OrderSuccessPage() {
                 />
               </div>
 
-              <OrderTimeline isPaid={isPaid} />
+              {loadError && (
+                <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+                  <span>{loadError}</span>
+                  <button
+                    type="button"
+                    onClick={() => fetchOrder()}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-amber-800 shadow-sm"
+                  >
+                    <RefreshCw size={16} />
+                    Thử lại
+                  </button>
+                </div>
+              )}
+
+              <OrderTimeline
+                order={order}
+                isPaid={isPaid}
+                refreshing={refreshing}
+                lastUpdated={lastUpdated}
+                onRefresh={() => fetchOrder({ background: true })}
+              />
 
               <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
                 <div className="lg:col-span-4">
@@ -165,6 +224,8 @@ export default function OrderSuccessPage() {
                     paymentSubText={paymentSubText}
                     paymentDesc={paymentDesc}
                     isPaid={isPaid}
+                    paymentStatus={paymentStatus}
+                    isMomo={isMomo}
                   />
                 </div>
 
@@ -200,7 +261,34 @@ export default function OrderSuccessPage() {
   );
 }
 
-function SuccessHero({ orderCode, onCopy }) {
+function SuccessHero({ orderCode, onCopy, status }) {
+  const statusNumber = Number(status);
+  const hero = {
+    0: {
+      title: "Đặt hàng thành công!",
+      desc: "Đơn hàng đã được tạo và đang chờ nông trại xác nhận.",
+    },
+    1: {
+      title: "Đơn hàng đang được chuẩn bị",
+      desc: "Nông trại đã xác nhận và đang đóng gói sản phẩm của bạn.",
+    },
+    2: {
+      title: "Đơn hàng đang được giao",
+      desc: "Sản phẩm đang trên đường đến địa chỉ nhận hàng.",
+    },
+    3: {
+      title: "Đơn hàng đã hoàn thành",
+      desc: "Cảm ơn bạn đã mua hàng tại Organic Farm.",
+    },
+    4: {
+      title: "Đơn hàng đã hủy",
+      desc: "Xem lý do và chi tiết từng nông trại trong hồ sơ đơn hàng.",
+    },
+  }[statusNumber] || {
+    title: "Đặt hàng thành công!",
+    desc: "Hệ thống đang tải trạng thái mới nhất của đơn hàng.",
+  };
+
   return (
     <div className="relative overflow-hidden bg-linear-to-r from-[#168f2e] via-[#40bd31] to-[#94df00] px-6 py-8 text-white md:px-12">
       <div className="absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
@@ -240,12 +328,11 @@ function SuccessHero({ orderCode, onCopy }) {
           </p>
 
           <h1 className="text-4xl font-black leading-tight tracking-tight md:text-5xl">
-            Đặt hàng thành công!
+            {hero.title}
           </h1>
 
           <p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-white/90 md:text-lg">
-            Cảm ơn bạn đã mua hàng tại Organic Farm. Đơn hàng của bạn đang được
-            xử lý và chờ nông trại xác nhận.
+            {hero.desc}
           </p>
 
           <div className="mt-5 inline-flex items-center gap-3 rounded-2xl bg-white px-5 py-3 text-left text-slate-900 shadow-xl shadow-green-900/10">
@@ -272,7 +359,7 @@ function SuccessHero({ orderCode, onCopy }) {
   );
 }
 
-function InfoBox({ icon, label, value, action, badge = false }) {
+function InfoBox({ icon, label, value, action, badge = false, badgeClass = "" }) {
   return (
     <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
       <div className="flex items-center gap-3">
@@ -287,7 +374,7 @@ function InfoBox({ icon, label, value, action, badge = false }) {
 
           <div className="mt-1 flex items-center gap-2">
             {badge ? (
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-600">
+              <span className={`rounded-full px-3 py-1 text-xs font-black ${badgeClass || "bg-amber-50 text-amber-600"}`}>
                 {value || "-"}
               </span>
             ) : (
@@ -304,50 +391,67 @@ function InfoBox({ icon, label, value, action, badge = false }) {
   );
 }
 
-function OrderTimeline({ isPaid }) {
+function OrderTimeline({ order, isPaid, refreshing, lastUpdated, onRefresh }) {
+  const hasOrder = Boolean(order?.id);
+  const status = hasOrder ? Number(order.status) : -1;
+  const cancelled = status === 4;
+  const currentIndex = { 0: 1, 1: 2, 2: 3, 3: 4 }[status] ?? -1;
   const steps = [
-    {
-      title: "Đặt hàng thành công",
-      desc: "Hệ thống đã tạo đơn",
-      done: true,
-      active: true,
-    },
-    {
-      title: "Chờ xác nhận",
-      desc: "Nông trại sẽ xác nhận sớm",
-      done: false,
-      active: true,
-    },
-    {
-      title: "Chuẩn bị hàng",
-      desc: "Đóng gói và kiểm tra",
-      done: false,
-      active: false,
-    },
-    {
-      title: "Giao hàng",
-      desc: "Giao đến tay bạn",
-      done: false,
-      active: false,
-    },
-  ];
+    { title: "Đã đặt hàng", desc: "Hệ thống đã tạo đơn" },
+    { title: "Chờ xác nhận", desc: "Nông trại tiếp nhận đơn" },
+    { title: "Chuẩn bị hàng", desc: "Đóng gói và kiểm tra" },
+    { title: "Đang giao", desc: "Giao đến địa chỉ nhận" },
+    { title: "Hoàn thành", desc: "Bạn đã nhận được hàng" },
+  ].map((step, index) => ({
+    ...step,
+    done: cancelled ? index === 0 : status === 3 ? true : index < currentIndex,
+    active: !cancelled && index === currentIndex,
+  }));
 
   return (
     <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-black text-slate-900">Tiến trình đơn hàng thực tế</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {hasOrder && (
+              <span className={`rounded-full px-3 py-1 text-xs font-black ${getStatusBadgeClass(status)}`}>
+                Hiện tại: {getOrderStatusText(status)}
+              </span>
+            )}
+            <p className="text-xs font-semibold text-slate-500">
+            {lastUpdated
+              ? `Cập nhật lúc ${lastUpdated.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+              : "Đang lấy dữ liệu mới nhất từ hệ thống"}
+            {!cancelled && status !== 3 ? " · Tự cập nhật mỗi 15 giây" : ""}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-green-200 bg-white px-4 text-sm font-black text-green-700 hover:bg-green-50 disabled:opacity-60"
+        >
+          <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Đang cập nhật" : "Cập nhật ngay"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         {steps.map((step, index) => (
           <div key={step.title} className="relative">
             {index < steps.length - 1 && (
-              <div className="absolute left-12 top-6 hidden h-0.5 w-[calc(100%-40px)] border-t border-dashed border-slate-300 md:block" />
+              <div className={`absolute left-12 top-6 hidden h-0.5 w-[calc(100%-40px)] border-t border-dashed md:block ${step.done && steps[index + 1]?.done ? "border-green-500" : "border-slate-300"}`} />
             )}
 
             <div className="relative z-10 flex gap-3 md:block">
               <div
                 className={`flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 text-sm font-black ${
-                  step.done
-                    ? "border-green-600 bg-green-600 text-white shadow-lg shadow-green-100"
-                    : step.active
-                    ? "border-green-600 bg-white text-green-700"
+                  step.active
+                    ? "border-green-700 bg-green-700 text-white shadow-lg shadow-green-200 ring-4 ring-green-100"
+                    : step.done
+                    ? "border-green-400 bg-green-50 text-green-700"
                     : "border-slate-300 bg-white text-slate-400"
                 }`}
               >
@@ -357,7 +461,11 @@ function OrderTimeline({ isPaid }) {
               <div className="md:mt-3">
                 <p
                   className={`font-black ${
-                    step.active || step.done ? "text-slate-900" : "text-slate-400"
+                    step.active
+                      ? "text-green-800"
+                      : step.done
+                        ? "text-slate-700"
+                        : "text-slate-400"
                   }`}
                 >
                   {step.title}
@@ -372,11 +480,76 @@ function OrderTimeline({ isPaid }) {
         ))}
       </div>
 
-      {isPaid && (
-        <div className="mt-5 rounded-2xl bg-green-50 p-4 text-sm font-bold text-green-700">
-          Thanh toán online đã hoàn tất. Đơn hàng đang chờ nông trại xác nhận.
+      {cancelled && (
+        <div className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <XCircle size={20} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-black">Đơn hàng đã bị hủy</p>
+            <p className="mt-1 font-semibold">
+              {order?.cancellation?.reason || "Xem chi tiết đơn hàng để biết thêm thông tin."}
+            </p>
+          </div>
         </div>
       )}
+
+      {isPaid && (
+        <div className="mt-5 rounded-2xl bg-green-50 p-4 text-sm font-bold text-green-700">
+          Thanh toán online đã được hệ thống xác nhận.
+        </div>
+      )}
+
+      <SubOrderProgress subOrders={order?.sub_orders || []} />
+    </div>
+  );
+}
+
+function SubOrderProgress({ subOrders }) {
+  if (!subOrders.length) return null;
+
+  return (
+    <div className="mt-5 border-t border-slate-200 pt-5">
+      <p className="mb-3 text-sm font-black text-slate-800">
+        Tiến độ theo từng nông trại
+      </p>
+      {subOrders.length > 1 && (
+        <p className="mb-3 text-xs font-semibold text-slate-500">
+          Mỗi nông trại xử lý độc lập nên có thể đang ở các bước khác nhau; mốc phía trên là trạng thái tổng của đơn hàng.
+        </p>
+      )}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {subOrders.map((subOrder) => {
+          const farmPath = getPublicFarmPath(subOrder.farm);
+          return (
+            <div key={subOrder.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                    <Store size={15} />
+                    {subOrder.sub_order_code || `Đơn #${subOrder.id}`}
+                  </p>
+                  {farmPath ? (
+                    <Link to={farmPath} className="mt-1 block truncate font-black text-slate-900 hover:text-green-700 hover:underline">
+                      {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
+                    </Link>
+                  ) : (
+                    <p className="mt-1 truncate font-black text-slate-900">
+                      {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
+                    </p>
+                  )}
+                </div>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${getStatusBadgeClass(subOrder.status)}`}>
+                  {getOrderStatusText(subOrder.status)}
+                </span>
+              </div>
+              {subOrder.cancellation?.reason && (
+                <p className="mt-3 text-xs font-semibold text-red-600">
+                  Lý do: {subOrder.cancellation.reason}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -417,7 +590,23 @@ function OrderSummaryCard({ loading, itemsTotal, shippingFee, grandTotal }) {
   );
 }
 
-function PaymentCard({ paymentText, paymentSubText, paymentDesc, isPaid }) {
+function PaymentCard({
+  paymentText,
+  paymentSubText,
+  paymentDesc,
+  isPaid,
+  paymentStatus,
+  isMomo,
+}) {
+  const failed = paymentStatus === 2;
+  const statusMessage = isPaid
+    ? "Đã ghi nhận thanh toán."
+    : failed
+      ? "Thanh toán chưa thành công."
+      : isMomo
+        ? "Đang chờ xác nhận thanh toán."
+        : "Thanh toán sau khi nhận hàng.";
+
   return (
     <div className="h-full rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
       <div className="mb-5 flex items-center gap-2">
@@ -449,10 +638,14 @@ function PaymentCard({ paymentText, paymentSubText, paymentDesc, isPaid }) {
 
       <div
         className={`mt-5 rounded-2xl p-4 text-sm font-bold ${
-          isPaid ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"
+          isPaid
+            ? "bg-green-50 text-green-700"
+            : failed
+              ? "bg-red-50 text-red-700"
+              : "bg-blue-50 text-blue-700"
         }`}
       >
-        {isPaid ? "Đã ghi nhận thanh toán." : "Thanh toán sau khi nhận hàng."}
+        {statusMessage}
       </div>
     </div>
   );
@@ -567,8 +760,30 @@ function formatMoney(value) {
   return Number(value || 0).toLocaleString("vi-VN") + "đ";
 }
 
+function getStatusBadgeClass(status) {
+  return {
+    0: "bg-amber-50 text-amber-700",
+    1: "bg-blue-50 text-blue-700",
+    2: "bg-indigo-50 text-indigo-700",
+    3: "bg-green-50 text-green-700",
+    4: "bg-red-50 text-red-700",
+  }[Number(status)] || "bg-slate-100 text-slate-600";
+}
+
+function getOrderStatusText(status) {
+  return {
+    0: "Chờ xác nhận",
+    1: "Đang chuẩn bị",
+    2: "Đang giao",
+    3: "Hoàn thành",
+    4: "Đã hủy",
+  }[Number(status)] || "Đang cập nhật";
+}
+
 function formatDateTime(value) {
-  const date = value ? new Date(value) : new Date();
+  if (!value) return "Đang cập nhật";
+
+  const date = new Date(value);
 
   return date.toLocaleString("vi-VN", {
     hour: "2-digit",

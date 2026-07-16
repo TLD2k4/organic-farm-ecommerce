@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import StatusBadge from "@/components/common/StatusBadge";
 import { formatDate } from "@/utils/date";
 import { getImageUrl } from "@/utils/image";
+import { getAdminProductLink } from "@/utils/adminEntityLink";
 import {
   formatMoney,
   orderStatusConfig,
@@ -42,6 +43,8 @@ export default function AdminOrderDrawer({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Đóng chi tiết đơn tổng"
+            title="Đóng chi tiết đơn tổng"
             className="rounded-lg p-2 hover:bg-slate-100"
           >
             <X size={21} />
@@ -285,6 +288,10 @@ function MoneyBox({ label, value, strong = false }) {
 }
 
 function ProductLine({ item }) {
+  const productLink = getAdminProductLink(
+    item.current_product,
+  );
+
   return (
     <div className="flex min-w-60 items-center gap-3">
       {item.product_image && (
@@ -295,8 +302,8 @@ function ProductLine({ item }) {
         />
       )}
       <div>
-        {item.current_product?.slug ? (
-          <Link to={`/products/${item.current_product.slug}`} className="font-semibold hover:text-green-700 hover:underline">{item.product_name}</Link>
+        {productLink ? (
+          <Link to={productLink.to} title={productLink.title} className={`font-semibold hover:underline ${productLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"}`}>{item.product_name}</Link>
         ) : (
           <p className="font-semibold">{item.product_name}</p>
         )}

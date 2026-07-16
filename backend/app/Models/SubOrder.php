@@ -22,6 +22,7 @@ class SubOrder extends Model
         'seller_note',
         'cancelled_by',
         'cancelled_at',
+        'completed_at',
         'cancel_reason',
     ];
 
@@ -32,6 +33,7 @@ class SubOrder extends Model
         'status' => 'integer',
         'payment_status' => 'integer',
         'cancelled_at' => 'datetime',
+        'completed_at' => 'datetime',
     ];
 
     public function order()
