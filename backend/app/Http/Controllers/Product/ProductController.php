@@ -14,11 +14,13 @@ use App\Models\Farm;
 use App\Models\Product;
 use App\Models\User;
 use App\Notifications\MarketplaceNotification;
+use App\Services\Farm\SellerPolicyAccessService;
 
 class ProductController extends Controller
 {
     public function __construct(
-        private ProductService $productService
+        private ProductService $productService,
+        private SellerPolicyAccessService $sellerPolicyAccessService,
     ) {}
 
     public function index(Request $request)
@@ -329,6 +331,8 @@ class ProductController extends Controller
 
     private function formatProduct($product, bool $isDetail = false): array
     {
+        $orderAvailability = $this->sellerPolicyAccessService
+            ->availability($product->farm);
         $price = (float) $product->price;
 
         $salePrice = $product->sale_price !== null
@@ -382,6 +386,9 @@ class ProductController extends Controller
 
             'is_hot' => (bool) $product->is_hot,
             'status' => (int) $product->status,
+            'accepting_orders' => $orderAvailability['accepting_orders'],
+            'order_unavailable_reason' => $orderAvailability['reason'],
+            'required_policy_version' => $orderAvailability['policy_version'],
 
             'rating' => $rating,
             'rating_avg' => $rating,
@@ -399,6 +406,8 @@ class ProductController extends Controller
                 'slug' => $product->farm->slug,
                 'logo' => $product->farm->logo,
                 'address' => $product->farm->address,
+                'accepting_orders' => $orderAvailability['accepting_orders'],
+                'order_unavailable_reason' => $orderAvailability['reason'],
             ] : null,
 
             'category' => $product->category ? [
@@ -618,16 +627,36 @@ class ProductController extends Controller
     private function formatReview($review): array
     {
         $user = $review->user ?: $review->orderItem?->subOrder?->order?->user;
-        $isAdminComment = $review->order_item_id === null
-            && $user?->hasRole('admin');
-        $isSellerComment = $review->order_item_id === null
+        $isRatingReview = $review->order_item_id !== null
+            && $review->rating !== null;
+        $isAdminComment = !$isRatingReview && $user?->hasRole('admin');
+        $isSellerComment = !$isRatingReview
+            && !$isAdminComment
             && $user?->hasRole('seller');
+        $isBuyerComment = !$isRatingReview
+            && !$isAdminComment
+            && !$isSellerComment;
+        $entryType = match (true) {
+            $isRatingReview => 'rating_review',
+            $isAdminComment => 'admin_comment',
+            $isSellerComment => 'seller_comment',
+            default => 'buyer_comment',
+        };
 
         return [
             'id' => $review->id,
             'rating' => $review->rating !== null ? (int) $review->rating : null,
+            'entry_type' => $entryType,
+            'entry_type_label' => match ($entryType) {
+                'rating_review' => 'Đánh giá người mua',
+                'admin_comment' => 'Bình luận quản trị',
+                'seller_comment' => 'Bình luận người bán',
+                default => 'Bình luận người mua',
+            },
+            'is_rating_review' => $entryType === 'rating_review',
             'is_admin_comment' => (bool) $isAdminComment,
             'is_seller_comment' => (bool) $isSellerComment,
+            'is_buyer_comment' => (bool) $isBuyerComment,
             'comment' => $review->comment ?? $review->content ?? '',
             'created_at' => optional($review->created_at)->format('d/m/Y'),
             'user' => [

@@ -1,4 +1,5 @@
 import { Children, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Package,
@@ -20,6 +21,11 @@ import {
 import harvestLotService from "../../services/harvestLotService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 import { confirmAction } from "../../utils/actionDialog";
+import useDebounce from "../../hooks/useDebounce";
+import { getApiErrorMessage } from "../../utils/apiError";
+import { highlight } from "../../utils/highlight";
+
+const getErrorMessage = getApiErrorMessage;
 
 const createFormDefault = {
   product_id: "",
@@ -37,7 +43,7 @@ function SellerHarvestLots() {
   });
 
   const [filters, setFilters] = useState({
-    lot_code: "",
+    keyword: "",
     product_id: "",
     status: "",
     page: 1,
@@ -60,6 +66,23 @@ function SellerHarvestLots() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLot, setDetailLot] = useState(null);
+  const debouncedKeyword = useDebounce(filters.keyword, 400);
+  const requestFilters = useMemo(
+    () => ({
+      keyword: debouncedKeyword,
+      product_id: filters.product_id,
+      status: filters.status,
+      page: filters.page,
+      per_page: filters.per_page,
+    }),
+    [
+      debouncedKeyword,
+      filters.product_id,
+      filters.status,
+      filters.page,
+      filters.per_page,
+    ],
+  );
 
   const lots = payload?.data || [];
   const meta = payload?.meta || {};
@@ -78,16 +101,15 @@ function SellerHarvestLots() {
   }, [meta.current_page, meta.last_page]);
 
   const pageStats = useMemo(() => {
+    const stats = payload?.stats || {};
+
     return {
-      total: meta.total ?? 0,
-      active: lots.filter(
-        (lot) => Number(lot.display_status || lot.status) === 1,
-      ).length,
-      warning: lots.filter((lot) => isExpiringSoon(lot.expiry_date)).length,
-      out: lots.filter((lot) => Number(lot.display_status || lot.status) === 3)
-        .length,
+      total: stats.total ?? meta.total ?? 0,
+      active: stats.active ?? 0,
+      warning: stats.warning ?? 0,
+      out: stats.out_of_stock ?? 0,
     };
-  }, [lots, meta.total]);
+  }, [payload?.stats, meta.total]);
 
   const getImageUrl = (path) => {
     if (!path) return "/placeholder-product.png";
@@ -103,15 +125,6 @@ function SellerHarvestLots() {
     }
 
     return `${import.meta.env.VITE_API_BASE_URL}/storage/${path}`;
-  };
-
-  const getErrorMessage = (err, fallback = "Có lỗi xảy ra.") => {
-    if (err?.errors) {
-      const firstKey = Object.keys(err.errors)[0];
-      return err.errors[firstKey]?.[0] || fallback;
-    }
-
-    return err?.message || err?.error || fallback;
   };
 
   const fetchOptions = async () => {
@@ -140,6 +153,7 @@ function SellerHarvestLots() {
       const res = await harvestLotService.getLots(customFilters);
       setPayload({
         data: res.data || [],
+        stats: res.stats || {},
         meta: res.meta || {},
       });
     } catch (err) {
@@ -156,8 +170,8 @@ function SellerHarvestLots() {
   }, []);
 
   useEffect(() => {
-    fetchLots(filters);
-  }, [filters.page, filters.per_page]);
+    fetchLots(requestFilters);
+  }, [requestFilters]);
 
   useEffect(() => {
     if (!modalOpen && !detailOpen) return undefined;
@@ -170,30 +184,13 @@ function SellerHarvestLots() {
     };
   }, [modalOpen, detailOpen]);
 
-  const handleSearch = () => {
-    const nextFilters = {
-      ...filters,
-      page: 1,
-    };
-
-    setFilters(nextFilters);
-    fetchLots(nextFilters);
-  };
-
   const handleFilterChange = (name, value) => {
-    const nextFilters = {
-      ...filters,
-      [name]: value,
-      page: 1,
-    };
-
-    setFilters(nextFilters);
-    fetchLots(nextFilters);
+    setFilters((current) => ({ ...current, [name]: value, page: 1 }));
   };
 
   const resetFilters = () => {
     const nextFilters = {
-      lot_code: "",
+      keyword: "",
       product_id: "",
       status: "",
       page: 1,
@@ -201,7 +198,6 @@ function SellerHarvestLots() {
     };
 
     setFilters(nextFilters);
-    fetchLots(nextFilters);
   };
 
   const openCreateModal = () => {
@@ -311,7 +307,7 @@ function SellerHarvestLots() {
 
       setModalOpen(false);
 
-      await fetchLots(filters, {
+      await fetchLots(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -335,7 +331,7 @@ function SellerHarvestLots() {
 
       toast.success("Xóa lô sản phẩm thành công.");
 
-      await fetchLots(filters, {
+      await fetchLots(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -366,7 +362,7 @@ function SellerHarvestLots() {
         nextStatus === 1 ? "Đã bật bán lô sản phẩm." : "Đã tạm ẩn lô sản phẩm.",
       );
 
-      await fetchLots(filters, {
+      await fetchLots(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -432,24 +428,22 @@ function SellerHarvestLots() {
       </div>
 
       <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-5">
-        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_minmax(170px,0.8fr)_auto_auto]">
+        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_minmax(170px,0.8fr)_auto]">
           <div className="relative sm:col-span-2 xl:col-span-1">
             <Search
               size={18}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
             <input
-              value={filters.lot_code}
+              value={filters.keyword}
               onChange={(e) =>
                 setFilters((prev) => ({
                   ...prev,
-                  lot_code: e.target.value,
+                  keyword: e.target.value,
+                  page: 1,
                 }))
               }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSearch();
-              }}
-              placeholder="Nhập mã lô..."
+              placeholder="Tìm mã lô, tên sản phẩm, chứng nhận..."
               className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm font-semibold outline-none focus:border-green-500"
             />
           </div>
@@ -490,13 +484,6 @@ function SellerHarvestLots() {
             Đặt lại
           </button>
 
-          <button
-            onClick={handleSearch}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white transition hover:bg-green-700"
-          >
-            <Search size={17} />
-            Tìm
-          </button>
         </div>
 
         {error && (
@@ -519,6 +506,7 @@ function SellerHarvestLots() {
               <HarvestLotMobileCard
                 key={lot.id}
                 lot={lot}
+                keyword={filters.keyword}
                 isActioning={actionLoadingId === lot.id}
                 getImageUrl={getImageUrl}
                 onDetail={openDetail}
@@ -575,7 +563,7 @@ function SellerHarvestLots() {
                       ].join(" ")}
                     >
                       <td className="px-3 py-3 font-extrabold text-slate-700">
-                        {lot.lot_code}
+                        {highlight(lot.lot_code, filters.keyword)}
                       </td>
 
                       <td className="px-3 py-3">
@@ -590,9 +578,16 @@ function SellerHarvestLots() {
                           />
 
                           <div className="min-w-0">
-                            <p className="max-w-55 break-words font-extrabold text-slate-900">
-                              {lot.product?.name || "Không có"}
-                            </p>
+                            {lot.product?.id ? (
+                              <Link
+                                to={`/seller/products?view=${lot.product.id}`}
+                                className="block max-w-55 break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline"
+                              >
+                                {highlight(lot.product.name, filters.keyword)}
+                              </Link>
+                            ) : (
+                              <p className="max-w-55 break-words font-extrabold text-slate-900">Không có</p>
+                            )}
                             <p className="text-xs font-semibold text-slate-400">
                               ID SP: {lot.product?.id || "-"}
                             </p>
@@ -826,6 +821,7 @@ function SellerHarvestLots() {
 
 function HarvestLotMobileCard({
   lot,
+  keyword,
   isActioning,
   getImageUrl,
   onDetail,
@@ -857,13 +853,23 @@ function HarvestLotMobileCard({
 
           <div className="min-w-0">
             <h3 className="break-words font-extrabold text-slate-900">
-              {lot.lot_code}
+              {highlight(lot.lot_code, keyword)}
             </h3>
-            <p className="mt-1 break-words text-sm font-bold text-slate-600">
-              {lot.product?.name || "Không có sản phẩm"}
-            </p>
+            {lot.product?.id ? (
+              <Link
+                to={`/seller/products?view=${lot.product.id}`}
+                className="mt-1 block break-words text-sm font-bold text-slate-600 hover:text-green-700 hover:underline"
+              >
+                {highlight(lot.product.name, keyword)}
+              </Link>
+            ) : (
+              <p className="mt-1 break-words text-sm font-bold text-slate-600">Không có sản phẩm</p>
+            )}
             <p className="mt-1 break-words text-xs font-semibold text-slate-400">
-              {lot.certificate?.certification_name || "Chưa có chứng chỉ"}
+              {highlight(
+                lot.certificate?.certification_name || "Chưa có chứng chỉ",
+                keyword,
+              )}
             </p>
           </div>
         </div>
@@ -981,6 +987,8 @@ function HarvestLotFormModal({
 
           <button
             onClick={onClose}
+            aria-label="Đóng biểu mẫu lô sản phẩm"
+            title="Đóng biểu mẫu lô sản phẩm"
             className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
@@ -1198,6 +1206,8 @@ function HarvestLotDetailModal({ lot, loading, getImageUrl, onClose }) {
 
           <button
             onClick={onClose}
+            aria-label="Đóng chi tiết lô sản phẩm"
+            title="Đóng chi tiết lô sản phẩm"
             className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
@@ -1237,8 +1247,17 @@ function HarvestLotDetailModal({ lot, loading, getImageUrl, onClose }) {
                       {lot.lot_code}
                     </h3>
                     <p className="mt-1 text-sm font-semibold text-slate-400">
-                      {lot.product?.name} ·{" "}
-                      {lot.category?.name || "Chưa có danh mục"}
+                      {lot.product?.id ? (
+                        <Link
+                          to={`/seller/products?view=${lot.product.id}`}
+                          className="hover:text-green-700 hover:underline"
+                        >
+                          {lot.product?.name}
+                        </Link>
+                      ) : (
+                        lot.product?.name
+                      )}{" "}
+                      · {lot.category?.name || "Chưa có danh mục"}
                     </p>
                   </div>
 
@@ -1270,7 +1289,15 @@ function HarvestLotDetailModal({ lot, loading, getImageUrl, onClose }) {
                   />
                   <InfoBox
                     label="Gian hàng"
-                    value={lot.farm?.name || "Chưa có"}
+                    value={
+                      lot.farm?.id ? (
+                        <Link to="/seller/farm" className="hover:text-green-700 hover:underline">
+                          {lot.farm?.name || "Chưa có"}
+                        </Link>
+                      ) : (
+                        "Chưa có"
+                      )
+                    }
                   />
                 </div>
 
