@@ -1,5 +1,5 @@
-import { Children, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Children, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import uploadService from "../../services/uploadService";
 import {
@@ -23,6 +23,11 @@ import {
 import productService from "../../services/productService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 import { confirmAction } from "../../utils/actionDialog";
+import useDebounce from "../../hooks/useDebounce";
+import { getApiErrorMessage } from "../../utils/apiError";
+import { highlight } from "../../utils/highlight";
+
+const getErrorMessage = getApiErrorMessage;
 
 const createFormDefault = {
   category_id: "",
@@ -50,6 +55,8 @@ const renewFormDefault = {
 };
 
 function SellerProducts() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const handledViewId = useRef(null);
   const [payload, setPayload] = useState(null);
   const [options, setOptions] = useState({
     categories: [],
@@ -84,6 +91,23 @@ function SellerProducts() {
   const [renewForm, setRenewForm] = useState(renewFormDefault);
   const [renewSaving, setRenewSaving] = useState(false);
   const [renewError, setRenewError] = useState("");
+  const debouncedKeyword = useDebounce(filters.keyword, 400);
+  const requestFilters = useMemo(
+    () => ({
+      keyword: debouncedKeyword,
+      category_id: filters.category_id,
+      status: filters.status,
+      page: filters.page,
+      per_page: filters.per_page,
+    }),
+    [
+      debouncedKeyword,
+      filters.category_id,
+      filters.status,
+      filters.page,
+      filters.per_page,
+    ],
+  );
 
   const products = payload?.products || [];
   const stats = payload?.stats || {};
@@ -121,15 +145,6 @@ function SellerProducts() {
     return `${import.meta.env.VITE_API_BASE_URL}/storage/${path}`;
   };
 
-  const getErrorMessage = (err, fallback = "Có lỗi xảy ra.") => {
-    if (err?.errors) {
-      const firstKey = Object.keys(err.errors)[0];
-      return err.errors[firstKey]?.[0] || fallback;
-    }
-
-    return err?.message || err?.error || fallback;
-  };
-
   const parseDetailImages = (text) => {
     if (!text) return [];
 
@@ -165,7 +180,7 @@ function SellerProducts() {
       const res = await productService.getSellerProducts(customFilters);
       setPayload(res.data);
     } catch (err) {
-      setError(getErrorMessage(err, "Không thể tải danh sách sản phẩm."));
+      setError(getApiErrorMessage(err, "Không thể tải danh sách sản phẩm."));
     } finally {
       if (!silent) {
         setLoading(false);
@@ -178,8 +193,8 @@ function SellerProducts() {
   }, []);
 
   useEffect(() => {
-    fetchProducts(filters);
-  }, [filters.page, filters.per_page]);
+    fetchProducts(requestFilters);
+  }, [requestFilters]);
 
   useEffect(() => {
     if (!modalOpen && !detailOpen && !renewOpen) return undefined;
@@ -192,25 +207,8 @@ function SellerProducts() {
     };
   }, [modalOpen, detailOpen, renewOpen]);
 
-  const handleSearch = () => {
-    const nextFilters = {
-      ...filters,
-      page: 1,
-    };
-
-    setFilters(nextFilters);
-    fetchProducts(nextFilters);
-  };
-
   const handleFilterChange = (name, value) => {
-    const nextFilters = {
-      ...filters,
-      [name]: value,
-      page: 1,
-    };
-
-    setFilters(nextFilters);
-    fetchProducts(nextFilters);
+    setFilters((current) => ({ ...current, [name]: value, page: 1 }));
   };
 
   const resetFilters = () => {
@@ -223,7 +221,6 @@ function SellerProducts() {
     };
 
     setFilters(nextFilters);
-    fetchProducts(nextFilters);
   };
 
   const openCreateModal = () => {
@@ -334,7 +331,7 @@ function SellerProducts() {
 
       setModalOpen(false);
 
-      await fetchProducts(filters, {
+      await fetchProducts(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -358,7 +355,7 @@ function SellerProducts() {
 
       toast.success("Xóa sản phẩm thành công.");
 
-      await fetchProducts(filters, {
+      await fetchProducts(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -376,7 +373,7 @@ function SellerProducts() {
 
       toast.success("Cập nhật trạng thái sản phẩm thành công.");
 
-      await fetchProducts(filters, {
+      await fetchProducts(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -386,7 +383,7 @@ function SellerProducts() {
     }
   };
 
-  const openDetail = async (product) => {
+  const openDetail = useCallback(async (product) => {
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailProduct(null);
@@ -399,6 +396,30 @@ function SellerProducts() {
       setDetailOpen(false);
     } finally {
       setDetailLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+    if (!Number.isInteger(requestedId) || requestedId <= 0) {
+      handledViewId.current = null;
+      return;
+    }
+
+    if (handledViewId.current === requestedId) return;
+
+    handledViewId.current = requestedId;
+    openDetail({ id: requestedId });
+  }, [searchParams, openDetail]);
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setDetailProduct(null);
+
+    if (searchParams.has("view")) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("view");
+      setSearchParams(nextParams, { replace: true });
     }
   };
 
@@ -443,7 +464,7 @@ function SellerProducts() {
       const res = await productService.getSellerProduct(detailProduct.id);
       setDetailProduct(res.data);
 
-      await fetchProducts(filters, {
+      await fetchProducts(requestFilters, {
         silent: true,
       });
     } catch (err) {
@@ -511,7 +532,7 @@ function SellerProducts() {
       </div>
 
       <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-5">
-        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_auto_auto]">
+        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_auto]">
           <div className="relative sm:col-span-2 xl:col-span-1">
             <Search
               size={18}
@@ -523,12 +544,10 @@ function SellerProducts() {
                 setFilters((prev) => ({
                   ...prev,
                   keyword: e.target.value,
+                  page: 1,
                 }))
               }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSearch();
-              }}
-              placeholder="Tìm kiếm sản phẩm..."
+              placeholder="Tìm tên, mã sản phẩm hoặc danh mục..."
               className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm font-semibold outline-none focus:border-green-500"
             />
           </div>
@@ -566,13 +585,6 @@ function SellerProducts() {
             Đặt lại
           </button>
 
-          <button
-            onClick={handleSearch}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white transition hover:bg-green-700"
-          >
-            <Search size={17} />
-            Tìm
-          </button>
         </div>
 
         {error && (
@@ -595,6 +607,7 @@ function SellerProducts() {
               <ProductMobileCard
                 key={product.id}
                 product={product}
+                keyword={filters.keyword}
                 isActioning={actionLoadingId === product.id}
                 getImageUrl={getImageUrl}
                 onDetail={openDetail}
@@ -696,20 +709,20 @@ function SellerProducts() {
                           />
 
                           <div className="min-w-0">
-                            {product.slug && Number(product.status) === 1 ? (
-                              <Link to={`/products/${product.slug}`} className="block max-w-55 break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{product.name}</Link>
+                            {product.slug && product.is_sellable ? (
+                              <Link to={`/products/${product.slug}`} className="block max-w-55 break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{highlight(product.name, filters.keyword)}</Link>
                             ) : (
-                              <button type="button" onClick={() => openDetail(product)} className="max-w-55 break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{product.name}</button>
+                              <button type="button" onClick={() => openDetail(product)} className="max-w-55 break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{highlight(product.name, filters.keyword)}</button>
                             )}
                             <p className="text-xs font-semibold text-slate-400">
-                              {product.code}
+                              {highlight(product.code, filters.keyword)}
                             </p>
                           </div>
                         </div>
                       </td>
 
                       <td className="px-3 py-3 font-semibold text-slate-600">
-                        {product.category_name || "Chưa có"}
+                        {highlight(product.category_name || "Chưa có", filters.keyword)}
                       </td>
 
                       <td className="px-3 py-3">
@@ -914,7 +927,7 @@ function SellerProducts() {
           product={detailProduct}
           loading={detailLoading}
           getImageUrl={getImageUrl}
-          onClose={() => setDetailOpen(false)}
+          onClose={closeDetail}
           onRenew={() => openRenewModal("renew")}
           onResubmit={() => openRenewModal("resubmit")}
         />
@@ -938,6 +951,7 @@ function SellerProducts() {
 
 function ProductMobileCard({
   product,
+  keyword,
   isActioning,
   getImageUrl,
   onDetail,
@@ -963,16 +977,16 @@ function ProductMobileCard({
           />
 
           <div className="min-w-0">
-            {product.slug && Number(product.status) === 1 ? (
-              <Link to={`/products/${product.slug}`} className="break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{product.name}</Link>
+            {product.slug && product.is_sellable ? (
+              <Link to={`/products/${product.slug}`} className="break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{highlight(product.name, keyword)}</Link>
             ) : (
-              <button type="button" onClick={() => onDetail(product)} className="break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{product.name}</button>
+              <button type="button" onClick={() => onDetail(product)} className="break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{highlight(product.name, keyword)}</button>
             )}
             <p className="mt-1 text-xs font-semibold text-slate-400">
-              {product.code}
+              {highlight(product.code, keyword)}
             </p>
             <p className="mt-1 break-words text-sm font-semibold text-slate-500">
-              {product.category_name || "Chưa có danh mục"}
+              {highlight(product.category_name || "Chưa có danh mục", keyword)}
             </p>
           </div>
         </div>
@@ -1084,6 +1098,8 @@ function ProductFormModal({
 
           <button
             onClick={onClose}
+            aria-label="Đóng biểu mẫu sản phẩm"
+            title="Đóng biểu mẫu sản phẩm"
             className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
@@ -1323,6 +1339,8 @@ function ProductDetailModal({
 
           <button
             onClick={onClose}
+            aria-label="Đóng chi tiết sản phẩm"
+            title="Đóng chi tiết sản phẩm"
             className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />
@@ -1760,6 +1778,8 @@ function RenewCertificateModal({
 
           <button
             onClick={onClose}
+            aria-label="Đóng biểu mẫu chứng chỉ"
+            title="Đóng biểu mẫu chứng chỉ"
             className="shrink-0 rounded-xl p-2 text-slate-500 hover:bg-slate-100"
           >
             <X size={22} />

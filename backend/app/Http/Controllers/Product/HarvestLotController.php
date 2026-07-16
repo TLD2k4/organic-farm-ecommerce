@@ -20,6 +20,7 @@ class HarvestLotController extends Controller
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'status' => ['nullable', 'integer', 'in:1,2,3,4'],
             'lot_code' => ['nullable', 'string', 'max:10'],
+            'keyword' => ['nullable', 'string', 'max:100'],
 
             'per_page' => ['nullable', 'integer', 'min:5', 'max:50'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
@@ -31,12 +32,16 @@ class HarvestLotController extends Controller
             filters: $filters,
             sellerId: (int) $request->user()->getAuthIdentifier()
         );
+        $stats = $this->harvestLotService->getVendorLotStats(
+            sellerId: (int) $request->user()->getAuthIdentifier()
+        );
 
         return response()->json([
             'success' => true,
             'data' => collect($lots->items())->map(function ($lot) {
                 return $this->formatLot($lot);
             }),
+            'stats' => $stats,
             'meta' => [
                 'total' => $lots->total(),
                 'per_page' => $lots->perPage(),

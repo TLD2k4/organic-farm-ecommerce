@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
   FileClock,
@@ -18,31 +19,10 @@ import AdminProductsTable from "@/components/ui/admin/products/AdminProductsTabl
 import AdminProductDrawer from "@/components/ui/admin/products/AdminProductDrawer";
 import AdminProductRejectModal from "@/components/ui/admin/products/AdminProductRejectModal";
 import { confirmAction, requestReason } from "@/utils/actionDialog";
-
-function getErrorMessage(error) {
-  const errorData = error?.response?.data ?? error;
-  const errors = errorData?.errors;
-
-  if (errors && typeof errors === "object") {
-    const firstMessages = Object.values(errors)[0];
-
-    if (Array.isArray(firstMessages)) {
-      return firstMessages[0];
-    }
-
-    if (typeof firstMessages === "string") {
-      return firstMessages;
-    }
-  }
-
-  return (
-    errorData?.message ||
-    errorData?.error ||
-    "Có lỗi xảy ra khi kiểm duyệt sản phẩm."
-  );
-}
+import { getApiErrorMessage as getErrorMessage } from "@/utils/apiError";
 
 export default function AdminProductsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     products,
     meta,
@@ -81,6 +61,15 @@ export default function AdminProductsPage() {
   const [rejectContext, setRejectContext] = useState(null);
 
   const debouncedKeyword = useDebounce(params.keyword, 500);
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+
+    if (Number.isInteger(requestedId) && requestedId > 0) {
+      setSelectedProductId(requestedId);
+      setOpenDrawer(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     getOptions().catch((error) => {
@@ -124,6 +113,12 @@ export default function AdminProductsPage() {
     setOpenDrawer(false);
     setSelectedProductId(null);
     clearProduct();
+
+    if (searchParams.has("view")) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("view");
+      setSearchParams(nextParams, { replace: true });
+    }
   };
 
   const runAction = async (action) => {
@@ -332,6 +327,8 @@ export default function AdminProductsPage() {
         meta={meta}
         params={params}
         setParams={setParams}
+        itemLabel="sản phẩm"
+        loading={listLoading}
       />
 
       <AdminProductDrawer

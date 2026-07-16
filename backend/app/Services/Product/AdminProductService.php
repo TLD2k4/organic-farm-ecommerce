@@ -32,14 +32,17 @@ class AdminProductService
 
         if (!empty($filters['keyword'])) {
             $keyword = trim((string) $filters['keyword']);
+            $productId = $this->extractProductId($keyword);
 
-            $query->where(function (Builder $subQuery) use ($keyword) {
+            $query->where(function (Builder $subQuery) use ($keyword, $productId) {
                 $subQuery
                     ->where('products.name', 'like', "%{$keyword}%")
-                    ->orWhere('products.code', 'like', "%{$keyword}%")
                     ->orWhere('products.slug', 'like', "%{$keyword}%")
-                    ->when(ctype_digit($keyword), function (Builder $idQuery) use ($keyword) {
-                        $idQuery->orWhere('products.id', (int) $keyword);
+                    ->when($productId !== null, function (Builder $idQuery) use ($productId) {
+                        $idQuery->orWhere('products.id', $productId);
+                    })
+                    ->orWhereHas('category', function (Builder $categoryQuery) use ($keyword) {
+                        $categoryQuery->where('name', 'like', "%{$keyword}%");
                     })
                     ->orWhereHas('farm', function (Builder $farmQuery) use ($keyword) {
                         $farmQuery
@@ -109,6 +112,21 @@ class AdminProductService
         );
 
         return $products;
+    }
+
+    private function extractProductId(string $keyword): ?int
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', '', $keyword));
+
+        if (preg_match('/^SP0*(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        if (preg_match('/^#?(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
     }
 
     public function getStats(): array

@@ -792,7 +792,7 @@ export default function ProductsPage() {
                     />
                   </div>
 
-                  <button className="grid h-10 w-10 place-items-center rounded-xl bg-green-700 text-white">
+                  <button type="button" aria-label="Hiển thị dạng lưới" title="Hiển thị dạng lưới" className="grid h-10 w-10 place-items-center rounded-xl bg-green-700 text-white">
                     <Grid2X2 size={18} />
                   </button>
                 </div>
@@ -830,7 +830,7 @@ export default function ProductsPage() {
 
             <div className="mb-4 flex items-center justify-between gap-3">
               <p className="text-sm font-bold text-slate-500">
-                Hiển thị {products.length} / {meta.total || 0} sản phẩm
+                Tìm thấy {meta.total || 0} sản phẩm phù hợp
               </p>
             </div>
 
@@ -863,9 +863,16 @@ export default function ProductsPage() {
               </div>
             )}
             <Pagination
-              currentPage={meta.current_page || 1}
-              lastPage={meta.last_page || 1}
-              onPageChange={changePage}
+              meta={meta}
+              params={filters}
+              itemLabel="sản phẩm"
+              loading={loading}
+              setParams={(updater) => {
+                const nextParams =
+                  typeof updater === "function" ? updater(filters) : updater;
+
+                changePage(Number(nextParams.page || 1));
+              }}
             />
           </section>
         </div>
@@ -922,9 +929,18 @@ function ProductCard({ product }) {
           </h3>
         </Link>
 
-        <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-          {product.farm?.name || "Organic Farm"}
-        </p>
+        {product.farm?.slug ? (
+          <Link
+            to={`/farms/${product.farm.slug}`}
+            className="mt-1 block truncate text-xs font-semibold text-slate-500 hover:text-green-700 hover:underline"
+          >
+            {product.farm?.name || "Organic Farm"}
+          </Link>
+        ) : (
+          <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+            {product.farm?.name || "Organic Farm"}
+          </p>
+        )}
 
         <div className="mt-2 flex items-center gap-1 text-xs">
           {product.review_count > 0 && product.rating ? (
@@ -948,6 +964,12 @@ function ProductCard({ product }) {
           {formatSoldQuantity(product)}
         </p>
 
+        {product.accepting_orders === false && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-700">
+            Tạm ngừng nhận đơn
+          </p>
+        )}
+
         <div className="mt-2 flex items-end justify-between gap-2">
           <div>
             <p className="text-lg font-black text-green-700">
@@ -963,9 +985,10 @@ function ProductCard({ product }) {
 
           <button
             type="button"
-            disabled={adding}
+            title={product.accepting_orders === false ? (product.order_unavailable_reason || "Gian hàng tạm ngừng nhận đơn") : `Thêm ${product.name} vào giỏ hàng`}
+            disabled={adding || product.accepting_orders === false}
             onClick={() => addToCart(product)}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-green-200 text-green-700 transition hover:bg-green-700 hover:text-white disabled:cursor-wait disabled:opacity-60"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-green-200 text-green-700 transition hover:bg-green-700 hover:text-white disabled:cursor-not-allowed disabled:border-amber-200 disabled:bg-amber-50 disabled:text-amber-700 disabled:opacity-70"
           >
             <ShoppingCart size={18} />
           </button>

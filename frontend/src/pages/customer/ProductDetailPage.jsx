@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import {
   BadgeCheck,
   ChevronRight,
+  ChevronUp,
   Heart,
   Leaf,
   Loader2,
@@ -24,6 +25,7 @@ import sellerReviewService from "../../services/sellerReviewService";
 import adminReviewService from "../../services/adminReviewService";
 import { getImageUrl } from "../../utils/image";
 import { useAuthStore } from "../../store/authStore";
+import ProgressiveList from "../../components/common/ProgressiveList";
 
 function getPayload(res) {
   return res?.data?.success !== undefined
@@ -45,6 +47,13 @@ function getImage(product) {
     product?.image ||
     ""
   );
+}
+
+function replyRoleLabel(reply) {
+  const roles = Array.isArray(reply?.user?.roles) ? reply.user.roles : [];
+  if (roles.includes("admin")) return "Quản trị viên";
+  if (roles.includes("seller")) return "Người bán";
+  return "Người dùng";
 }
 
 function getGalleryImages(product) {
@@ -132,6 +141,8 @@ export default function ProductDetailPage() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [addingToCart, setAddingToCart] = useState(false);
   const [reviewableItem, setReviewableItem] = useState(null);
+  const [reviewEligibility, setReviewEligibility] = useState(DEFAULT_REVIEW_ELIGIBILITY);
+  const [reviewMode, setReviewMode] = useState("rating_review");
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: "" });
   const [reviewSaving, setReviewSaving] = useState(false);
   const [replyingReviewId, setReplyingReviewId] = useState(null);
@@ -150,12 +161,24 @@ export default function ProductDetailPage() {
         const productData = payload?.data || payload;
 
         setProduct(productData);
+        setReviewableItem(null);
+        setReviewEligibility(DEFAULT_REVIEW_ELIGIBILITY);
 
         if (token) {
-          const eligibleResponse = await reviewService.getReviewableItems().catch(() => null);
+          const eligibleResponse = await reviewService.getEligibility(productData.id).catch(() => null);
           const eligiblePayload = eligibleResponse?.data ?? eligibleResponse;
-          const eligibleItems = eligiblePayload?.items || eligiblePayload || [];
-          setReviewableItem(Array.isArray(eligibleItems) ? eligibleItems.find((item) => Number(item.product?.id) === Number(productData.id)) || null : null);
+          const eligibility = {
+            has_purchased: Boolean(eligiblePayload?.has_purchased),
+            can_comment: Boolean(eligiblePayload?.can_comment),
+            can_rate: Boolean(eligiblePayload?.can_rate),
+            order_item_id: eligiblePayload?.order_item_id || null,
+          };
+
+          setReviewEligibility(eligibility);
+          setReviewableItem(eligibility.can_rate
+            ? { order_item_id: eligibility.order_item_id, product: productData }
+            : null);
+          setReviewMode(eligibility.can_rate ? "rating_review" : "buyer_comment");
         }
 
         setReviews(productData?.reviews || []);
@@ -175,16 +198,88 @@ export default function ProductDetailPage() {
   }, [slug, token]);
 
   const submitReview = async () => {
-    if (!reviewableItem || !reviewForm.comment.trim()) return;
+    const isBuyerComment = reviewMode === "buyer_comment";
+
+    if (isBuyerComment && !reviewEligibility.can_comment) return;
+    if (!isBuyerComment && !reviewableItem) return;
+    if (isBuyerComment && !reviewForm.comment.trim()) {
+      toast.error("Vui lòng nhập nội dung bình luận.");
+      return;
+    }
+
     try {
       setReviewSaving(true);
-      await reviewService.createReview({ order_item_id: reviewableItem.order_item_id, rating: reviewForm.rating, comment: reviewForm.comment.trim() });
-      toast.success("Đã gửi đánh giá sản phẩm.");
-      setReviewableItem(null);
+      await reviewService.createReview(isBuyerComment
+        ? {
+            entry_type: "buyer_comment",
+            product_id: product.id,
+            comment: reviewForm.comment.trim(),
+          }
+        : {
+            entry_type: "rating_review",
+            order_item_id: reviewableItem.order_item_id,
+            rating: reviewForm.rating,
+            comment: reviewForm.comment.trim(),
+          });
+      toast.success(isBuyerComment
+        ? "Đã gửi bình luận sản phẩm."
+        : "Đã gửi đánh giá sản phẩm.");
+      setProduct((currentProduct) => {
+        if (!currentProduct) return currentProduct;
+
+        if (isBuyerComment) {
+          return {
+            ...currentProduct,
+            comment_count: Number(currentProduct.comment_count || 0) + 1,
+          };
+        }
+
+        const currentCount = Number(currentProduct.review_count || 0);
+        const currentAverage = Number(currentProduct.rating_avg ?? currentProduct.rating ?? 0);
+        const nextCount = currentCount + 1;
+        const nextAverage = ((currentAverage * currentCount) + Number(reviewForm.rating)) / nextCount;
+
+        return {
+          ...currentProduct,
+          review_count: nextCount,
+          rating: nextAverage,
+          rating_avg: nextAverage,
+        };
+      });
       setReviewForm({ rating: 5, comment: "" });
-      const response = await productService.getProductReviews(product.id, { page: 1, limit: reviewsMeta.per_page || 5 });
-      const payload = getPayload(response);
-      setReviews(payload?.data || payload?.reviews || []);
+
+      const eligibleResponse = await reviewService.getEligibility(product.id).catch(() => null);
+      const eligiblePayload = eligibleResponse?.data ?? eligibleResponse;
+      if (eligiblePayload) {
+        const eligibility = {
+          has_purchased: Boolean(eligiblePayload.has_purchased),
+          can_comment: Boolean(eligiblePayload.can_comment),
+          can_rate: Boolean(eligiblePayload.can_rate),
+          order_item_id: eligiblePayload.order_item_id || null,
+        };
+        setReviewEligibility(eligibility);
+        setReviewableItem(eligibility.can_rate
+          ? { order_item_id: eligibility.order_item_id, product }
+          : null);
+        setReviewMode(eligibility.can_rate ? reviewMode : "buyer_comment");
+      } else if (!isBuyerComment) {
+        setReviewableItem(null);
+        setReviewEligibility((current) => ({
+          ...current,
+          can_rate: false,
+          order_item_id: null,
+        }));
+        setReviewMode("buyer_comment");
+      }
+
+      const response = await productService
+        .getProductReviews(product.id, { page: 1, limit: reviewsMeta.per_page || 5 })
+        .catch(() => null);
+      if (response) {
+        const payload = getPayload(response);
+        setReviews(payload?.data || payload?.reviews || []);
+        setReviewsMeta(payload?.meta || DEFAULT_REVIEWS_META);
+      }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Không thể gửi đánh giá.");
     } finally {
@@ -285,6 +380,14 @@ export default function ProductDetailPage() {
 
     if (!product?.id || addingToCart) return;
 
+    if (product.accepting_orders === false) {
+      toast.error(
+        product.order_unavailable_reason ||
+          "Gian hàng hiện đang tạm ngừng nhận đơn mới.",
+      );
+      return;
+    }
+
     if (Number.isFinite(stockValue) && stockValue <= 0) {
       toast.error("Sản phẩm hiện đã hết hàng.");
       return;
@@ -353,6 +456,10 @@ export default function ProductDetailPage() {
     if (currentPage >= lastPage) return;
 
     loadReviews(currentPage + 1, "append");
+  };
+
+  const collapseReviews = () => {
+    loadReviews(1, "replace");
   };
 
   const changeReviewsPage = (page) => {
@@ -595,6 +702,8 @@ export default function ProductDetailPage() {
                   <button
                     type="button"
                     onClick={decreaseQuantity}
+                    aria-label={`Giảm số lượng ${product.name}`}
+                    title={`Giảm số lượng ${product.name}`}
                     className="grid w-11 place-items-center text-slate-600 hover:bg-slate-50"
                   >
                     <Minus size={16} />
@@ -612,6 +721,8 @@ export default function ProductDetailPage() {
                   <button
                     type="button"
                     onClick={increaseQuantity}
+                    aria-label={`Tăng số lượng ${product.name}`}
+                    title={`Tăng số lượng ${product.name}`}
                     className="grid w-11 place-items-center text-slate-600 hover:bg-slate-50"
                   >
                     <Plus size={16} />
@@ -628,11 +739,18 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
+              {product.accepting_orders === false && (
+                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                  {product.order_unavailable_reason ||
+                    "Gian hàng hiện đang tạm ngừng nhận đơn mới."}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleAddToCart}
                 disabled={
                   addingToCart ||
+                  product.accepting_orders === false ||
                   (Number.isFinite(stockValue) && stockValue <= 0)
                 }
                 className="flex min-w-55 items-center justify-center gap-2 rounded-xl bg-green-700 px-6 py-3 text-sm font-black text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -642,7 +760,11 @@ export default function ProductDetailPage() {
                 ) : (
                   <ShoppingCart size={18} />
                 )}
-                {addingToCart ? "Đang thêm..." : "Thêm vào giỏ"}
+                {addingToCart
+                  ? "Đang thêm..."
+                  : product.accepting_orders === false
+                    ? "Tạm ngừng nhận đơn"
+                    : "Thêm vào giỏ"}
               </button>
 
               <button
@@ -675,7 +797,21 @@ export default function ProductDetailPage() {
 
             <div className="mt-4 space-y-3 text-sm">
               <InfoRow label="Danh mục" value={product.category?.name} />
-              <InfoRow label="Nông trại" value={product.farm?.name} />
+              <InfoRow
+                label="Nông trại"
+                value={
+                  product.farm?.slug ? (
+                    <Link
+                      to={`/farms/${product.farm.slug}`}
+                      className="text-green-700 hover:underline"
+                    >
+                      {product.farm.name}
+                    </Link>
+                  ) : (
+                    product.farm?.name
+                  )
+                }
+              />
               <InfoRow label="Đơn vị" value={product.unit} />
               <InfoRow
                 label="Trạng thái"
@@ -694,8 +830,12 @@ export default function ProductDetailPage() {
           meta={reviewsMeta}
           loading={reviewsLoading}
           onLoadMore={loadMoreReviews}
+          onCollapse={collapseReviews}
           onPageChange={changeReviewsPage}
           reviewableItem={reviewableItem}
+          reviewEligibility={reviewEligibility}
+          reviewMode={reviewMode}
+          setReviewMode={setReviewMode}
           reviewForm={reviewForm}
           setReviewForm={setReviewForm}
           reviewSaving={reviewSaving}
@@ -776,6 +916,8 @@ function ImagePreviewModal({ image, alt, onClose }) {
       <button
         type="button"
         onClick={onClose}
+        aria-label="Đóng xem ảnh"
+        title="Đóng xem ảnh"
         className="absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-full bg-white text-slate-800 hover:bg-slate-100"
       >
         <X size={22} />
@@ -796,8 +938,12 @@ function ReviewSection({
   meta = DEFAULT_REVIEWS_META,
   loading = false,
   onLoadMore,
+  onCollapse,
   onPageChange,
   reviewableItem,
+  reviewEligibility = DEFAULT_REVIEW_ELIGIBILITY,
+  reviewMode,
+  setReviewMode,
   reviewForm,
   setReviewForm,
   reviewSaving,
@@ -824,6 +970,9 @@ function ReviewSection({
   const pages = buildPages(currentPage, lastPage);
 
   const canLoadMore = currentPage < lastPage;
+  const canCollapse = currentPage > 1 && reviews.length > Number(meta.per_page || 5);
+  const canWriteBuyerEntry = reviewEligibility.can_comment || Boolean(reviewableItem);
+  const isBuyerCommentMode = reviewMode === "buyer_comment";
 
   return (
     <section className="mt-6 rounded-3xl border border-green-100 bg-white p-6 shadow-sm">
@@ -842,7 +991,7 @@ function ReviewSection({
         </div>
 
         <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-black text-green-700">
-          Chỉ khách đã mua mới được đánh giá
+          Khách đã mua được chọn đánh giá hoặc bình luận
         </span>
       </div>
 
@@ -855,12 +1004,62 @@ function ReviewSection({
         </div>
       )}
 
-      {reviewableItem && (
+      {canWriteBuyerEntry && (
         <div className="mt-5 rounded-2xl border border-green-200 bg-green-50/60 p-4">
-          <p className="font-black text-green-900">Viết đánh giá của bạn</p>
-          <div className="mt-3 flex gap-1">{[1,2,3,4,5].map((rating) => <button type="button" key={rating} onClick={() => setReviewForm((form) => ({ ...form, rating }))}><Star size={22} className={rating <= reviewForm.rating ? "fill-amber-400 text-amber-400" : "text-slate-300"} /></button>)}</div>
-          <textarea value={reviewForm.comment} onChange={(event) => setReviewForm((form) => ({ ...form, comment: event.target.value }))} rows={3} maxLength={1000} placeholder="Chia sẻ cảm nhận về sản phẩm..." className="mt-3 w-full rounded-xl border border-green-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-green-500" />
-          <button type="button" disabled={reviewSaving || !reviewForm.comment.trim()} onClick={onSubmitReview} className="mt-3 rounded-xl bg-green-700 px-5 py-2.5 text-sm font-black text-white disabled:opacity-50">{reviewSaving ? "Đang gửi..." : "Gửi đánh giá"}</button>
+          <p className="font-black text-green-900">Chia sẻ về sản phẩm</p>
+          <p className="mt-1 text-xs font-semibold text-green-700">
+            Đánh giá có chấm sao; bình luận chỉ có nội dung và không làm thay đổi điểm sản phẩm.
+          </p>
+
+          <div className="mt-3 inline-flex rounded-xl border border-green-200 bg-white p-1">
+            <button
+              type="button"
+              disabled={!reviewEligibility.can_rate}
+              onClick={() => setReviewMode("rating_review")}
+              title={reviewEligibility.can_rate ? "Chấm sao và đánh giá sản phẩm" : "Bạn đã đánh giá lượt mua này"}
+              className={`rounded-lg px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-45 ${!isBuyerCommentMode ? "bg-green-700 text-white" : "text-slate-600 hover:bg-green-50"}`}
+            >
+              {reviewEligibility.can_rate ? "Đánh giá" : "Đã đánh giá"}
+            </button>
+            <button
+              type="button"
+              disabled={!reviewEligibility.can_comment}
+              onClick={() => setReviewMode("buyer_comment")}
+              title="Bình luận không chấm sao"
+              className={`rounded-lg px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-45 ${isBuyerCommentMode ? "bg-green-700 text-white" : "text-slate-600 hover:bg-green-50"}`}
+            >
+              Bình luận
+            </button>
+          </div>
+
+          {!isBuyerCommentMode && reviewableItem && (
+            <div className="mt-3 flex gap-1">
+              {[1,2,3,4,5].map((rating) => (
+                <button type="button" key={rating} onClick={() => setReviewForm((form) => ({ ...form, rating }))} aria-label={`Chọn ${rating} sao`} title={`Chọn ${rating} sao`}>
+                  <Star size={22} className={rating <= reviewForm.rating ? "fill-amber-400 text-amber-400" : "text-slate-300"} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <textarea
+            value={reviewForm.comment}
+            onChange={(event) => setReviewForm((form) => ({ ...form, comment: event.target.value }))}
+            rows={3}
+            maxLength={1000}
+            required={isBuyerCommentMode}
+            aria-label={isBuyerCommentMode ? "Nội dung bình luận" : "Nội dung đánh giá"}
+            placeholder={isBuyerCommentMode ? "Nhập bình luận về sản phẩm..." : "Chia sẻ cảm nhận về sản phẩm (không bắt buộc)..."}
+            className="mt-3 w-full rounded-xl border border-green-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-green-500"
+          />
+          <button
+            type="button"
+            disabled={reviewSaving || (isBuyerCommentMode && !reviewForm.comment.trim())}
+            onClick={onSubmitReview}
+            className="mt-3 rounded-xl bg-green-700 px-5 py-2.5 text-sm font-black text-white disabled:opacity-50"
+          >
+            {reviewSaving ? "Đang gửi..." : isBuyerCommentMode ? "Gửi bình luận" : "Gửi đánh giá"}
+          </button>
         </div>
       )}
 
@@ -898,9 +1097,9 @@ function ReviewSection({
                       </p>
                     </div>
 
-                    {review.is_admin_comment || review.is_seller_comment ? (
-                      <span className="mt-1 inline-flex rounded-full bg-red-50 px-2.5 py-1 text-xs font-black text-red-700">
-                        {review.is_admin_comment ? "Bình luận quản trị" : "Bình luận người bán"}
+                    {!review.is_rating_review ? (
+                      <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-black ${review.is_admin_comment ? "bg-red-50 text-red-700" : review.is_seller_comment ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}`}>
+                        {review.entry_type_label || (review.is_admin_comment ? "Bình luận quản trị" : review.is_seller_comment ? "Bình luận người bán" : "Bình luận người mua")}
                       </span>
                     ) : (
                       <div className="mt-1 flex items-center gap-1">
@@ -919,11 +1118,11 @@ function ReviewSection({
                     )}
 
                     <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
-                      {review.comment || "Khách hàng chưa để lại nội dung."}
+                      {review.comment || (review.is_rating_review ? "Khách hàng chưa để lại nội dung." : "")}
                     </p>
 
                     {canReplyReviews && replyingReviewId !== review.id && (
-                      <button type="button" onClick={() => onStartReply(review.id)} className="mt-2 text-sm font-black text-green-700 hover:underline">Trả lời đánh giá</button>
+                      <button type="button" onClick={() => onStartReply(review.id)} className="mt-2 text-sm font-black text-green-700 hover:underline">Trả lời {review.is_rating_review ? "đánh giá" : "bình luận"}</button>
                     )}
 
                     {canReplyReviews && replyingReviewId === review.id && (
@@ -933,20 +1132,19 @@ function ReviewSection({
                       </div>
                     )}
 
-                    {(review.replies || []).map((reply) => (
+                    <ProgressiveList items={review.replies || []} initialCount={1} step={3} moreLabel="Xem thêm phản hồi" collapseLabel="Đóng bớt" renderItem={(reply) => (
                       <div
                         key={reply.id}
                         className="mt-3 rounded-xl border-l-4 border-green-500 bg-green-50 px-4 py-3"
                       >
                         <p className="text-xs font-black text-green-800">
-                          {reply.user?.name || "Organic Farm"} ·{" "}
-                          {reply.created_at}
+                          {reply.user?.name || "Organic Farm"} · {replyRoleLabel(reply)} · {reply.created_at}
                         </p>
                         <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-700">
                           {reply.comment}
                         </p>
                       </div>
-                    ))}
+                    )} />
                   </div>
                 </div>
               </div>
@@ -961,7 +1159,18 @@ function ReviewSection({
                 onClick={onLoadMore}
                 className="rounded-xl bg-green-700 px-5 py-2.5 text-sm font-black text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Đang tải..." : "Tải thêm bình luận"}
+                {loading ? "Đang tải..." : "Xem thêm bình luận"}
+              </button>
+            )}
+
+            {canCollapse && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={onCollapse}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+              >
+                <ChevronUp size={17} /> Đóng bớt
               </button>
             )}
 
@@ -1027,11 +1236,9 @@ function RelatedProductCard({ product }) {
       : null;
 
   return (
-    <Link
-      to={`/products/${product.slug}`}
-      className="group overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-    >
-      <div className="relative h-44 bg-[#f4faef]">
+    <div className="group overflow-hidden rounded-2xl border border-green-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md">
+      <Link to={`/products/${product.slug}`} className="block">
+        <div className="relative h-44 bg-[#f4faef]">
         {image ? (
           <img
             src={image}
@@ -1053,16 +1260,28 @@ function RelatedProductCard({ product }) {
             Mới
           </span>
         ) : null}
-      </div>
+        </div>
+      </Link>
 
       <div className="p-3">
-        <h3 className="min-h-10.5 font-black leading-5 text-slate-900 group-hover:text-green-700">
-          {product.name}
-        </h3>
+        <Link to={`/products/${product.slug}`}>
+          <h3 className="min-h-10.5 font-black leading-5 text-slate-900 group-hover:text-green-700">
+            {product.name}
+          </h3>
+        </Link>
 
-        <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-          {product.farm?.name || "Organic Farm"}
-        </p>
+        {product.farm?.slug ? (
+          <Link
+            to={`/farms/${product.farm.slug}`}
+            className="mt-1 block truncate text-xs font-semibold text-slate-500 hover:text-green-700 hover:underline"
+          >
+            {product.farm?.name || "Organic Farm"}
+          </Link>
+        ) : (
+          <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+            {product.farm?.name || "Organic Farm"}
+          </p>
+        )}
 
         <div className="mt-2">
           <p className="text-lg font-black text-green-700">{priceText}</p>
@@ -1074,7 +1293,7 @@ function RelatedProductCard({ product }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -1085,6 +1304,13 @@ const DEFAULT_REVIEWS_META = {
   total: 0,
   from: 0,
   to: 0,
+};
+
+const DEFAULT_REVIEW_ELIGIBILITY = {
+  has_purchased: false,
+  can_comment: false,
+  can_rate: false,
+  order_item_id: null,
 };
 
 function uniqueReviews(list) {

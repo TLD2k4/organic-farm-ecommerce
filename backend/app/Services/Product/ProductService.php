@@ -27,6 +27,9 @@ class ProductService
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
             ->where('status', 1)
+            ->whereHas('farm', function ($farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
             ->whereHas('certificate');
 
         if (!empty($filters['vendor_id'])) {
@@ -77,10 +80,18 @@ class ProductService
 
         if (!empty($filters['keyword'])) {
             $keyword = trim($filters['keyword']);
+            $productId = $this->extractVendorProductId($keyword);
 
-            $query->where(function ($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword, $productId) {
                 $q->where('name', 'like', "%{$keyword}%")
-                    ->orWhere('slug', 'like', "%{$keyword}%");
+                    ->orWhere('slug', 'like', "%{$keyword}%")
+                    ->orWhereHas('category', function ($categoryQuery) use ($keyword) {
+                        $categoryQuery->where('name', 'like', "%{$keyword}%");
+                    })
+                    ->when(
+                        $productId !== null,
+                        fn ($idQuery) => $idQuery->orWhereKey($productId)
+                    );
             });
         }
 
@@ -144,6 +155,9 @@ class ProductService
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
             ->where('status', 1)
+            ->whereHas('farm', function ($farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
             ->whereHas('certificate')
             ->findOrFail($id);
     }
@@ -153,6 +167,7 @@ class ProductService
         $farm = $this->getSellerFarm($sellerId);
 
         $query = Product::with([
+            'farm',
             'category',
             'images',
             'approver:id,name,email',
@@ -714,12 +729,18 @@ class ProductService
 
         $isCertificateExpired = false;
         $isSellable = false;
+        $farmIsPublic = $product->farm
+            && !$product->farm->trashed()
+            && (int) $product->farm->status === Farm::STATUS_ACTIVE;
 
         if ((int) $product->status === 1) {
-            if ($currentCertificate) {
+            if ($currentCertificate && $farmIsPublic) {
                 $isSellable = true;
                 $statusText = 'Đang bán';
                 $statusClass = 'active';
+            } elseif ($currentCertificate) {
+                $statusText = 'Nông trại chưa hoạt động';
+                $statusClass = 'pending';
             } elseif ($pendingCertificate && $expiredCertificate) {
                 $statusText = 'Chờ duyệt gia hạn';
                 $statusClass = 'pending';
@@ -927,6 +948,19 @@ class ProductService
         };
     }
 
+    private function extractVendorProductId(string $keyword): ?int
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', '', $keyword));
+
+        if (!preg_match('/^SP0*(\d+)$/', $normalized, $matches)) {
+            return null;
+        }
+
+        $id = (int) $matches[1];
+
+        return $id > 0 ? $id : null;
+    }
+
     public function getPublicProductDetailBySlug(string $slug): Product
     {
         $query = Product::query()
@@ -943,6 +977,9 @@ class ProductService
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
             ->where('status', 1)
+            ->whereHas('farm', function ($farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
             ->whereHas('certificate');
 
         if (method_exists(Product::class, 'images')) {
@@ -969,6 +1006,9 @@ class ProductService
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
             ->where('status', 1)
+            ->whereHas('farm', function ($farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
             ->whereHas('certificate');
 
         if (method_exists(Product::class, 'images')) {
@@ -988,8 +1028,9 @@ class ProductService
             ->with([
                 'orderItem.subOrder.order.user',
                 'user:id,name,email,avatar',
+                'user.roles',
                 'replies' => function ($query) {
-                    $query->where('status', 1)->with('user:id,name,email');
+                    $query->where('status', 1)->with('user.roles');
                 },
             ])
             ->latest('reviews.created_at')
@@ -1007,6 +1048,9 @@ class ProductService
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
             ->where('status', 1)
+            ->whereHas('farm', function ($farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
             ->whereHas('certificate')
 
             // Không lấy chính sản phẩm đang xem
