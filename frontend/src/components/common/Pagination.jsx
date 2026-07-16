@@ -3,15 +3,36 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 
-export default function Pagination({ meta, params, setParams }) {
+export default function Pagination({
+  meta,
+  params,
+  setParams,
+  itemLabel,
+  loading = false,
+}) {
   const [inputPage, setInputPage] = useState("");
 
   if (!meta) return null;
 
-  const currentPage = params.page;
+  const currentPage = Math.max(
+    1,
+    Number(meta.current_page ?? params.page ?? 1) || 1,
+  );
+  const lastPage = Math.max(1, Number(meta.last_page ?? 1) || 1);
+  const total = Math.max(0, Number(meta.total ?? 0) || 0);
+  const perPage = Math.max(
+    1,
+    Number(meta.per_page ?? params.per_page ?? params.limit ?? 10) || 10,
+  );
+  const from = total === 0
+    ? 0
+    : Number(meta.from ?? (currentPage - 1) * perPage + 1);
+  const to = total === 0
+    ? 0
+    : Number(meta.to ?? Math.min(total, currentPage * perPage));
 
   const changePage = (page) => {
-    if (page < 1 || page > meta.last_page) return;
+    if (loading || page < 1 || page > lastPage) return;
 
     setParams((prev) => ({
       ...prev,
@@ -32,8 +53,8 @@ export default function Pagination({ meta, params, setParams }) {
       return;
     }
 
-    if (page < 1 || page > meta.last_page) {
-      toast.error(`Chỉ được nhập từ 1 đến ${meta.last_page}`);
+    if (page < 1 || page > lastPage) {
+      toast.error(`Chỉ được nhập từ 1 đến ${lastPage}`);
       return;
     }
 
@@ -45,20 +66,22 @@ export default function Pagination({ meta, params, setParams }) {
     const pages = [];
 
     let start = Math.max(1, currentPage - 2);
-    let end = Math.min(meta.last_page, currentPage + 2);
+    let end = Math.min(lastPage, currentPage + 2);
 
     if (currentPage <= 3) {
-      end = Math.min(5, meta.last_page);
+      end = Math.min(5, lastPage);
     }
 
-    if (currentPage >= meta.last_page - 2) {
-      start = Math.max(1, meta.last_page - 4);
+    if (currentPage >= lastPage - 2) {
+      start = Math.max(1, lastPage - 4);
     }
 
     if (start > 1) {
       pages.push(
         <button
+          type="button"
           key={1}
+          disabled={loading}
           onClick={() => changePage(1)}
           className="
             flex h-10 min-w-10 items-center justify-center
@@ -89,7 +112,9 @@ export default function Pagination({ meta, params, setParams }) {
     for (let i = start; i <= end; i++) {
       pages.push(
         <button
+          type="button"
           key={i}
+          disabled={loading}
           onClick={() => changePage(i)}
           className={`flex h-10 min-w-10 items-center justify-center rounded-md border transition-all duration-200 ${
             currentPage === i
@@ -102,8 +127,8 @@ export default function Pagination({ meta, params, setParams }) {
       );
     }
 
-    if (end < meta.last_page) {
-      if (end < meta.last_page - 1) {
+    if (end < lastPage) {
+      if (end < lastPage - 1) {
         pages.push(
           <span
             key="right-dot"
@@ -116,8 +141,10 @@ export default function Pagination({ meta, params, setParams }) {
 
       pages.push(
         <button
-          key={meta.last_page}
-          onClick={() => changePage(meta.last_page)}
+          type="button"
+          key={lastPage}
+          disabled={loading}
+          onClick={() => changePage(lastPage)}
           className="
             flex h-10 min-w-10 items-center justify-center
             rounded-md border border-slate-300 bg-white
@@ -128,7 +155,7 @@ export default function Pagination({ meta, params, setParams }) {
             hover:text-green-600
           "
         >
-          {meta.last_page}
+          {lastPage}
         </button>,
       );
     }
@@ -137,11 +164,22 @@ export default function Pagination({ meta, params, setParams }) {
   };
 
   return (
-    <div className="mt-6 flex flex-col items-center gap-4 lg:flex-row lg:justify-between">
+    <div className="mt-6 grid items-center gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      {itemLabel ? (
+        <p className="text-center text-sm font-semibold text-slate-500 lg:text-left">
+          Hiển thị <b className="text-slate-700">{from}–{to}</b> trên tổng{" "}
+          <b className="text-slate-700">{total}</b> {itemLabel}
+        </p>
+      ) : (
+        <span className="hidden lg:block" aria-hidden="true" />
+      )}
+
       {/* Pagination */}
-      <div className="flex items-center gap-1">
+      <div className="flex max-w-full items-center justify-center gap-1 overflow-x-auto pb-1">
         <button
-          disabled={currentPage === 1}
+          type="button"
+          aria-label="Trang trước"
+          disabled={loading || currentPage === 1}
           onClick={() => changePage(currentPage - 1)}
           className="
             flex h-10 w-10 items-center justify-center
@@ -161,7 +199,9 @@ export default function Pagination({ meta, params, setParams }) {
         {renderPages()}
 
         <button
-          disabled={currentPage === meta.last_page}
+          type="button"
+          aria-label="Trang sau"
+          disabled={loading || currentPage === lastPage}
           onClick={() => changePage(currentPage + 1)}
           className="
             flex h-10 w-10 items-center justify-center
@@ -180,16 +220,16 @@ export default function Pagination({ meta, params, setParams }) {
       </div>
 
       {/* Right */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-end">
         <span className="text-sm text-slate-500">
-          Trang <b>{currentPage}</b> / {meta.last_page}
+          Trang <b>{currentPage}</b> / {lastPage}
         </span>
 
         <div className="flex items-center gap-2">
           <input
             type="number"
             min="1"
-            max={meta.last_page}
+            max={lastPage}
             value={inputPage}
             onChange={(e) => setInputPage(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleGoPage()}
@@ -207,7 +247,9 @@ export default function Pagination({ meta, params, setParams }) {
           />
 
           <button
+            type="button"
             onClick={handleGoPage}
+            disabled={loading}
             className="
               h-10 rounded-md
               bg-green-600
@@ -217,6 +259,8 @@ export default function Pagination({ meta, params, setParams }) {
               transition-all duration-200
               hover:bg-green-700
               active:scale-95
+              disabled:cursor-not-allowed
+              disabled:opacity-50
             "
           >
             Go

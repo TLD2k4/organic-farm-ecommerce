@@ -13,7 +13,7 @@ export function highlight(text, keyword) {
       part.toLowerCase() === keyword.toLowerCase()
         ? React.createElement(
             'span',
-            { key: index, className: 'rounded bg-yellow-200 px-1' },
+            { key: index, className: 'search-highlight rounded px-1 font-semibold' },
             part
           )
         : part
