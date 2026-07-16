@@ -5,13 +5,16 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Illuminate\Http\Middleware\HandleCors;
+use App\Http\Middleware\EnsureSellerPolicyAccepted;
 
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -26,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => RoleMiddleware::class,
+            'seller.policy' => EnsureSellerPolicyAccepted::class,
         ]);
     })
 
@@ -67,18 +71,40 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        $exceptions->render(function (HttpException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $e->getMessage() ?: 'Không thể thực hiện yêu cầu.',
+                ], $e->getStatusCode());
+            }
+        });
+
+        $exceptions->render(function (QueryException $e, Request $request) {
+            if ($request->is('api/*')) {
+                $errorId = (string) \Illuminate\Support\Str::uuid();
+                logger()->error('Database query failed', [
+                    'error_id' => $errorId,
+                    'exception' => $e,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Không thể xử lý dữ liệu lúc này. Vui lòng thử lại.',
+                    'code' => 'DATABASE_QUERY_ERROR',
+                    'error_id' => $errorId,
+                ], 500);
+            }
+        });
+
         $exceptions->render(function (Throwable $e, Request $request) {
             if ($request->is('api/*')) {
 
                 logger()->error($e);
 
-                $message = app()->isProduction()
-                    ? 'Đã xảy ra lỗi hệ thống.'
-                    : $e->getMessage();
-
                 return response()->json([
                     'success' => false,
-                    'error' => $message,
+                    'error' => 'Đã xảy ra lỗi hệ thống. Vui lòng thử lại.',
                 ], 500);
             }
         });

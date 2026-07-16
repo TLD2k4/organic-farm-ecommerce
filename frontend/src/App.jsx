@@ -12,6 +12,7 @@ import { useAuthStore } from "./store/authStore";
 import { applyPreferences, getPreferences } from "./utils/preferences";
 import NotificationCenter from "./components/common/NotificationCenter";
 import ThemeToggle from "./components/common/ThemeToggle";
+import SellerPolicyGate from "./components/farm/SellerPolicyGate";
 
 function App() {
   const token = useAuthStore((state) => state.token);
@@ -43,6 +44,7 @@ function App() {
       <AppRoutes />
       <ThemeToggle />
       <NotificationCenter />
+      {token && user && <SellerPolicyGate />}
 
       <Toaster
         position="top-right"

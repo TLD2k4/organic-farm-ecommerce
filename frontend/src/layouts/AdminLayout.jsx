@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  FileText,
   Shield,
   ShoppingBag,
   Star,
@@ -77,6 +78,11 @@ const menuItems = [
     to: "/admin/reports",
     label: "Báo cáo",
     icon: BarChart3,
+  },
+  {
+    to: "/admin/seller-policies",
+    label: "Chính sách Seller",
+    icon: FileText,
   },
   {
     to: "/admin/settings",

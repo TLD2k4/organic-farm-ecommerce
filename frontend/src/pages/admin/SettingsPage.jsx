@@ -209,6 +209,10 @@ function actionLabel(action) {
     restore: "Khôi phục",
     force_delete: "Xóa vĩnh viễn",
     status_update: "Đổi trạng thái",
+    create: "Tạo mới",
+    update: "Cập nhật",
+    publish: "Công bố",
+    archive: "Hết hiệu lực",
   };
 
   return labels[action] || action;
@@ -226,6 +230,7 @@ function statusLabel(type, status) {
     order: { 0: "Chờ xác nhận", 1: "Đang xử lý", 2: "Đang giao", 3: "Hoàn thành", 4: "Đã hủy" },
     sub_order: { 0: "Chờ xác nhận", 1: "Đang chuẩn bị", 2: "Đang giao", 3: "Hoàn thành", 4: "Đã hủy" },
     review: { 0: "Đang ẩn", 1: "Đang hiển thị" },
+    seller_policy: { 0: "Bản nháp", 1: "Đang hiệu lực", 2: "Đã hết hiệu lực" },
   };
   const rawType = String(type || "").split("\\").pop();
   const normalizedType = rawType

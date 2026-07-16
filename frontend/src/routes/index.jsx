@@ -25,6 +25,7 @@ const ProductsPage = lazy(() => import("../pages/customer/ProductsPage"));
 const ProductDetailPage = lazy(
   () => import("../pages/customer/ProductDetailPage"),
 );
+const SellerPolicyPage = lazy(() => import("../pages/customer/SellerPolicyPage"));
 const SellerDashboard = lazy(() => import("../pages/seller/SellerDashboard"));
 const SellerProducts = lazy(() => import("../pages/seller/SellerProducts"));
 const SellerOrders = lazy(() => import("../pages/seller/SellerOrders"));
@@ -52,6 +53,7 @@ const AdminOrdersPage = lazy(
 const AdminReports = lazy(() => import("../pages/admin/ReportsPage"));
 const AdminReviews = lazy(() => import("../pages/admin/ReviewsPage"));
 const AdminSettings = lazy(() => import("../pages/admin/SettingsPage"));
+const AdminSellerPolicies = lazy(() => import("../pages/admin/SellerPoliciesPage"));
 
 function ComingSoon({ title }) {
   return (
@@ -82,6 +84,7 @@ export default function AppRoutes() {
         {/* PUBLIC PRODUCTS */}
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/products/:slug" element={<ProductDetailPage />} />
+        <Route path="/seller-policy" element={<SellerPolicyPage />} />
 
         {/* FARM APPLICATION */}
         <Route
@@ -181,6 +184,7 @@ export default function AppRoutes() {
         <Route path="reports" element={<AdminReports />} />
         <Route path="reviews" element={<AdminReviews />} />
         <Route path="settings" element={<AdminSettings />} />
+        <Route path="seller-policies" element={<AdminSellerPolicies />} />
       </Route>
 
       {/* 404 */}

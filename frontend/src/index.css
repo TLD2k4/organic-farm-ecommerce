@@ -538,6 +538,43 @@
   color: #c7d7cc !important;
 }
 
+/* Kết quả tìm kiếm: tương phản vừa đủ, không dùng vàng sáng chói ở dark mode. */
+.search-highlight {
+  background-color: #fef08a;
+  color: #713f12;
+}
+
+.dark .search-highlight {
+  background-color: #4a3a1c !important;
+  color: #f2d58f !important;
+  box-shadow: inset 0 0 0 1px rgba(233, 189, 109, 0.28);
+}
+
+/* Các bề mặt xem/chấp thuận chính sách dùng chung một bảng màu dễ đọc. */
+.dark .seller-policy-gate,
+.dark .seller-policy-content-card,
+.dark .seller-policy-detail-modal {
+  border-color: #2a3d33 !important;
+  background-color: #101914 !important;
+}
+
+.dark .seller-policy-inline-detail,
+.dark .seller-policy-acceptance,
+.dark .seller-policy-accepted {
+  border-color: #315d3f !important;
+  background-color: #14271b !important;
+}
+
+.dark .seller-policy-summary,
+.dark .seller-policy-summary.text-emerald-950 {
+  color: #dbe9df !important;
+}
+
+.dark .seller-policy-acceptance label {
+  border-color: #31513d !important;
+  background-color: #17251d !important;
+}
+
 /* Sidebar hồ sơ: hover tối dịu, không phủ nền trắng lên chữ. */
 .dark .profile-sidebar {
   border-color: #2a3d33 !important;
