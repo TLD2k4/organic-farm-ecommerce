@@ -73,7 +73,7 @@ export default function ProfileSidebar() {
     },
     {
       key: "reviews",
-      label: "Đánh giá của tôi",
+      label: "Đánh giá & bình luận",
       icon: Star,
     },
   ];

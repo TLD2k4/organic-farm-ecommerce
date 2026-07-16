@@ -411,6 +411,8 @@ const wardOptions = selectedProvince?.wards || [];
           <button
             type="button"
             onClick={onClose}
+            aria-label="Đóng biểu mẫu địa chỉ"
+            title="Đóng biểu mẫu địa chỉ"
             className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100"
           >
             <X size={20} />
