@@ -286,6 +286,7 @@ function FarmFormContent({
 
   const [errors, setErrors] = useState({});
   const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [currentPolicy, setCurrentPolicy] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [addressTree, setAddressTree] = useState([]);
@@ -459,7 +460,8 @@ function FarmFormContent({
       ...(requirePolicyAcceptance
         ? {
             policy_accepted: true,
-            policy_version: SELLER_POLICY_VERSION,
+            policy_version: currentPolicy?.version || SELLER_POLICY_VERSION,
+            seller_policy_id: currentPolicy?.id || null,
           }
         : {}),
     };
@@ -659,14 +661,16 @@ function FarmFormContent({
           checked={policyAccepted}
           disabled={loading || uploading}
           error={
-            errors.policy_accepted?.[0] || errors.policy_version?.[0] || null
+            errors.policy_accepted?.[0] || errors.policy_version?.[0] || errors.seller_policy_id?.[0] || null
           }
+          onPolicyLoaded={setCurrentPolicy}
           onChange={(checked) => {
             setPolicyAccepted(checked);
 
             if (checked) {
               clearError("policy_accepted");
               clearError("policy_version");
+              clearError("seller_policy_id");
             }
           }}
         />

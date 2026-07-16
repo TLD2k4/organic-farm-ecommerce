@@ -17,6 +17,10 @@ class FarmService
     private const NEW_PRODUCT_DAYS = 7;
     private const BEST_SELLER_DAYS = 30;
     private const BEST_SELLER_MIN_QUANTITY = 20;
+
+    public function __construct(
+        private SellerPolicyAccessService $sellerPolicyAccessService,
+    ) {}
     // =====================================================
     // PUBLIC FARM
     // =====================================================
@@ -90,6 +94,8 @@ class FarmService
 
         $farms->getCollection()->transform(
             function (Farm $farm) {
+                $orderAvailability = $this->sellerPolicyAccessService
+                    ->availability($farm);
                 $reviews = $farm->products
                     ->flatMap(function ($product) {
                         return $product->reviews;
@@ -105,6 +111,15 @@ class FarmService
 
                         'total' => $reviews->count(),
                     ]
+                );
+
+                $farm->setAttribute(
+                    'accepting_orders',
+                    $orderAvailability['accepting_orders']
+                );
+                $farm->setAttribute(
+                    'order_unavailable_reason',
+                    $orderAvailability['reason']
                 );
 
                 unset($farm->products);
@@ -138,6 +153,16 @@ class FarmService
 
         $farm = $this->appendPublicFarmSummary(
             $farm
+        );
+        $orderAvailability = $this->sellerPolicyAccessService
+            ->availability($farm);
+        $farm->setAttribute(
+            'accepting_orders',
+            $orderAvailability['accepting_orders']
+        );
+        $farm->setAttribute(
+            'order_unavailable_reason',
+            $orderAvailability['reason']
         );
 
         $page = max(
@@ -226,10 +251,18 @@ class FarmService
             );
 
         $products->getCollection()->transform(
-            function (Product $product) {
-                return $this->appendPublicProductCardData(
-                    $product
+            function (Product $product) use ($orderAvailability) {
+                $product = $this->appendPublicProductCardData($product);
+                $product->setAttribute(
+                    'accepting_orders',
+                    $orderAvailability['accepting_orders']
                 );
+                $product->setAttribute(
+                    'order_unavailable_reason',
+                    $orderAvailability['reason']
+                );
+
+                return $product;
             }
         );
 
@@ -431,6 +464,7 @@ class FarmService
                 FarmPolicyAcceptance::create([
                     'user_id' => $lockedUser->id,
                     'farm_id' => $farm->id,
+                    'seller_policy_id' => $policyAcceptance['seller_policy_id'] ?? null,
                     'policy_version' =>
                     $policyAcceptance['policy_version'],
                     'accepted_at' => now(),

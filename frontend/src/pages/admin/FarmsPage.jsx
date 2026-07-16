@@ -1,6 +1,7 @@
 //src\pages\admin\FarmsPage.jsx
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { Building2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -18,6 +19,7 @@ import { requestReason } from "@/utils/actionDialog";
 import { handleApi } from "@/utils/api";
 
 export default function FarmsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     farms,
     meta,
@@ -49,6 +51,15 @@ export default function FarmsPage() {
   const [rejectingFarm, setRejectingFarm] = useState(null);
 
   const debouncedKeyword = useDebounce(params.keyword, 500);
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+
+    if (Number.isInteger(requestedId) && requestedId > 0) {
+      setSelectedFarmId(requestedId);
+      setOpenDrawer(true);
+    }
+  }, [searchParams]);
 
   const requestParams = {
     page: params.page,
@@ -141,7 +152,13 @@ export default function FarmsPage() {
         onForceDelete={(farm) => runAction(() => forceDelete(farm.id))}
       />
 
-      <Pagination meta={meta} params={params} setParams={setParams} />
+      <Pagination
+        meta={meta}
+        params={params}
+        setParams={setParams}
+        itemLabel="gian hàng"
+        loading={loading}
+      />
 
       <FarmDrawer
         open={openDrawer}
@@ -149,6 +166,12 @@ export default function FarmsPage() {
         onClose={() => {
           setOpenDrawer(false);
           setSelectedFarmId(null);
+
+          if (searchParams.has("view")) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("view");
+            setSearchParams(nextParams, { replace: true });
+          }
         }}
       />
 

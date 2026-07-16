@@ -54,6 +54,8 @@ export default function FarmDrawer({ open, farmId, onClose }) {
           <button
             type="button"
             onClick={onClose}
+            aria-label="Đóng chi tiết nông trại"
+            title="Đóng chi tiết nông trại"
             className="rounded-lg p-2 hover:bg-slate-100"
           >
             <X size={21} />

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Farm;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Models\SellerPolicy;
 
 class RegisterFarmRequest extends FormRequest
 {
@@ -51,6 +52,8 @@ class RegisterFarmRequest extends FormRequest
 
     public function rules(): array
     {
+        $currentPolicy = SellerPolicy::current();
+
         return [
             'name' => [
                 'bail',
@@ -105,8 +108,14 @@ class RegisterFarmRequest extends FormRequest
                 'string',
                 'max:50',
                 Rule::in([
-                    (string) config('seller_policy.version'),
+                    (string) ($currentPolicy?->version ?? config('seller_policy.version')),
                 ]),
+            ],
+            'seller_policy_id' => [
+                Rule::requiredIf((bool) $currentPolicy),
+                'nullable',
+                'integer',
+                Rule::in(array_filter([$currentPolicy?->id])),
             ],
         ];
     }

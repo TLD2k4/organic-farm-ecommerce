@@ -266,7 +266,13 @@ export default function FarmsPage() {
       )}
 
       <div className="min-w-0 max-w-full overflow-hidden">
-        <Pagination meta={publicMeta} params={params} setParams={setParams} />
+        <Pagination
+          meta={publicMeta}
+          params={params}
+          setParams={setParams}
+          itemLabel="nông trại"
+          loading={publicLoading}
+        />
       </div>
     </div>
   );
