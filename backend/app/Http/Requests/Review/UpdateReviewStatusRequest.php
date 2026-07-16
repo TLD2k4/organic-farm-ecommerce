@@ -22,10 +22,10 @@ class UpdateReviewStatusRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'status.required' => 'Vui lòng chọn trạng thái đánh giá.',
-            'status.integer' => 'Trạng thái đánh giá không hợp lệ.',
-            'status.in' => 'Trạng thái đánh giá chỉ được là ẩn hoặc hiển thị.',
-            'reason.required_if' => 'Vui lòng nhập lý do khi ẩn đánh giá.',
+            'status.required' => 'Vui lòng chọn trạng thái nội dung.',
+            'status.integer' => 'Trạng thái nội dung không hợp lệ.',
+            'status.in' => 'Trạng thái nội dung chỉ được là ẩn hoặc hiển thị.',
+            'reason.required_if' => 'Vui lòng nhập lý do khi ẩn nội dung.',
             'reason.max' => 'Lý do không được vượt quá 500 ký tự.',
         ];
     }

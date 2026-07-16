@@ -19,6 +19,13 @@ const reviewService = {
     return unwrapResponse(response);
   },
 
+  getEligibility: async (productId) => {
+    const response = await axiosClient.get("/my-reviews/eligibility", {
+      params: { product_id: productId },
+    });
+    return unwrapResponse(response);
+  },
+
   createReview: async (payload) => {
     const response = await axiosClient.post("/reviews", payload);
     return unwrapResponse(response);

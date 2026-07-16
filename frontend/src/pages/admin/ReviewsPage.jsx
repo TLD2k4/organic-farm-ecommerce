@@ -18,9 +18,19 @@ import adminReviewService from "../../services/adminReviewService";
 import adminProductService from "../../services/adminProductService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 import { requestReason } from "../../utils/actionDialog";
+import ProgressiveList from "../../components/common/ProgressiveList";
+import Pagination from "../../components/common/Pagination";
+import useDebounce from "../../hooks/useDebounce";
+import { getApiErrorMessage } from "../../utils/apiError";
+import { highlight } from "../../utils/highlight";
+import {
+  getAdminFarmLink,
+  getAdminProductLink,
+} from "../../utils/adminEntityLink";
 
 const initialFilters = {
   keyword: "",
+  type: "",
   status: "",
   rating: "",
   deleted: "",
@@ -29,10 +39,68 @@ const initialFilters = {
 };
 
 function firstError(error, fallback) {
+  return getApiErrorMessage(error, fallback);
+}
+
+function isRatingReview(review) {
+  return review?.is_rating_review ?? review?.rating !== null;
+}
+
+function entryLabel(review) {
+  return review?.entry_type_label ||
+    (isRatingReview(review) ? "Đánh giá người mua" : "Bình luận sản phẩm");
+}
+
+function ProductReference({ product, keyword }) {
+  const productLink = getAdminProductLink(product);
+  const farmLink = getAdminFarmLink(product?.farm);
+
+  if (!product) {
+    return (
+      <p className="max-w-52 font-bold text-slate-700">
+        Không còn dữ liệu sản phẩm
+      </p>
+    );
+  }
+
   return (
-    Object.values(error?.errors || {})[0]?.[0] ||
-    error?.message ||
-    fallback
+    <>
+      {productLink ? (
+        <Link
+          to={productLink.to}
+          title={productLink.title}
+          className={`block max-w-52 font-bold hover:underline ${
+            productLink.isPublic
+              ? "text-slate-700 hover:text-green-700"
+              : "text-slate-700 hover:text-sky-600"
+          }`}
+        >
+          {highlight(product.name, keyword)}
+        </Link>
+      ) : (
+        <p className="max-w-52 font-bold text-slate-700">
+          {highlight(product.name, keyword)}
+        </p>
+      )}
+
+      {farmLink ? (
+        <Link
+          to={farmLink.to}
+          title={farmLink.title}
+          className={`mt-1 block max-w-52 truncate text-xs hover:underline ${
+            farmLink.isPublic
+              ? "text-slate-500 hover:text-green-700"
+              : "text-slate-500 hover:text-sky-600"
+          }`}
+        >
+          {highlight(product.farm?.name || product.farm_name, keyword)}
+        </Link>
+      ) : (
+        <p className="mt-1 text-xs text-slate-500">
+          {highlight(product.farm_name, keyword)}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -49,19 +117,36 @@ export default function ReviewsPage() {
   const [replyComment, setReplyComment] = useState("");
   const [replyError, setReplyError] = useState("");
   const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const debouncedKeyword = useDebounce(filters.keyword, 400);
 
   const loadReviews = useCallback(async () => {
     setLoading(true);
 
     try {
-      const response = await adminReviewService.getReviews(filters);
+      const response = await adminReviewService.getReviews({
+        keyword: debouncedKeyword,
+        type: filters.type,
+        status: filters.status,
+        rating: filters.rating,
+        deleted: filters.deleted,
+        page: filters.page,
+        per_page: filters.per_page,
+      });
       setPayload(response?.data || {});
     } catch (error) {
       toast.error(firstError(error, "Không thể tải danh sách đánh giá."));
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [
+    debouncedKeyword,
+    filters.type,
+    filters.status,
+    filters.rating,
+    filters.deleted,
+    filters.page,
+    filters.per_page,
+  ]);
 
   useEffect(() => {
     loadReviews();
@@ -73,7 +158,7 @@ export default function ReviewsPage() {
 
   const toggleStatus = async (review) => {
     const status = Number(review.status) === 1 ? 0 : 1;
-    const reason = status === 0 ? await requestReason({ title: "Ẩn đánh giá", description: "Người dùng sẽ thấy lý do và thông tin kiểm duyệt.", placeholder: "Nhập lý do ẩn đánh giá...", confirmLabel: "Ẩn đánh giá" }) : null;
+    const reason = status === 0 ? await requestReason({ title: "Ẩn nội dung", description: "Người đăng sẽ thấy người thao tác, thời gian và lý do.", placeholder: "Nhập lý do ẩn nội dung...", confirmLabel: "Ẩn nội dung" }) : null;
 
     if (status === 0 && !reason?.trim()) return;
 
@@ -95,7 +180,7 @@ export default function ReviewsPage() {
   };
 
   const deleteReview = async (review) => {
-    const reason = await requestReason({ title: "Xóa đánh giá", description: "Đánh giá được xóa mềm và vẫn có thể khôi phục.", placeholder: "Nhập lý do xóa đánh giá...", confirmLabel: "Xóa đánh giá" });
+    const reason = await requestReason({ title: "Xóa nội dung", description: "Nội dung được xóa mềm và vẫn có thể khôi phục.", placeholder: "Nhập lý do xóa nội dung...", confirmLabel: "Xóa nội dung" });
     if (!reason) return;
 
     setActionId(review.id);
@@ -178,15 +263,16 @@ export default function ReviewsPage() {
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Stat label="Tổng đánh giá" value={stats.total} />
+        <Stat label="Tổng bình luận" value={stats.total_comments} tone="blue" />
         <Stat label="Đang hiển thị" value={stats.visible} tone="green" />
         <Stat label="Đang ẩn" value={stats.hidden} tone="orange" />
         <Stat label="Đã xóa" value={stats.deleted} tone="red" />
         <Stat label="Điểm trung bình" value={`${stats.average_rating || 0}/5`} />
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-7">
         <label className="relative md:col-span-2">
           <Search
             size={18}
@@ -199,6 +285,16 @@ export default function ReviewsPage() {
             className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm font-semibold outline-none focus:border-red-400"
           />
         </label>
+
+        <FilterSelect
+          value={filters.type}
+          onChange={(value) => changeFilter("type", value)}
+          options={[
+            ["", "Mọi loại nội dung"],
+            ["rating_review", "Đánh giá người mua"],
+            ["comment", "Bình luận Admin/Seller"],
+          ]}
+        />
 
         <FilterSelect
           value={filters.status}
@@ -248,7 +344,7 @@ export default function ReviewsPage() {
             <table className="w-full min-w-275 text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Người đánh giá</th>
+                  <th className="px-4 py-3">Người đăng</th>
                   <th className="px-4 py-3">Sản phẩm</th>
                   <th className="px-4 py-3">Nội dung</th>
                   <th className="px-4 py-3">Trạng thái</th>
@@ -261,44 +357,40 @@ export default function ReviewsPage() {
                   <tr key={review.id} className="border-t border-slate-100 align-top">
                     <td className="px-4 py-4">
                       <p className="font-extrabold text-slate-800">
-                        {review.buyer?.name || "Tài khoản đã xóa"}
+                        {highlight(review.author?.name || review.buyer?.name || "Tài khoản đã xóa", filters.keyword)}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {review.buyer?.email}
+                        {highlight(review.author?.email || review.buyer?.email, filters.keyword)}
                       </p>
+                      <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${isRatingReview(review) ? "bg-amber-50 text-amber-700" : review.is_admin_comment ? "bg-red-50 text-red-700" : review.is_buyer_comment ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>
+                        {entryLabel(review)}
+                      </span>
                     </td>
                     <td className="px-4 py-4">
-                      {review.product?.slug ? (
-                        <Link
-                          to={`/products/${review.product.slug}`}
-                          className="block max-w-52 font-bold text-slate-700 hover:text-green-700 hover:underline"
-                        >
-                          {review.product.name}
-                        </Link>
-                      ) : (
-                        <p className="max-w-52 font-bold text-slate-700">Sản phẩm không còn hiển thị</p>
+                      <ProductReference
+                        product={review.product}
+                        keyword={filters.keyword}
+                      />
+                    </td>
+                    <td className="px-4 py-4">
+                      {isRatingReview(review) && (
+                        <div className="flex gap-0.5 text-amber-400">
+                          {Array.from({ length: 5 }).map((_, index) => (
+                            <Star
+                              key={index}
+                              size={14}
+                              fill={index < Number(review.rating) ? "currentColor" : "none"}
+                            />
+                          ))}
+                        </div>
                       )}
-                      <p className="mt-1 text-xs text-slate-500">
-                        {review.product?.farm_name}
-                      </p>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex gap-0.5 text-amber-400">
-                        {Array.from({ length: 5 }).map((_, index) => (
-                          <Star
-                            key={index}
-                            size={14}
-                            fill={index < review.rating ? "currentColor" : "none"}
-                          />
-                        ))}
-                      </div>
                       <p className="mt-2 max-w-88 whitespace-pre-wrap font-medium text-slate-600">
-                        {review.comment || "Không có nội dung."}
+                        {highlight(review.comment || "Không có nội dung.", filters.keyword)}
                       </p>
                       <p className="mt-1 text-xs text-slate-400">
                         {review.created_at}
                       </p>
-                      {(review.replies || []).map((reply) => (
+                      <ProgressiveList items={review.replies || []} initialCount={1} step={3} moreLabel="Xem thêm trả lời" collapseLabel="Đóng bớt" renderItem={(reply) => (
                         <div
                           key={reply.id}
                           className="mt-2 rounded-lg bg-green-50 px-3 py-2 text-xs"
@@ -311,7 +403,7 @@ export default function ReviewsPage() {
                             {reply.comment}
                           </p>
                         </div>
-                      ))}
+                      )} />
                     </td>
                     <td className="px-4 py-4">
                       <span
@@ -375,32 +467,13 @@ export default function ReviewsPage() {
         )}
       </div>
 
-      <div className="flex items-center justify-between text-sm font-semibold text-slate-500">
-        <span>{pagination.total || 0} đánh giá</span>
-        <div className="flex gap-2">
-          <button
-            disabled={loading || Number(pagination.current_page) <= 1}
-            onClick={() =>
-              setFilters((current) => ({ ...current, page: current.page - 1 }))
-            }
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 disabled:opacity-40"
-          >
-            Trước
-          </button>
-          <button
-            disabled={
-              loading ||
-              Number(pagination.current_page) >= Number(pagination.last_page)
-            }
-            onClick={() =>
-              setFilters((current) => ({ ...current, page: current.page + 1 }))
-            }
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 disabled:opacity-40"
-          >
-            Sau
-          </button>
-        </div>
-      </div>
+      <Pagination
+        meta={pagination}
+        params={filters}
+        setParams={setFilters}
+        itemLabel="nội dung"
+        loading={loading}
+      />
 
       {replyTarget && (
         <AdminReplyModal
@@ -493,9 +566,9 @@ function AdminReplyModal({ review, comment, error, loading, onChange, onClose, o
     <div className="fixed inset-0 z-70 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
       <button type="button" aria-label="Đóng" onClick={onClose} className="absolute inset-0" />
       <div className="relative w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
-        <h2 className="text-xl font-black text-slate-950">Admin trả lời đánh giá</h2>
-        <p className="mt-1 text-sm font-semibold text-slate-500">Phản hồi được hiển thị công khai nhưng không tính vào điểm và số lượng đánh giá.</p>
-        <div className="mt-4 rounded-2xl bg-slate-50 p-4"><p className="font-extrabold text-slate-800">{review.buyer?.name || "Khách hàng"} · {review.product?.name || "Sản phẩm"}</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{review.comment || "Không có nội dung."}</p></div>
+        <h2 className="text-xl font-black text-slate-950">Admin trả lời {isRatingReview(review) ? "đánh giá" : "bình luận"}</h2>
+        <p className="mt-1 text-sm font-semibold text-slate-500">Phản hồi được hiển thị công khai nhưng không tính vào điểm và tổng đánh giá.</p>
+        <div className="mt-4 rounded-2xl bg-slate-50 p-4"><p className="font-extrabold text-slate-800">{review.author?.name || review.buyer?.name || "Người dùng"} · {review.product?.name || "Sản phẩm"}</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{review.comment || "Không có nội dung."}</p></div>
         <textarea autoFocus rows={5} maxLength={2000} value={comment} onChange={(event) => onChange(event.target.value)} placeholder="Nhập phản hồi của quản trị viên..." className="mt-4 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:border-red-400 focus:ring-4 focus:ring-red-100" />
         <div className="mt-1 flex justify-between text-xs font-semibold"><span className="text-red-600">{error}</span><span className="text-slate-400">{comment.length}/2000</span></div>
         <div className="mt-5 flex justify-end gap-3"><button type="button" disabled={loading} onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold">Hủy</button><button type="button" disabled={loading || !comment.trim()} onClick={onSubmit} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{loading && <Loader2 size={16} className="animate-spin" />}{loading ? "Đang gửi" : "Gửi trả lời"}</button></div>
@@ -507,6 +580,7 @@ function AdminReplyModal({ review, comment, error, loading, onChange, onClose, o
 function Stat({ label, value = 0, tone = "slate" }) {
   const tones = {
     slate: "bg-slate-50 text-slate-700",
+    blue: "bg-blue-50 text-blue-700",
     green: "bg-green-50 text-green-700",
     orange: "bg-orange-50 text-orange-700",
     red: "bg-red-50 text-red-700",

@@ -4,6 +4,7 @@ namespace App\Services\Review;
 
 use App\Models\Review;
 use App\Models\Product;
+use App\Models\Farm;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,12 @@ class AdminReviewService
             $query->where('rating', (int) $filters['rating']);
         }
 
+        if (($filters['type'] ?? '') === 'rating_review') {
+            $query->whereNotNull('order_item_id')->whereNotNull('rating');
+        } elseif (($filters['type'] ?? '') === 'comment') {
+            $query->whereNull('order_item_id')->whereNull('rating');
+        }
+
         if (($filters['deleted'] ?? '') === 'only') {
             $query->onlyTrashed();
         } elseif (($filters['deleted'] ?? '') === 'with') {
@@ -30,29 +37,46 @@ class AdminReviewService
 
         if (!empty($filters['keyword'])) {
             $keyword = trim($filters['keyword']);
+            $productId = $this->extractProductId($keyword);
 
-            $query->where(function (Builder $builder) use ($keyword) {
+            $query->where(function (Builder $builder) use ($keyword, $productId) {
                 $builder->where('comment', 'like', "%{$keyword}%")
                     ->orWhereHas('user', function (Builder $userQuery) use ($keyword) {
                         $userQuery->where('name', 'like', "%{$keyword}%")
                             ->orWhere('email', 'like', "%{$keyword}%");
                     })
-                    ->orWhereHas('orderItem.product', function (Builder $productQuery) use ($keyword) {
-                        $productQuery->where('name', 'like', "%{$keyword}%");
+                    ->orWhereHas('orderItem.product', function (Builder $productQuery) use ($keyword, $productId) {
+                        $productQuery->where(function (Builder $nested) use ($keyword, $productId) {
+                            $nested->where('products.name', 'like', "%{$keyword}%")
+                                ->orWhere('products.slug', 'like', "%{$keyword}%")
+                                ->when($productId !== null, fn (Builder $idQuery) => $idQuery->orWhere('products.id', $productId));
+                        });
                     })
-                    ->orWhereHas('product', function (Builder $productQuery) use ($keyword) {
-                        $productQuery->where('name', 'like', "%{$keyword}%")
-                            ->orWhere('code', 'like', "%{$keyword}%");
+                    ->orWhereHas('product', function (Builder $productQuery) use ($keyword, $productId) {
+                        $productQuery->where(function (Builder $nested) use ($keyword, $productId) {
+                            $nested->where('products.name', 'like', "%{$keyword}%")
+                                ->orWhere('products.slug', 'like', "%{$keyword}%")
+                                ->when($productId !== null, fn (Builder $idQuery) => $idQuery->orWhere('products.id', $productId));
+                        });
                     });
             });
         }
 
         $perPage = max(5, min((int) ($filters['per_page'] ?? 10), 50));
         $paginator = $query->latest('id')->paginate($perPage);
+        $reviews = $paginator->getCollection();
+        $publicProductIds = $this->getPublicProductIdLookup($reviews);
 
         return [
-            'reviews' => $paginator->getCollection()
-                ->map(fn (Review $review) => $this->formatReview($review))
+            'reviews' => $reviews
+                ->map(function (Review $review) use ($publicProductIds) {
+                    $product = $review->product ?: $review->orderItem?->product;
+
+                    return $this->formatReview(
+                        $review,
+                        $product && isset($publicProductIds[$product->id])
+                    );
+                })
                 ->values(),
             'stats' => $this->getStats(),
             'pagination' => [
@@ -162,46 +186,133 @@ class AdminReviewService
     {
         return Review::query()->with([
             'user:id,name,email,avatar',
+            'user.roles',
             'moderator:id,name,email',
-            'orderItem.product.farm:id,name,slug',
-            'product.farm:id,name,slug',
-            'replies.user:id,name,email',
+            'orderItem.product.farm:id,name,slug,status,deleted_at',
+            'product.farm:id,name,slug,status,deleted_at',
+            'replies.user.roles',
         ]);
+    }
+
+    private function getPublicProductIdLookup($reviews): array
+    {
+        $productIds = $reviews
+            ->map(function (Review $review) {
+                return $review->product?->id
+                    ?: $review->orderItem?->product?->id;
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return [];
+        }
+
+        return Product::query()
+            ->whereKey($productIds)
+            ->where('status', 1)
+            ->whereHas('farm', function (Builder $farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
+            ->whereHas('certificate')
+            ->pluck('id')
+            ->mapWithKeys(fn ($id) => [(int) $id => true])
+            ->all();
+    }
+
+    private function reviewRelations(): array
+    {
+        return [
+            'user:id,name,email,avatar',
+            'user.roles',
+            'moderator:id,name,email',
+            'orderItem.product.farm:id,name,slug,status,deleted_at',
+            'product.farm:id,name,slug,status,deleted_at',
+            'replies.user.roles',
+        ];
+    }
+
+    private function extractProductId(string $keyword): ?int
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', '', $keyword));
+
+        if (preg_match('/^SP0*(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        if (preg_match('/^#?(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
     }
 
     private function loadRelations(Review $review): Review
     {
-        return $review->load([
-            'user:id,name,email,avatar',
-            'moderator:id,name,email',
-            'orderItem.product.farm:id,name,slug',
-            'product.farm:id,name,slug',
-            'replies.user:id,name,email',
-        ]);
+        return $review->load($this->reviewRelations());
     }
 
     private function getStats(): array
     {
-        $base = Review::query()
+        $ratingReviews = Review::query()
             ->whereNotNull('order_item_id')
             ->whereNotNull('rating');
+        $comments = Review::query()
+            ->whereNull('order_item_id')
+            ->whereNull('rating');
 
         return [
-            'total' => (clone $base)->count(),
-            'visible' => (clone $base)->where('status', 1)->count(),
-            'hidden' => (clone $base)->where('status', 0)->count(),
+            'total' => (clone $ratingReviews)->count(),
+            'visible' => (clone $ratingReviews)->where('status', 1)->count(),
+            'hidden' => (clone $ratingReviews)->where('status', 0)->count(),
             'deleted' => Review::onlyTrashed()->count(),
-            'average_rating' => round((float) (clone $base)->avg('rating'), 1),
+            'deleted_reviews' => Review::onlyTrashed()
+                ->whereNotNull('order_item_id')->whereNotNull('rating')->count(),
+            'average_rating' => round((float) (clone $ratingReviews)->avg('rating'), 1),
+            'total_comments' => (clone $comments)->count(),
+            'visible_comments' => (clone $comments)->where('status', 1)->count(),
+            'hidden_comments' => (clone $comments)->where('status', 0)->count(),
+            'deleted_comments' => Review::onlyTrashed()
+                ->whereNull('order_item_id')->whereNull('rating')->count(),
         ];
     }
 
-    private function formatReview(Review $review): array
+    private function formatReview(
+        Review $review,
+        ?bool $publiclyVisible = null
+    ): array
     {
         $product = $review->product ?: $review->orderItem?->product;
+        $author = $review->user;
+        $isRatingReview = $review->order_item_id !== null && $review->rating !== null;
+        $isAdminComment = !$isRatingReview && $author?->hasRole('admin');
+        $isSellerComment = !$isRatingReview && !$isAdminComment && $author?->hasRole('seller');
+        $isBuyerComment = !$isRatingReview && !$isAdminComment && !$isSellerComment;
+        $entryType = match (true) {
+            $isRatingReview => 'rating_review',
+            $isAdminComment => 'admin_comment',
+            $isSellerComment => 'seller_comment',
+            default => 'buyer_comment',
+        };
+        $entryTypeLabel = match ($entryType) {
+            'rating_review' => 'Đánh giá người mua',
+            'admin_comment' => 'Bình luận quản trị',
+            'seller_comment' => 'Bình luận người bán',
+            default => 'Bình luận người mua',
+        };
+        $isPubliclyVisible = $publiclyVisible
+            ?? $this->isProductPubliclyVisible($product);
 
         return [
             'id' => $review->id,
             'rating' => $review->rating !== null ? (int) $review->rating : null,
+            'entry_type' => $entryType,
+            'entry_type_label' => $entryTypeLabel,
+            'is_rating_review' => $isRatingReview,
+            'is_admin_comment' => (bool) $isAdminComment,
+            'is_seller_comment' => (bool) $isSellerComment,
+            'is_buyer_comment' => (bool) $isBuyerComment,
             'comment' => $review->comment,
             'status' => (int) $review->status,
             'status_text' => (int) $review->status === 1 ? 'Hiển thị' : 'Đã ẩn',
@@ -214,18 +325,34 @@ class AdminReviewService
                 'name' => $review->moderator->name,
                 'email' => $review->moderator->email,
             ] : null,
-            'buyer' => $review->user ? [
-                'id' => $review->user->id,
-                'name' => $review->user->name,
-                'email' => $review->user->email,
-                'avatar' => $review->user->avatar,
+            'author' => $author ? [
+                'id' => $author->id,
+                'name' => $author->name,
+                'email' => $author->email,
+                'avatar' => $author->avatar,
+            ] : null,
+            'buyer' => $author ? [
+                'id' => $author->id,
+                'name' => $author->name,
+                'email' => $author->email,
+                'avatar' => $author->avatar,
             ] : null,
             'product' => $product ? [
                 'id' => $product->id,
                 'name' => $product->name,
                 'slug' => $product->slug,
                 'thumbnail' => $product->thumbnail,
+                'status' => (int) $product->status,
+                'deleted_at' => $product->deleted_at,
+                'is_publicly_visible' => (bool) $isPubliclyVisible,
                 'farm_name' => $product->farm?->name,
+                'farm' => $product->farm ? [
+                    'id' => $product->farm->id,
+                    'name' => $product->farm->name,
+                    'slug' => $product->farm->slug,
+                    'status' => (int) $product->farm->status,
+                    'deleted_at' => $product->farm->deleted_at,
+                ] : null,
             ] : null,
             'replies' => $review->replies
                 ->where('status', 1)
@@ -241,5 +368,21 @@ class AdminReviewService
                 ])
                 ->values(),
         ];
+    }
+
+    private function isProductPubliclyVisible(?Product $product): bool
+    {
+        if (!$product) {
+            return false;
+        }
+
+        return Product::query()
+            ->whereKey($product->id)
+            ->where('status', 1)
+            ->whereHas('farm', function (Builder $farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
+            ->whereHas('certificate')
+            ->exists();
     }
 }

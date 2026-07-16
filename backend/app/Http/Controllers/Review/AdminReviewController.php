@@ -22,6 +22,7 @@ class AdminReviewController extends Controller
             'data' => $this->adminReviewService->getReviews($request->only([
                 'keyword',
                 'rating',
+                'type',
                 'status',
                 'deleted',
                 'per_page',
@@ -32,15 +33,26 @@ class AdminReviewController extends Controller
 
     public function updateStatus(UpdateReviewStatusRequest $request, Review $review)
     {
+        $data = $this->adminReviewService->updateStatus(
+            $request->user(),
+            $review,
+            (int) $request->validated('status'),
+            $request->validated('reason')
+        );
+
+        $this->notifyModeration(
+            $review->fresh('user'),
+            $request->user(),
+            (int) $request->validated('status') === 1
+                ? 'Nội dung của bạn đã được hiển thị lại'
+                : 'Nội dung của bạn đã bị ẩn',
+            $request->validated('reason')
+        );
+
         return response()->json([
             'success' => true,
-            'message' => 'Cập nhật trạng thái đánh giá thành công.',
-            'data' => $this->adminReviewService->updateStatus(
-                $request->user(),
-                $review,
-                (int) $request->validated('status'),
-                $request->validated('reason')
-            ),
+            'message' => 'Cập nhật trạng thái nội dung thành công.',
+            'data' => $data,
         ]);
     }
 
@@ -50,9 +62,18 @@ class AdminReviewController extends Controller
             'reason' => ['required', 'string', 'max:500'],
         ]);
 
+        $review = Review::query()->with('user')->findOrFail($id);
+
         $this->adminReviewService->destroy(
             $request->user(),
             $id,
+            $validated['reason']
+        );
+
+        $this->notifyModeration(
+            $review,
+            $request->user(),
+            'Nội dung của bạn đã bị quản trị viên xóa',
             $validated['reason']
         );
 
@@ -64,10 +85,18 @@ class AdminReviewController extends Controller
 
     public function restore(Request $request, int $id)
     {
+        $review = Review::withTrashed()->with('user')->findOrFail($id);
+        $data = $this->adminReviewService->restore($request->user(), $id);
+        $this->notifyModeration(
+            $review,
+            $request->user(),
+            'Nội dung của bạn đã được khôi phục'
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Khôi phục đánh giá thành công.',
-            'data' => $this->adminReviewService->restore($request->user(), $id),
+            'data' => $data,
         ]);
     }
 
@@ -83,15 +112,21 @@ class AdminReviewController extends Controller
             $validated['comment']
         );
 
-        $review->loadMissing('user');
-        $review->user?->notify(new MarketplaceNotification(
+        $review->loadMissing(['user', 'product', 'orderItem.product']);
+        if ((int) $review->user_id !== (int) $request->user()->id) {
+            $product = $review->product ?: $review->orderItem?->product;
+            $url = $review->order_item_id
+                ? '/profile?tab=reviews&review_id=' . $review->id
+                : ($product ? '/products/' . ($product->slug ?: $product->id) : '/');
+            $review->user?->notify(new MarketplaceNotification(
             'review.replied_by_admin',
-            'Quản trị viên đã trả lời đánh giá',
+            $review->order_item_id ? 'Quản trị viên đã trả lời đánh giá' : 'Quản trị viên đã trả lời bình luận',
             trim($validated['comment']),
-            '/profile?tab=reviews',
+            $url,
             $request->user(),
             ['review_id' => $review->id]
-        ));
+            ));
+        }
 
         return response()->json([
             'success' => true,
@@ -115,5 +150,38 @@ class AdminReviewController extends Controller
                 $validated['comment']
             ),
         ], 201);
+    }
+
+    private function notifyModeration(
+        ?Review $review,
+        $actor,
+        string $title,
+        ?string $reason = null
+    ): void {
+        if (!$review?->user || (int) $review->user_id === (int) $actor->id) {
+            return;
+        }
+
+        $review->loadMissing(['product', 'orderItem.product']);
+        $product = $review->product ?: $review->orderItem?->product;
+        $url = $review->order_item_id
+            ? '/profile?tab=reviews&review_id=' . $review->id
+            : ($product ? '/products/' . ($product->slug ?: $product->id) : '/');
+
+        $message = $actor->name . ' đã thực hiện thao tác lúc '
+            . now()->format('d/m/Y H:i') . '.';
+
+        if (filled($reason)) {
+            $message .= ' Lý do: ' . trim($reason);
+        }
+
+        $review->user->notify(new MarketplaceNotification(
+            'review.moderated',
+            $title,
+            $message,
+            $url,
+            $actor,
+            ['review_id' => $review->id]
+        ));
     }
 }

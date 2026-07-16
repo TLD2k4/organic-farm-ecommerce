@@ -22,6 +22,7 @@ class SellerReviewController extends Controller
             [
                 'keyword' => $request->query('keyword'),
                 'rating' => $request->query('rating'),
+                'type' => $request->query('type'),
                 'status' => $request->query('status'),
                 'page' => $request->query('page', 1),
                 'limit' => $request->query('limit', 5),
@@ -44,6 +45,34 @@ class SellerReviewController extends Controller
             $request->validated('reason')
         );
 
+        $reviewModel = Review::query()
+            ->with(['user', 'product', 'orderItem.product'])
+            ->find($review['id']);
+        if ($reviewModel?->user && (int) $reviewModel->user_id !== (int) $request->user()->id) {
+            $reason = $request->validated('reason');
+            $message = $request->user()->name . ' đã thực hiện thao tác lúc '
+                . now()->format('d/m/Y H:i') . '.';
+            if (filled($reason)) {
+                $message .= ' Lý do: ' . trim($reason);
+            }
+
+            $product = $reviewModel->product ?: $reviewModel->orderItem?->product;
+            $url = $reviewModel->order_item_id
+                ? '/profile?tab=reviews&review_id=' . $reviewModel->id
+                : ($product ? '/products/' . ($product->slug ?: $product->id) : '/');
+
+            $reviewModel->user->notify(new MarketplaceNotification(
+                'review.moderated_by_seller',
+                (int) $request->validated('status') === 1
+                    ? 'Nội dung của bạn đã được hiển thị lại'
+                    : 'Nội dung của bạn đã bị người bán ẩn',
+                $message,
+                $url,
+                $request->user(),
+                ['review_id' => $reviewModel->id]
+            ));
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Cập nhật trạng thái đánh giá thành công.',
@@ -65,15 +94,21 @@ class SellerReviewController extends Controller
             $validated['comment']
         );
 
-        $review->loadMissing('user');
-        $review->user?->notify(new MarketplaceNotification(
+        $review->loadMissing(['user', 'product', 'orderItem.product']);
+        if ((int) $review->user_id !== (int) $request->user()->id) {
+            $product = $review->product ?: $review->orderItem?->product;
+            $url = $review->order_item_id
+                ? '/profile?tab=reviews&review_id=' . $review->id
+                : ($product ? '/products/' . ($product->slug ?: $product->id) : '/');
+            $review->user?->notify(new MarketplaceNotification(
             'review.replied',
-            'Người bán đã trả lời đánh giá',
+            $review->order_item_id ? 'Người bán đã trả lời đánh giá' : 'Người bán đã trả lời bình luận',
             trim($validated['comment']),
-            '/profile?tab=reviews',
+            $url,
             $request->user(),
             ['review_id' => $review->id]
-        ));
+            ));
+        }
 
         return response()->json([
             'success' => true,
