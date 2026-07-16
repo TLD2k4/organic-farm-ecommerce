@@ -40,6 +40,13 @@ axiosClient.interceptors.response.use(
       }
     }
 
+    if (
+      status === 428 &&
+      data?.code === "SELLER_POLICY_ACCEPTANCE_REQUIRED"
+    ) {
+      window.dispatchEvent(new CustomEvent("seller-policy-required"));
+    }
+
     // Giữ nguyên AxiosError để các màn hình cũ vẫn đọc được
     // error.response.data, đồng thời đưa message/errors của backend lên
     // top-level cho các form mới. Trước đây reject(data) làm mất status,

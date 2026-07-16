@@ -28,6 +28,8 @@ use App\Http\Controllers\Review\AdminReviewController;
 use App\Http\Controllers\Dashboard\SellerRevenueController;
 use App\Http\Controllers\Audit\AuditLogController;
 use App\Http\Controllers\Notification\NotificationController;
+use App\Http\Controllers\Farm\SellerPolicyController;
+use App\Http\Controllers\Farm\AdminSellerPolicyController;
 
 
 // PUBLIC AUTH
@@ -53,6 +55,7 @@ Route::get('/home', [HomeController::class, 'index']);
 
 // PUBLIC NÔNG TRẠI
 Route::get('/farms', [FarmController::class, 'index']);
+Route::get('/seller-policies/current', [SellerPolicyController::class, 'current']);
 
 // PUBLIC SẢN PHẨM
 Route::get('/products/filters', [ProductController::class, 'filters']);
@@ -69,6 +72,9 @@ Route::post(
 
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/seller-policy/status', [SellerPolicyController::class, 'status']);
+    Route::get('/seller-policy/history', [SellerPolicyController::class, 'history']);
+    Route::post('/seller-policy/accept', [SellerPolicyController::class, 'accept']);
 
     // HỒ SƠ CÁ NHÂN
     Route::get('/profile', [UserController::class, 'profile']);
@@ -78,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ĐÁNH GIÁ SẢN PHẨM
     Route::get('/my-reviews', [ReviewController::class, 'myReviews']);
     Route::get('/my-reviews/reviewable-items', [ReviewController::class, 'reviewableItems']);
+    Route::get('/my-reviews/eligibility', [ReviewController::class, 'eligibility']);
 
     //Review
     Route::post('/reviews', [ReviewController::class, 'store']);
@@ -132,7 +139,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/orders/{id}/payment-method', [BuyerOrderController::class, 'changePaymentMethod']);
 
 
-    Route::middleware('role:seller|admin')->group(function () {
+    Route::middleware(['role:seller|admin', 'seller.policy'])->group(function () {
 
         // SELLER DASHBOARD
         Route::get(
@@ -272,6 +279,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/seller-policies', [AdminSellerPolicyController::class, 'index']);
+        Route::post('/admin/seller-policies', [AdminSellerPolicyController::class, 'store']);
+        Route::get('/admin/seller-policies/{policy}', [AdminSellerPolicyController::class, 'show']);
+        Route::put('/admin/seller-policies/{policy}', [AdminSellerPolicyController::class, 'update']);
+        Route::post('/admin/seller-policies/{policy}/publish', [AdminSellerPolicyController::class, 'publish']);
+        Route::delete('/admin/seller-policies/{policy}', [AdminSellerPolicyController::class, 'destroy']);
 
         // ADMIN DASHBOARD
         Route::get(

@@ -149,6 +149,8 @@ export default function NotificationCenter() {
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
+                  aria-label="Đóng thông báo"
+                  title="Đóng thông báo"
                   className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
                 >
                   <X size={20} />
