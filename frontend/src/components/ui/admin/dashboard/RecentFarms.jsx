@@ -1,8 +1,10 @@
 import dayjs from "dayjs";
 
 import { Building2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { getImageUrl } from "@/utils/image";
+import { getAdminFarmLink } from "@/utils/adminEntityLink";
 
 const farmStatusConfig = {
   0: {
@@ -50,6 +52,7 @@ export default function RecentFarms({ farms = [], loading = false }) {
         <div className="divide-y divide-slate-100">
           {farms.map((farm) => {
             const status = farmStatusConfig[farm.status] || farmStatusConfig[0];
+            const farmLink = getAdminFarmLink(farm);
 
             return (
               <div
@@ -71,9 +74,15 @@ export default function RecentFarms({ farms = [], loading = false }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900">
-                        {farm.name}
-                      </p>
+                      {farmLink ? (
+                        <Link to={farmLink.to} title={farmLink.title} className={`block truncate font-semibold hover:underline ${farmLink.isPublic ? "text-slate-900 hover:text-green-700" : "text-slate-900 hover:text-sky-600"}`}>
+                          {farm.name}
+                        </Link>
+                      ) : (
+                        <p className="truncate font-semibold text-slate-900">
+                          {farm.name}
+                        </p>
+                      )}
 
                       <p className="mt-0.5 truncate text-sm text-slate-500">
                         {farm.seller?.name || "Không xác định"}

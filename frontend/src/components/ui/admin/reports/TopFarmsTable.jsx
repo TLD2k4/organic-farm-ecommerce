@@ -1,6 +1,8 @@
 import { Building2, Trophy } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { getImageUrl } from "@/utils/image";
+import { getAdminFarmLink } from "@/utils/adminEntityLink";
 
 const formatNumber = (value) => {
   return new Intl.NumberFormat("vi-VN").format(Number(value || 0));
@@ -71,8 +73,10 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
             </thead>
 
             <tbody>
-              {farms.map((farm, index) => (
-                <tr
+              {farms.map((farm, index) => {
+                const farmLink = getAdminFarmLink(farm);
+
+                return <tr
                   key={`${farm.farm_id}-${index}`}
                   className="border-t border-slate-100 transition hover:bg-slate-50"
                 >
@@ -110,9 +114,19 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
                       )}
 
                       <div className="min-w-0">
-                        <p className="max-w-57.5 wrap-break-word font-semibold">
-                          {farm.farm_name}
-                        </p>
+                        {farmLink ? (
+                          <Link
+                            to={farmLink.to}
+                            title={farmLink.title}
+                            className={`block max-w-57.5 wrap-break-word font-semibold hover:underline ${farmLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"}`}
+                          >
+                            {farm.farm_name}
+                          </Link>
+                        ) : (
+                          <p className="max-w-57.5 wrap-break-word font-semibold">
+                            {farm.farm_name}
+                          </p>
+                        )}
 
                         <p className="mt-0.5 text-xs text-slate-500">
                           ID: #{farm.farm_id}
@@ -136,8 +150,8 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
                   <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-green-700">
                     {formatCurrency(farm.total_revenue)}
                   </td>
-                </tr>
-              ))}
+                </tr>;
+              })}
             </tbody>
           </table>
         </div>
