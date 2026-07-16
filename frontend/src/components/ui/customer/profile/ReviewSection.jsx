@@ -351,7 +351,7 @@ function ReviewableItemCard({ item, onReview }) {
           )}
 
           <p className="mt-1 text-xs font-bold text-slate-400">
-            Số lượng: {item.quantity} {product?.unit || ""}
+            Đơn: {item.order_code || `#${item.order_id || "—"}`} · Số lượng: {item.quantity} {product?.unit || ""}
           </p>
         </div>
       </div>

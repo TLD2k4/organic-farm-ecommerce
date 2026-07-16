@@ -134,6 +134,7 @@ class SellerOrderService
 
         return DB::transaction(function () use (
             $farm,
+            $sellerId,
             $subOrderId,
             $newStatus,
             $sellerNote

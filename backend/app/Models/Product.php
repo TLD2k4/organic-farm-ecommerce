@@ -124,7 +124,11 @@ class Product extends Model
         return $this->hasMany(OrderItem::class)
             ->whereHas('subOrder', function ($q) {
                 $q->where('status', 3) // 3 = Hoàn tất
-                    ->where('payment_status', '!=', 3); // không tính hoàn tiền
+                    ->where('payment_status', 1)
+                    ->whereNotNull('completed_at');
+            })
+            ->whereHas('subOrder.order', function ($q) {
+                $q->where('status', 3);
             });
     }
 
@@ -141,7 +145,11 @@ class Product extends Model
                 $query->whereNull('order_item_id')
                     ->orWhereHas('orderItem.subOrder', function ($q) {
                         $q->where('status', 3)
-                            ->where('payment_status', '!=', 3);
+                            ->where('payment_status', 1)
+                            ->whereNotNull('completed_at')
+                            ->whereHas('order', function ($orderQuery) {
+                                $orderQuery->where('status', 3);
+                            });
                     });
             });
     }
@@ -153,7 +161,12 @@ class Product extends Model
             ->whereNotNull('reviews.order_item_id')
             ->whereNotNull('reviews.rating')
             ->whereHas('orderItem.subOrder', function ($query) {
-                $query->where('status', 3)->where('payment_status', '!=', 3);
+                $query->where('status', 3)
+                    ->where('payment_status', 1)
+                    ->whereNotNull('completed_at')
+                    ->whereHas('order', function ($orderQuery) {
+                        $orderQuery->where('status', 3);
+                    });
             });
     }
 

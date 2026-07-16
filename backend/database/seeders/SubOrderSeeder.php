@@ -50,6 +50,7 @@ class SubOrderSeeder extends Seeder
                     'status' => $status,
                     'payment_status' => $paymentStatus,
                     'seller_note' => null,
+                    'completed_at' => $status === 3 ? $subOrderDate : null,
 
                     'created_at' => $subOrderDate,
                     'updated_at' => $subOrderDate,
