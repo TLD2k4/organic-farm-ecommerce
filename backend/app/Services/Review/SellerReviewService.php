@@ -21,30 +21,49 @@ class SellerReviewService
         $query = $this->baseSellerReviewQuery($farm->id)
             ->with([
                 'user:id,name,email,avatar',
+                'user.roles',
                 'orderItem.product.farm',
                 'orderItem.product.category',
                 'product.farm',
                 'product.category',
                 'orderItem.subOrder.order.user:id,name,email',
                 'moderator:id,name,email',
-                'replies.user:id,name,email',
+                'replies.user.roles',
             ]);
 
         if (!empty($filters['rating'])) {
             $query->where('rating', (int) $filters['rating']);
         }
 
-        if ($filters['status'] !== null && $filters['status'] !== '') {
+        if (($filters['type'] ?? '') === 'rating_review') {
+            $query->whereNotNull('order_item_id')->whereNotNull('rating');
+        } elseif (($filters['type'] ?? '') === 'comment') {
+            $query->whereNull('order_item_id')->whereNull('rating');
+        }
+
+        if (($filters['status'] ?? '') !== null && ($filters['status'] ?? '') !== '') {
             $query->where('status', (int) $filters['status']);
         }
 
         if (!empty($filters['keyword'])) {
             $keyword = trim($filters['keyword']);
+            $productId = $this->extractProductId($keyword);
 
-            $query->where(function ($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword, $productId) {
                 $q->where('comment', 'like', "%{$keyword}%")
-                    ->orWhereHas('orderItem.product', function ($productQ) use ($keyword) {
-                        $productQ->where('name', 'like', "%{$keyword}%");
+                    ->orWhereHas('orderItem.product', function ($productQ) use ($keyword, $productId) {
+                        $productQ->where(function ($nested) use ($keyword, $productId) {
+                            $nested->where('products.name', 'like', "%{$keyword}%")
+                                ->orWhere('products.slug', 'like', "%{$keyword}%")
+                                ->when($productId !== null, fn ($idQuery) => $idQuery->orWhere('products.id', $productId));
+                        });
+                    })
+                    ->orWhereHas('product', function ($productQ) use ($keyword, $productId) {
+                        $productQ->where(function ($nested) use ($keyword, $productId) {
+                            $nested->where('products.name', 'like', "%{$keyword}%")
+                                ->orWhere('products.slug', 'like', "%{$keyword}%")
+                                ->when($productId !== null, fn ($idQuery) => $idQuery->orWhere('products.id', $productId));
+                        });
                     })
                     ->orWhereHas('user', function ($userQ) use ($keyword) {
                         $userQ->where('name', 'like', "%{$keyword}%")
@@ -95,13 +114,14 @@ class SellerReviewService
 
         $review = $review->fresh([
             'user:id,name,email,avatar',
+            'user.roles',
             'orderItem.product.farm',
             'orderItem.product.category',
             'product.farm',
             'product.category',
             'orderItem.subOrder.order.user:id,name,email',
             'moderator:id,name,email',
-            'replies.user:id,name,email',
+            'replies.user.roles',
         ]);
 
         return $this->formatReview($review);
@@ -120,13 +140,14 @@ class SellerReviewService
 
         $review = $review->fresh([
             'user:id,name,email,avatar',
+            'user.roles',
             'orderItem.product.farm',
             'orderItem.product.category',
             'product.farm',
             'product.category',
             'orderItem.subOrder.order.user:id,name,email',
             'moderator:id,name,email',
-            'replies.user:id,name,email',
+            'replies.user.roles',
         ]);
 
         return $this->formatReview($review);
@@ -148,7 +169,11 @@ class SellerReviewService
             'status' => 1,
         ]);
 
-        return $this->formatReview($review->load(['user', 'product.farm', 'replies.user']));
+        return $this->formatReview($review->load([
+            'user.roles',
+            'product.farm',
+            'replies.user.roles',
+        ]));
     }
 
     private function getSellerFarm(User $user): Farm
@@ -172,6 +197,21 @@ class SellerReviewService
         }
 
         return $farm;
+    }
+
+    private function extractProductId(string $keyword): ?int
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', '', $keyword));
+
+        if (preg_match('/^SP0*(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        if (preg_match('/^#?(\d+)$/', $normalized, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
     }
 
     private function baseSellerReviewQuery(int $farmId)
@@ -208,11 +248,18 @@ class SellerReviewService
             ->groupBy('rating')
             ->pluck('total', 'rating');
 
+        $comments = $this->baseSellerReviewQuery($farmId)
+            ->whereNull('order_item_id')
+            ->whereNull('rating');
+
         return [
             'total_reviews' => (clone $baseQuery)->count(),
             'visible_reviews' => (clone $baseQuery)->where('status', 1)->count(),
             'hidden_reviews' => (clone $baseQuery)->where('status', 0)->count(),
             'avg_rating' => round((float) (clone $baseQuery)->avg('rating'), 1),
+            'total_comments' => (clone $comments)->count(),
+            'visible_comments' => (clone $comments)->where('status', 1)->count(),
+            'hidden_comments' => (clone $comments)->where('status', 0)->count(),
 
             'rating_counts' => [
                 5 => (int) ($ratingCounts[5] ?? 0),
@@ -227,11 +274,33 @@ class SellerReviewService
     private function formatReview(Review $review): array
     {
         $product = $review->product ?: $review->orderItem?->product;
-        $buyer = $review->user ?: $review->orderItem?->subOrder?->order?->user;
+        $author = $review->user ?: $review->orderItem?->subOrder?->order?->user;
+        $isRatingReview = $review->order_item_id !== null && $review->rating !== null;
+        $isAdminComment = !$isRatingReview && $author?->hasRole('admin');
+        $isSellerComment = !$isRatingReview && !$isAdminComment && $author?->hasRole('seller');
+        $isBuyerComment = !$isRatingReview && !$isAdminComment && !$isSellerComment;
+        $entryType = match (true) {
+            $isRatingReview => 'rating_review',
+            $isAdminComment => 'admin_comment',
+            $isSellerComment => 'seller_comment',
+            default => 'buyer_comment',
+        };
+        $entryTypeLabel = match ($entryType) {
+            'rating_review' => 'Đánh giá người mua',
+            'admin_comment' => 'Bình luận quản trị',
+            'seller_comment' => 'Bình luận người bán',
+            default => 'Bình luận người mua',
+        };
 
         return [
             'id' => $review->id,
-            'rating' => (int) $review->rating,
+            'rating' => $review->rating !== null ? (int) $review->rating : null,
+            'entry_type' => $entryType,
+            'entry_type_label' => $entryTypeLabel,
+            'is_rating_review' => $isRatingReview,
+            'is_admin_comment' => (bool) $isAdminComment,
+            'is_seller_comment' => (bool) $isSellerComment,
+            'is_buyer_comment' => (bool) $isBuyerComment,
             'comment' => $review->comment,
             'status' => (int) $review->status,
             'status_label' => (int) $review->status === 1 ? 'Hiển thị' : 'Đã ẩn',
@@ -244,11 +313,18 @@ class SellerReviewService
                 'email' => $review->moderator->email,
             ] : null,
 
-            'buyer' => $buyer ? [
-                'id' => $buyer->id,
-                'name' => $buyer->name,
-                'email' => $buyer->email,
-                'avatar' => $buyer->avatar ?? null,
+            'author' => $author ? [
+                'id' => $author->id,
+                'name' => $author->name,
+                'email' => $author->email,
+                'avatar' => $author->avatar ?? null,
+            ] : null,
+
+            'buyer' => $author ? [
+                'id' => $author->id,
+                'name' => $author->name,
+                'email' => $author->email,
+                'avatar' => $author->avatar ?? null,
             ] : null,
 
             'product' => $product ? [

@@ -1,18 +1,22 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Eye,
   EyeOff,
-  Filter,
   Loader2,
   MessageSquare,
   Reply,
   Search,
   Star,
+  RotateCcw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import sellerReviewService from "../../services/sellerReviewService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
+import ProgressiveList from "../../components/common/ProgressiveList";
+import useDebounce from "../../hooks/useDebounce";
+import { getApiErrorMessage } from "../../utils/apiError";
+import { highlight } from "../../utils/highlight";
 
 const DEFAULT_META = {
   current_page: 1,
@@ -25,8 +29,11 @@ const DEFAULT_META = {
 
 const DEFAULT_STATS = {
   total_reviews: 0,
+  total_comments: 0,
   visible_reviews: 0,
   hidden_reviews: 0,
+  visible_comments: 0,
+  hidden_comments: 0,
   avg_rating: 0,
   rating_counts: {
     5: 0,
@@ -36,6 +43,15 @@ const DEFAULT_STATS = {
     1: 0,
   },
 };
+
+function isRatingReview(review) {
+  return review?.is_rating_review ?? review?.rating !== null;
+}
+
+function entryLabel(review) {
+  return review?.entry_type_label ||
+    (isRatingReview(review) ? "Đánh giá người mua" : "Bình luận sản phẩm");
+}
 
 function getImage(product) {
   return (
@@ -56,6 +72,7 @@ export default function SellerReviews() {
 
   const [filters, setFilters] = useState({
     keyword: "",
+    type: "",
     rating: "",
     status: "",
   });
@@ -68,13 +85,17 @@ export default function SellerReviews() {
   const [replyError, setReplyError] = useState("");
   const [hideReview, setHideReview] = useState(null);
   const [hideReason, setHideReason] = useState("");
+  const debouncedKeyword = useDebounce(filters.keyword, 400);
 
-  const loadReviews = async (nextPage = page) => {
+  const loadReviews = useCallback(async (nextPage = page) => {
     try {
       setLoading(true);
 
       const payload = await sellerReviewService.getReviews({
-        ...filters,
+        keyword: debouncedKeyword,
+        type: filters.type,
+        rating: filters.rating,
+        status: filters.status,
         page: nextPage,
         limit: 5,
       });
@@ -84,33 +105,28 @@ export default function SellerReviews() {
       setMeta(payload?.data?.meta || DEFAULT_META);
     } catch (error) {
       console.log("LOAD SELLER REVIEWS ERROR:", error);
-      toast.error(
-        error?.response?.data?.message || "Không thể tải đánh giá gian hàng",
-      );
+      toast.error(getApiErrorMessage(error, "Không thể tải đánh giá gian hàng"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    debouncedKeyword,
+    filters.type,
+    filters.rating,
+    filters.status,
+    page,
+  ]);
 
   useEffect(() => {
     loadReviews(page);
-  }, [page]);
+  }, [page, loadReviews]);
 
   const updateFilter = (field, value) => {
     setFilters((prev) => ({
       ...prev,
       [field]: value,
     }));
-  };
-
-  const handleSubmitFilter = (e) => {
-    e.preventDefault();
-
-    if (page === 1) {
-      loadReviews(1);
-    } else {
-      setPage(1);
-    }
+    setPage(1);
   };
 
   const updateReviewStatus = async (review, nextStatus, reason = null) => {
@@ -126,15 +142,14 @@ export default function SellerReviews() {
 
       toast.success(
         payload?.message ||
-          (nextStatus === 1 ? "Đã hiển thị đánh giá" : "Đã ẩn đánh giá"),
+          (nextStatus === 1 ? "Đã hiển thị nội dung" : "Đã ẩn nội dung"),
       );
 
       await loadReviews(page);
     } catch (error) {
       console.log("UPDATE REVIEW STATUS ERROR:", error);
       toast.error(
-        error?.response?.data?.message ||
-          "Không thể cập nhật trạng thái đánh giá",
+        getApiErrorMessage(error, "Không thể cập nhật trạng thái nội dung"),
       );
     } finally {
       setActionLoadingId(null);
@@ -143,7 +158,7 @@ export default function SellerReviews() {
 
   const goToProduct = (product) => {
     if (!product?.id) return;
-    navigate(`/products/${product.slug || product.id}`);
+    navigate(`/seller/products?view=${product.id}`);
   };
 
   const handleToggleStatus = (review) => {
@@ -181,16 +196,12 @@ export default function SellerReviews() {
         replyReview.id,
         replyComment.trim(),
       );
-      toast.success(payload?.message || "Đã trả lời đánh giá.");
+      toast.success(payload?.message || "Đã trả lời nội dung.");
       setReplyReview(null);
       setReplyComment("");
       await loadReviews(page);
     } catch (error) {
-      setReplyError(
-        Object.values(error?.errors || {})[0]?.[0] ||
-          error?.message ||
-          "Không thể trả lời đánh giá.",
-      );
+      setReplyError(getApiErrorMessage(error, "Không thể trả lời đánh giá."));
     } finally {
       setActionLoadingId(null);
     }
@@ -201,26 +212,25 @@ export default function SellerReviews() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
-            Đánh giá gian hàng
+            Đánh giá và bình luận gian hàng
           </h1>
 
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Theo dõi đánh giá của khách hàng dành cho sản phẩm trong nông trại.
+            Theo dõi riêng đánh giá đã mua và bình luận của quản trị/người bán.
           </p>
         </div>
 
         <div className="w-fit shrink-0 rounded-2xl bg-green-50 px-5 py-3 text-sm font-bold text-green-700">
-          {stats.total_reviews} đánh giá
+          {stats.total_reviews} đánh giá · {stats.total_comments} bình luận
         </div>
       </div>
 
       <SellerReviewStats stats={stats} />
 
-      <form
-        onSubmit={handleSubmitFilter}
+      <div
         className="min-w-0 rounded-2xl bg-white p-4 shadow-sm"
       >
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_160px_170px_auto]">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_180px_150px_160px_auto]">
           <div className="relative sm:col-span-2 xl:col-span-1">
             <Search
               size={18}
@@ -234,6 +244,16 @@ export default function SellerReviews() {
               className="h-12 w-full rounded-2xl border border-slate-200 pl-11 pr-4 text-sm font-semibold outline-none focus:border-green-600"
             />
           </div>
+
+          <ResponsiveSelect
+            value={filters.type}
+            onChange={(value) => updateFilter("type", value)}
+            options={[
+              { value: "", label: "Tất cả nội dung" },
+              { value: "rating_review", label: "Đánh giá người mua" },
+              { value: "comment", label: "Bình luận Admin/Seller" },
+            ]}
+          />
 
           <ResponsiveSelect
             value={filters.rating}
@@ -258,14 +278,18 @@ export default function SellerReviews() {
           />
 
           <button
-            type="submit"
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-green-700 px-5 text-sm font-bold text-white hover:bg-green-800 sm:col-span-2 xl:col-span-1"
+            type="button"
+            onClick={() => {
+              setFilters({ keyword: "", type: "", rating: "", status: "" });
+              setPage(1);
+            }}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 hover:bg-slate-50 sm:col-span-2 xl:col-span-1"
           >
-            <Filter size={18} />
-            Lọc
+            <RotateCcw size={18} />
+            Xóa bộ lọc
           </button>
         </div>
-      </form>
+      </div>
 
       <div className="min-w-0 rounded-2xl bg-white p-3 shadow-sm sm:p-5">
         {loading ? (
@@ -275,11 +299,11 @@ export default function SellerReviews() {
             <MessageSquare size={42} className="mx-auto text-green-700" />
 
             <p className="mt-3 font-bold text-slate-950">
-              Chưa có đánh giá nào
+              Chưa có nội dung nào
             </p>
 
             <p className="mt-1 text-sm font-medium text-slate-500">
-              Khi khách hàng đánh giá sản phẩm, đánh giá sẽ hiển thị tại đây.
+              Đánh giá người mua và bình luận sản phẩm sẽ hiển thị tại đây.
             </p>
           </div>
         ) : (
@@ -289,6 +313,7 @@ export default function SellerReviews() {
                 <SellerReviewCard
                   key={review.id}
                   review={review}
+                  keyword={filters.keyword}
                   actionLoadingId={actionLoadingId}
                   onToggleStatus={handleToggleStatus}
                   onReply={handleReply}
@@ -340,11 +365,11 @@ function HideReviewModal({ review, reason, loading, onChange, onClose, onSubmit 
     <div className="fixed inset-0 z-70 grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true">
       <button type="button" aria-label="Đóng" onClick={onClose} className="absolute inset-0" />
       <div className="relative w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
-        <h2 className="text-xl font-extrabold text-slate-950">Ẩn đánh giá</h2>
+        <h2 className="text-xl font-extrabold text-slate-950">Ẩn {isRatingReview(review) ? "đánh giá" : "bình luận"}</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Đánh giá của {review.buyer?.name || "khách hàng"} sẽ không còn hiển thị công khai.
+          Nội dung của {review.author?.name || review.buyer?.name || "người dùng"} sẽ không còn hiển thị công khai. Người đăng sẽ thấy người thao tác, thời gian và lý do.
         </p>
-        <textarea autoFocus rows={4} maxLength={500} value={reason} onChange={(event) => onChange(event.target.value)} placeholder="Nhập lý do ẩn đánh giá..." className="mt-4 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:border-red-400 focus:ring-4 focus:ring-red-100" />
+        <textarea autoFocus rows={4} maxLength={500} value={reason} onChange={(event) => onChange(event.target.value)} placeholder="Nhập lý do ẩn nội dung..." className="mt-4 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:border-red-400 focus:ring-4 focus:ring-red-100" />
         <p className="mt-1 text-right text-xs font-semibold text-slate-400">{reason.length}/500</p>
         <div className="mt-5 flex justify-end gap-3">
           <button type="button" disabled={loading} onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold">Hủy</button>
@@ -383,19 +408,19 @@ function ReviewReplyModal({
           id="seller-review-reply-title"
           className="text-xl font-extrabold text-slate-950"
         >
-          Trả lời đánh giá
+          Trả lời {isRatingReview(review) ? "đánh giá" : "bình luận"}
         </h2>
         <p className="mt-1 text-sm font-semibold text-slate-500">
-          Phản hồi sẽ hiển thị công khai ngay bên dưới bình luận của khách.
+          Phản hồi sẽ hiển thị công khai ngay bên dưới nội dung gốc.
         </p>
 
         <div className="mt-4 rounded-2xl bg-slate-50 p-4">
           <p className="text-sm font-extrabold text-slate-800">
-            {review.buyer?.name || "Khách hàng"} ·{" "}
+            {review.author?.name || review.buyer?.name || "Người dùng"} ·{" "}
             {review.product?.name || "Sản phẩm"}
           </p>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-            {review.comment || "Khách hàng chưa nhập nội dung."}
+            {review.comment || "Không có nội dung."}
           </p>
         </div>
 
@@ -412,7 +437,7 @@ function ReviewReplyModal({
           maxLength={2000}
           value={comment}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Nhập câu trả lời cho khách hàng..."
+          placeholder="Nhập câu trả lời công khai..."
           className="mt-2 w-full resize-y rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100"
         />
 
@@ -447,11 +472,17 @@ function ReviewReplyModal({
 
 function SellerReviewStats({ stats }) {
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-5">
       <StatCard
         label="Tổng đánh giá"
         value={stats.total_reviews}
         subText="Tất cả đánh giá"
+      />
+
+      <StatCard
+        label="Tổng bình luận"
+        value={stats.total_comments}
+        subText={`${stats.visible_comments || 0} hiện · ${stats.hidden_comments || 0} ẩn`}
       />
 
       <StatCard
@@ -489,14 +520,14 @@ function StatCard({ label, value, subText }) {
 
 function SellerReviewCard({
   review,
+  keyword,
   actionLoadingId,
   onToggleStatus,
   onReply,
   onGoToProduct,
 }) {
-  const [showReplies, setShowReplies] = useState(false);
   const product = review.product;
-  const buyer = review.buyer;
+  const author = review.author || review.buyer;
   const image = getImage(product);
 
   const updating = actionLoadingId === review.id;
@@ -524,33 +555,41 @@ function SellerReviewCard({
 
           <div className="min-w-0">
             <h3 className="break-words font-bold text-slate-950 hover:text-green-700">
-              {product?.name || "Sản phẩm"}
+              {highlight(product?.name || "Sản phẩm", keyword)}
             </h3>
 
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              Người mua: {buyer?.name || "Khách hàng"}
+              Người đăng: {highlight(author?.name || "Người dùng", keyword)}
             </p>
 
-            <div className="mt-2 flex flex-wrap items-center gap-1">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Star
-                  key={index}
-                  size={16}
-                  className={
-                    index < Number(review.rating)
-                      ? "fill-amber-400 text-amber-400"
-                      : "text-slate-300"
-                  }
-                />
-              ))}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {isRatingReview(review) ? (
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Star
+                      key={index}
+                      size={16}
+                      className={
+                        index < Number(review.rating)
+                          ? "fill-amber-400 text-amber-400"
+                          : "text-slate-300"
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${review.is_admin_comment ? "bg-red-50 text-red-700" : review.is_buyer_comment ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>
+                  {entryLabel(review)}
+                </span>
+              )}
 
-              <span className="ml-2 text-xs font-bold text-slate-400">
+              <span className="text-xs font-bold text-slate-400">
                 {review.created_at}
               </span>
             </div>
 
             <p className="mt-2 break-words text-sm font-medium leading-6 text-slate-600">
-              {review.comment || "Khách hàng chưa nhập nội dung đánh giá."}
+              {highlight(review.comment || "Người mua chưa nhập nội dung đánh giá.", keyword)}
             </p>
           </div>
         </button>
@@ -584,7 +623,7 @@ function SellerReviewCard({
               <Eye size={16} />
             )}
 
-            {visible ? "Ẩn đánh giá" : "Hiện đánh giá"}
+            {visible ? "Ẩn nội dung" : "Hiện nội dung"}
           </button>
 
           <button
@@ -600,10 +639,7 @@ function SellerReviewCard({
 
       {(review.replies || []).length > 0 && (
         <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
-          <button type="button" onClick={() => setShowReplies((value) => !value)} className="text-sm font-bold text-green-700 hover:underline">
-            {showReplies ? "Ẩn các trả lời" : `Xem ${(review.replies || []).length} trả lời`}
-          </button>
-          {showReplies && (review.replies || []).map((reply) => (
+          <ProgressiveList items={review.replies || []} initialCount={1} step={3} moreLabel="Xem thêm trả lời" collapseLabel="Đóng bớt" renderItem={(reply) => (
             <div key={reply.id} className="rounded-xl bg-green-50 px-4 py-3">
               <p className="text-xs font-extrabold text-green-800">
                 {reply.user?.name || "Người bán"} · {reply.created_at}
@@ -612,7 +648,7 @@ function SellerReviewCard({
                 {reply.comment}
               </p>
             </div>
-          ))}
+          )} />
         </div>
       )}
     </div>

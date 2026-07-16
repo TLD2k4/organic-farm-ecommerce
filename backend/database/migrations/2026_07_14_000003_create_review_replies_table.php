@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('review_id')->constrained('reviews')->cascadeOnDelete();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->text('comment');
-            $table->tinyInteger('status')->default(1);
+            $table->tinyInteger('status')->default(1)->check('status in (0,1)');
             $table->timestamps();
             $table->softDeletes();
 

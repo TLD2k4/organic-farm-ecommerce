@@ -13,9 +13,14 @@ class UpdateReviewRequest extends FormRequest
 
     public function rules(): array
     {
+        $review = $this->route('review');
+        $isRatingReview = $review
+            && $review->order_item_id !== null
+            && $review->rating !== null;
+
         return [
-            'rating' => ['required', 'integer', 'min:1', 'max:5'],
-            'comment' => ['nullable', 'string', 'max:1000'],
+            'rating' => [$isRatingReview ? 'required' : 'nullable', 'integer', 'min:1', 'max:5'],
+            'comment' => [$isRatingReview ? 'nullable' : 'required', 'string', 'max:1000'],
         ];
     }
 
@@ -26,7 +31,8 @@ class UpdateReviewRequest extends FormRequest
             'rating.integer' => 'Số sao đánh giá không hợp lệ.',
             'rating.min' => 'Đánh giá tối thiểu 1 sao.',
             'rating.max' => 'Đánh giá tối đa 5 sao.',
-            'comment.max' => 'Nội dung đánh giá tối đa 1000 ký tự.',
+            'comment.required' => 'Vui lòng nhập nội dung bình luận.',
+            'comment.max' => 'Nội dung tối đa 1000 ký tự.',
         ];
     }
 }
