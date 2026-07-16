@@ -9,10 +9,13 @@ import {
   paymentStatusConfig,
   subOrderStatusConfig,
 } from "@/utils/adminOrder";
+import { highlight } from "@/utils/highlight";
+import { getAdminFarmLink } from "@/utils/adminEntityLink";
 
 export default function AdminSubOrdersTable({
   subOrders,
   loading,
+  keyword,
   onView,
   onUpdateStatus,
 }) {
@@ -57,6 +60,7 @@ export default function AdminSubOrdersTable({
 
           <tbody>
             {subOrders.map((subOrder) => {
+              const farmLink = getAdminFarmLink(subOrder.farm);
               const canUpdate =
                 !subOrder.deleted_at &&
                 Array.isArray(subOrder.allowed_next_statuses) &&
@@ -68,27 +72,27 @@ export default function AdminSubOrdersTable({
                   className="border-t border-slate-100 transition hover:bg-slate-50"
                 >
                   <td className="px-4 py-4">
-                    <button type="button" onClick={() => onView(subOrder)} className="font-bold hover:text-sky-600 hover:underline">{subOrder.sub_order_code}</button>
+                    <button type="button" onClick={() => onView(subOrder)} className="font-bold hover:text-sky-600 hover:underline">{highlight(subOrder.sub_order_code, keyword)}</button>
                     <p className="text-xs text-slate-500">
-                      Đơn tổng: {subOrder.order_code}
+                      Đơn tổng: {highlight(subOrder.order_code, keyword)}
                     </p>
                   </td>
 
                   <td className="px-4 py-4">
-                    {subOrder.farm?.slug ? (
-                      <Link to={`/farms/${subOrder.farm.slug}`} className="block max-w-55 truncate font-semibold hover:text-green-700 hover:underline">{subOrder.farm.name}</Link>
+                    {farmLink ? (
+                      <Link to={farmLink.to} title={farmLink.title} className={`block max-w-55 truncate font-semibold hover:underline ${farmLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"}`}>{highlight(subOrder.farm?.name || "—", keyword)}</Link>
                     ) : (
-                      <p className="max-w-55 truncate font-semibold">{subOrder.farm?.name || "—"}</p>
+                      <p className="max-w-55 truncate font-semibold">{highlight(subOrder.farm?.name || "—", keyword)}</p>
                     )}
                     <p className="max-w-55 truncate text-xs text-slate-500">
-                      {subOrder.farm?.seller?.name || "Không có seller"}
+                      {highlight(subOrder.farm?.seller?.name || "Không có seller", keyword)}
                     </p>
                   </td>
 
                   <td className="px-4 py-4">
-                    <p className="font-semibold">{subOrder.shipping_name}</p>
+                    <p className="font-semibold">{highlight(subOrder.shipping_name, keyword)}</p>
                     <p className="text-sm text-slate-500">
-                      {subOrder.shipping_phone}
+                      {highlight(subOrder.shipping_phone, keyword)}
                     </p>
                   </td>
 

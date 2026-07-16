@@ -8,8 +8,9 @@ import {
   paymentMethodLabel,
   paymentStatusConfig,
 } from "@/utils/adminOrder";
+import { highlight } from "@/utils/highlight";
 
-export default function AdminOrdersTable({ orders, loading, onView }) {
+export default function AdminOrdersTable({ orders, loading, keyword, onView }) {
   if (loading) {
     return (
       <div className="space-y-3">
@@ -56,17 +57,17 @@ export default function AdminOrdersTable({ orders, loading, onView }) {
                 className="border-t border-slate-100 transition hover:bg-slate-50"
               >
                 <td className="px-4 py-4">
-                  <button type="button" onClick={() => onView(order)} className="font-bold text-slate-900 hover:text-sky-600 hover:underline">{order.order_code}</button>
+                  <button type="button" onClick={() => onView(order)} className="font-bold text-slate-900 hover:text-sky-600 hover:underline">{highlight(order.order_code, keyword)}</button>
                   <p className="text-xs text-slate-500">#{order.id}</p>
                 </td>
 
                 <td className="px-4 py-4">
-                  <p className="font-semibold">{order.shipping_name}</p>
+                  <p className="font-semibold">{highlight(order.shipping_name, keyword)}</p>
                   <p className="text-sm text-slate-500">
-                    {order.shipping_phone}
+                    {highlight(order.shipping_phone, keyword)}
                   </p>
                   <p className="max-w-70 truncate text-xs text-slate-400">
-                    {order.customer?.email || "—"}
+                    {highlight(order.customer?.email || "—", keyword)}
                   </p>
                 </td>
 

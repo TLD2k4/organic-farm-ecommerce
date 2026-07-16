@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
-import { useSearchParams } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
   ClipboardList,
@@ -18,6 +17,10 @@ import {
 
 import buyerOrderService from "../../../../services/buyerOrderService";
 import buyerCartService from "../../../../services/buyerCartService";
+import {
+  getPublicFarmPath,
+  getPublicProductPath,
+} from "../../../../utils/entityLink";
 import ResponsiveSelect from "../../../common/ResponsiveSelect";
 
 const ORDER_TABS = [
@@ -669,22 +672,47 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
 }
 
 function ProductLine({ item }) {
+  const productPath = getPublicProductPath(item.product);
+
   return (
     <div className="flex gap-3">
-      <img
-        src={
-          item.product_image ||
-          item.product?.thumbnail ||
-          "https://placehold.co/100x100?text=Product"
-        }
-        alt={item.product_name}
-        className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
-      />
+      {productPath ? (
+        <Link to={productPath} className="flex-none">
+          <img
+            src={
+              item.product_image ||
+              item.product?.thumbnail ||
+              "https://placehold.co/100x100?text=Product"
+            }
+            alt={item.product_name}
+            className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
+          />
+        </Link>
+      ) : (
+        <img
+          src={
+            item.product_image ||
+            item.product?.thumbnail ||
+            "https://placehold.co/100x100?text=Product"
+          }
+          alt={item.product_name}
+          className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
+        />
+      )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-base font-bold text-slate-900">
-          {item.product_name}
-        </p>
+        {productPath ? (
+          <Link
+            to={productPath}
+            className="block truncate text-base font-bold text-slate-900 hover:text-[#5fa846] hover:underline"
+          >
+            {item.product_name}
+          </Link>
+        ) : (
+          <p className="truncate text-base font-bold text-slate-900">
+            {item.product_name}
+          </p>
+        )}
 
         <p className="mt-1 text-sm font-semibold text-slate-400">
           {item.unit || "sản phẩm"}
@@ -840,6 +868,8 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
       <button
         type="button"
         onClick={onClose}
+        aria-label="Đóng chi tiết đơn hàng"
+        title="Đóng chi tiết đơn hàng"
         className="absolute inset-0 h-full w-full cursor-default"
       />
 
@@ -856,6 +886,8 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
 
           <button
             onClick={onClose}
+            aria-label="Đóng chi tiết đơn hàng"
+            title="Đóng chi tiết đơn hàng"
             className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-500 transition hover:bg-red-50 hover:text-red-500"
           >
             <X size={20} />
@@ -898,7 +930,16 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <div className="flex items-center gap-2 font-bold text-slate-900">
                         <Store size={17} className="text-[#5fa846]" />
-                        {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
+                        {getPublicFarmPath(subOrder.farm) ? (
+                          <Link
+                            to={getPublicFarmPath(subOrder.farm)}
+                            className="hover:text-[#5fa846] hover:underline"
+                          >
+                            {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
+                          </Link>
+                        ) : (
+                          subOrder.farm?.name || subOrder.farm_name || "Nông trại"
+                        )}
                       </div>
 
                       <StatusBadge

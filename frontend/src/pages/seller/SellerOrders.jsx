@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import sellerOrderService from "../../services/sellerOrderService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
+import useDebounce from "../../hooks/useDebounce";
+import { getApiErrorMessage } from "../../utils/apiError";
+import { highlight } from "../../utils/highlight";
 
 const STATUS_TABS = [
   { label: "Tất cả", value: "" },
@@ -44,12 +47,21 @@ export default function SellerOrders() {
   const [actionOrder, setActionOrder] = useState(null);
   const [actionStatus, setActionStatus] = useState(null);
   const [sellerNote, setSellerNote] = useState("");
+  const debouncedKeyword = useDebounce(filters.keyword, 400);
 
   const fetchOrders = useCallback(async () => {
     try {
       setLoading(true);
 
-      const response = await sellerOrderService.getOrders(filters);
+      const response = await sellerOrderService.getOrders({
+        keyword: debouncedKeyword,
+        status: filters.status,
+        payment_status: filters.payment_status,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        per_page: filters.per_page,
+        page: filters.page,
+      });
       const payload = response.data ?? response;
 
       setOrders(payload.orders || []);
@@ -59,13 +71,19 @@ export default function SellerOrders() {
     } catch (error) {
       console.log("LOAD SELLER ORDERS ERROR:", error);
 
-      toast.error(
-        error?.response?.data?.message || "Không thể tải danh sách đơn hàng.",
-      );
+      toast.error(getApiErrorMessage(error, "Không thể tải danh sách đơn hàng."));
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [
+    debouncedKeyword,
+    filters.status,
+    filters.payment_status,
+    filters.date_from,
+    filters.date_to,
+    filters.per_page,
+    filters.page,
+  ]);
 
   useEffect(() => {
     fetchOrders();
@@ -120,9 +138,7 @@ export default function SellerOrders() {
       const response = await sellerOrderService.getOrder(orderId);
       setSelectedOrder(response.data ?? response);
     } catch (error) {
-      toast.error(
-        error?.response?.data?.message || "Không thể tải chi tiết đơn hàng.",
-      );
+      toast.error(getApiErrorMessage(error, "Không thể tải chi tiết đơn hàng."));
       setShowDetailModal(false);
     } finally {
       setDetailLoading(false);
@@ -167,13 +183,7 @@ export default function SellerOrders() {
     } catch (error) {
       console.log("UPDATE SELLER ORDER STATUS ERROR:", error);
 
-      const data = error?.response?.data || {};
-      const errors = data.errors || {};
-      const firstError = errors ? Object.values(errors)?.flat()?.[0] : null;
-
-      toast.error(
-        firstError || data.message || "Cập nhật trạng thái thất bại.",
-      );
+      toast.error(getApiErrorMessage(error, "Cập nhật trạng thái thất bại."));
     } finally {
       setActionLoading(false);
     }
@@ -232,6 +242,7 @@ export default function SellerOrders() {
 
         <OrdersTable
           orders={orders}
+          keyword={filters.keyword}
           loading={loading}
           pagination={pagination}
           onPageChange={handleChangePage}
@@ -370,7 +381,7 @@ function FilterPanel({ filters, onChange, onReset }) {
           <input
             value={filters.keyword}
             onChange={(e) => onChange("keyword", e.target.value)}
-            placeholder="Mã đơn, tên khách, số điện thoại..."
+            placeholder="Mã đơn, tên khách, số điện thoại, sản phẩm..."
             className="w-full min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-50"
           />
         </div>
@@ -431,6 +442,7 @@ function FilterPanel({ filters, onChange, onReset }) {
 
 function OrdersTable({
   orders,
+  keyword,
   loading,
   pagination,
   onPageChange,
@@ -476,6 +488,7 @@ function OrdersTable({
             <OrderMobileCard
               key={order.id}
               order={order}
+              keyword={keyword}
               onViewDetail={onViewDetail}
               actions={getNextActions(order)}
               openActionModal={openActionModal}
@@ -526,19 +539,19 @@ function OrdersTable({
                 >
                   <td className="whitespace-nowrap px-5 py-4">
                     <button type="button" onClick={() => onViewDetail(order.id)} className="font-black text-gray-900 hover:text-emerald-600 hover:underline">
-                      {order.sub_order_code}
+                      {highlight(order.sub_order_code, keyword)}
                     </button>
                     <div className="mt-1 text-xs font-medium text-gray-400">
-                      {order.order_code}
+                      {highlight(order.order_code, keyword)}
                     </div>
                   </td>
 
                   <td className="px-5 py-4">
                     <div className="font-bold text-gray-900">
-                      {order.customer_name}
+                      {highlight(order.customer_name, keyword)}
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
-                      {order.customer_phone}
+                      {highlight(order.customer_phone, keyword)}
                     </div>
                   </td>
 
@@ -634,21 +647,21 @@ function OrdersTable({
   );
 }
 
-function OrderMobileCard({ order, onViewDetail, actions, openActionModal }) {
+function OrderMobileCard({ order, keyword, onViewDetail, actions, openActionModal }) {
   return (
     <article className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="flex min-w-0 flex-col gap-3 border-b border-gray-100 p-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
         <div className="min-w-0">
           <button type="button" onClick={() => onViewDetail(order.id)} className="break-words text-left font-black text-gray-900 hover:text-emerald-600 hover:underline">
-            {order.sub_order_code}
+            {highlight(order.sub_order_code, keyword)}
           </button>
           <p className="mt-1 break-words text-xs font-medium text-gray-400">
-            {order.order_code}
+            {highlight(order.order_code, keyword)}
           </p>
           <p className="mt-2 break-words text-sm font-bold text-gray-800">
-            {order.customer_name}
+            {highlight(order.customer_name, keyword)}
           </p>
-          <p className="mt-1 text-xs text-gray-500">{order.customer_phone}</p>
+          <p className="mt-1 text-xs text-gray-500">{highlight(order.customer_phone, keyword)}</p>
         </div>
 
         <div className="flex flex-wrap gap-2 min-[430px]:max-w-40 min-[430px]:justify-end">
@@ -841,8 +854,8 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                       />
 
                       <div className="min-w-0 flex-1">
-                        {item.product?.slug ? (
-                          <Link to={`/products/${item.product.slug}`} className="line-clamp-2 text-base font-black text-gray-900 hover:text-emerald-600 hover:underline">{item.product_name}</Link>
+                        {item.product?.id ? (
+                          <Link to={`/seller/products?view=${item.product.id}`} className="line-clamp-2 text-base font-black text-gray-900 hover:text-emerald-600 hover:underline">{item.product_name}</Link>
                         ) : (
                           <h4 className="line-clamp-2 text-base font-black text-gray-900">{item.product_name}</h4>
                         )}

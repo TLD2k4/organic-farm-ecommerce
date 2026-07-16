@@ -14,6 +14,7 @@ import AdminOrderDrawer from "@/components/ui/admin/orders/AdminOrderDrawer";
 import AdminSubOrderDrawer from "@/components/ui/admin/orders/AdminSubOrderDrawer";
 import AdminSubOrderStatusModal from "@/components/ui/admin/orders/AdminSubOrderStatusModal";
 import { requestReason } from "@/utils/actionDialog";
+import { getApiErrorMessage as getErrorMessage } from "@/utils/apiError";
 
 const initialParams = {
   page: 1,
@@ -27,19 +28,6 @@ const initialParams = {
   date_to: "",
   deleted: "",
 };
-
-function getErrorMessage(error, fallback) {
-  const data = error?.response?.data ?? error;
-  const errors = data?.errors;
-
-  if (errors && typeof errors === "object") {
-    const first = Object.values(errors)[0];
-    if (Array.isArray(first)) return first[0];
-    if (typeof first === "string") return first;
-  }
-
-  return data?.message || fallback;
-}
 
 export default function AdminOrdersPage() {
   const {
@@ -83,10 +71,22 @@ export default function AdminOrdersPage() {
   const activeStats = mode === "orders" ? orderStats : subOrderStats;
 
   const orderRequest = useMemo(
-    () => ({ ...orderParams, keyword: orderKeyword }),
+    () => ({
+      page: orderParams.page,
+      per_page: orderParams.per_page,
+      keyword: orderKeyword,
+      farm_id: orderParams.farm_id,
+      status: orderParams.status,
+      payment_status: orderParams.payment_status,
+      payment_method: orderParams.payment_method,
+      date_from: orderParams.date_from,
+      date_to: orderParams.date_to,
+      deleted: orderParams.deleted,
+    }),
     [
       orderParams.page,
       orderParams.per_page,
+      orderParams.farm_id,
       orderParams.status,
       orderParams.payment_status,
       orderParams.payment_method,
@@ -98,7 +98,18 @@ export default function AdminOrdersPage() {
   );
 
   const subOrderRequest = useMemo(
-    () => ({ ...subOrderParams, keyword: subOrderKeyword }),
+    () => ({
+      page: subOrderParams.page,
+      per_page: subOrderParams.per_page,
+      keyword: subOrderKeyword,
+      farm_id: subOrderParams.farm_id,
+      status: subOrderParams.status,
+      payment_status: subOrderParams.payment_status,
+      payment_method: subOrderParams.payment_method,
+      date_from: subOrderParams.date_from,
+      date_to: subOrderParams.date_to,
+      deleted: subOrderParams.deleted,
+    }),
     [
       subOrderParams.page,
       subOrderParams.per_page,
@@ -251,12 +262,14 @@ export default function AdminOrdersPage() {
         <AdminOrdersTable
           orders={orders}
           loading={loading}
+          keyword={activeParams.keyword}
           onView={handleViewOrder}
         />
       ) : (
         <AdminSubOrdersTable
           subOrders={subOrders}
           loading={loading}
+          keyword={activeParams.keyword}
           onView={handleViewSubOrder}
           onUpdateStatus={handleOpenStatus}
         />
@@ -266,6 +279,8 @@ export default function AdminOrdersPage() {
         meta={activeMeta}
         params={activeParams}
         setParams={setActiveParams}
+        itemLabel={mode === "orders" ? "đơn hàng" : "đơn con"}
+        loading={loading}
       />
 
       <AdminOrderDrawer
