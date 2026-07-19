@@ -35,7 +35,7 @@ class SellerRevenueController extends Controller
         $report = $this->sellerRevenueService->getReport(
             $request->user(),
             [
-                'period' => $filters['period'] ?? '30d',
+                'period' => $filters['period'] ?? 'month',
                 'from' => $filters['from'] ?? null,
                 'to' => $filters['to'] ?? null,
                 'limit' => $filters['limit'] ?? 5,

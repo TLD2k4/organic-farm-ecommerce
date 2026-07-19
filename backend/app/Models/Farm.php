@@ -80,7 +80,7 @@ class Farm extends Model
     {
         return $this->hasMany(SubOrder::class)
             ->where('status', 3)
-            ->whereIn('payment_status', [0, 1]);
+            ->where('payment_status', 1);
     }
 
     public function orderItems()
@@ -100,7 +100,7 @@ class Farm extends Model
         return $this->orderItems()
             ->whereHas('subOrder', function ($query) {
                 $query->where('status', 3)
-                    ->whereIn('payment_status', [0, 1]);
+                    ->where('payment_status', 1);
             });
     }
 

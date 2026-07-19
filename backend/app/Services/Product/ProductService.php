@@ -23,6 +23,7 @@ class ProductService
                 'completedOrderItems as order_count',
                 'visibleRatingReviews as review_count',
                 'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
@@ -151,6 +152,8 @@ class ProductService
             ->withCount([
                 'completedOrderItems as order_count',
                 'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
@@ -973,6 +976,7 @@ class ProductService
                 'completedOrderItems as order_count',
                 'visibleRatingReviews as review_count',
                 'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
@@ -1002,6 +1006,8 @@ class ProductService
             ->withCount([
                 'completedOrderItems as order_count',
                 'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
@@ -1044,6 +1050,8 @@ class ProductService
             ->withCount([
                 'completedOrderItems as order_count',
                 'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')

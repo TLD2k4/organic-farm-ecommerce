@@ -51,7 +51,7 @@ export default function ReportSummary({ summary = {}, loading = false }) {
       iconClass: "bg-fuchsia-100 text-fuchsia-700",
     },
     {
-      label: "Đơn đã thanh toán",
+      label: "Đơn con ghi nhận doanh thu",
       value: formatNumber(summary.paid_orders),
       icon: ReceiptText,
       iconClass: "bg-cyan-100 text-cyan-700",

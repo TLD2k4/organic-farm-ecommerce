@@ -21,6 +21,7 @@ import {
   getPublicProductPath,
 } from "../../../../utils/entityLink";
 import ProgressiveList from "../../../common/ProgressiveList";
+import { formatQuantity } from "../../../../utils/quantity";
 
 const EMPTY_FORM = {
   entry_type: "rating_review",
@@ -28,6 +29,7 @@ const EMPTY_FORM = {
   rating: 5,
   comment: "",
 };
+
 
 function isRatingReview(review) {
   return review?.is_rating_review ?? (
@@ -39,9 +41,14 @@ function getPayloadReviews(payload) {
   return payload?.data?.reviews || payload?.reviews || [];
 }
 
+function getPayloadReplies(payload) {
+  return payload?.data?.replies || payload?.replies || [];
+}
+
 function getPayloadItems(payload) {
   return payload?.data?.items || payload?.items || [];
 }
+
 
 function getImage(product) {
   return (
@@ -55,6 +62,7 @@ function getImage(product) {
 
 export default function ReviewSection({ focusReviewId = null }) {
   const [reviews, setReviews] = useState([]);
+  const [replies, setReplies] = useState([]);
   const [reviewableItems, setReviewableItems] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -65,6 +73,9 @@ export default function ReviewSection({ focusReviewId = null }) {
   const [selectedItem, setSelectedItem] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [editingReply, setEditingReply] = useState(null);
+  const [replyComment, setReplyComment] = useState("");
+  const [replySubmitting, setReplySubmitting] = useState(false);
 
   const loadData = async () => {
     try {
@@ -76,6 +87,7 @@ export default function ReviewSection({ focusReviewId = null }) {
       ]);
 
       setReviews(getPayloadReviews(reviewsPayload));
+      setReplies(getPayloadReplies(reviewsPayload));
       setReviewableItems(getPayloadItems(itemsPayload));
     } catch (error) {
       console.log("LOAD REVIEWS ERROR:", error);
@@ -212,6 +224,61 @@ export default function ReviewSection({ focusReviewId = null }) {
     }
   };
 
+  const openEditReplyModal = (reply) => {
+    setEditingReply(reply);
+    setReplyComment(reply.comment || "");
+  };
+
+  const closeEditReplyModal = () => {
+    if (replySubmitting) return;
+    setEditingReply(null);
+    setReplyComment("");
+  };
+
+  const handleUpdateReply = async (event) => {
+    event.preventDefault();
+
+    if (!editingReply || !replyComment.trim()) return;
+
+    try {
+      setReplySubmitting(true);
+      const payload = await reviewService.updateReply(
+        editingReply.id,
+        replyComment.trim(),
+      );
+      toast.success(payload?.message || "Cập nhật phản hồi thành công");
+      setEditingReply(null);
+      setReplyComment("");
+      await loadData();
+    } catch (error) {
+      console.log("UPDATE REPLY ERROR:", error);
+      toast.error(error?.response?.data?.message || "Không thể cập nhật phản hồi");
+    } finally {
+      setReplySubmitting(false);
+    }
+  };
+
+  const handleDeleteReply = async (reply) => {
+    if (!await confirmAction({
+      title: "Xóa phản hồi",
+      description: "Phản hồi của bạn sẽ không còn hiển thị công khai.",
+      confirmLabel: "Xóa phản hồi",
+      danger: true,
+    })) return;
+
+    try {
+      setActionLoadingId(`delete-reply-${reply.id}`);
+      const payload = await reviewService.deleteReply(reply.id);
+      toast.success(payload?.message || "Xóa phản hồi thành công");
+      await loadData();
+    } catch (error) {
+      console.log("DELETE REPLY ERROR:", error);
+      toast.error(error?.response?.data?.message || "Không thể xóa phản hồi");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   return (
     <>
       <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -225,11 +292,8 @@ export default function ReviewSection({ focusReviewId = null }) {
               Quản lý nội dung bạn đã đăng sau khi đơn hàng hoàn thành.
             </p>
           </div>
-
-          <div className="rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
-            {reviews.length} nội dung
-          </div>
         </div>
+
 
         {loading ? (
           <ReviewSkeletonList />
@@ -242,9 +306,12 @@ export default function ReviewSection({ focusReviewId = null }) {
 
             <MyReviewsSection
               reviews={reviews}
+              replies={replies}
               actionLoadingId={actionLoadingId}
               onEdit={openEditModal}
               onDelete={handleDelete}
+              onEditReply={openEditReplyModal}
+              onDeleteReply={handleDeleteReply}
               focusReviewId={focusReviewId}
             />
           </div>
@@ -260,6 +327,17 @@ export default function ReviewSection({ focusReviewId = null }) {
           onClose={closeModal}
           onChange={updateForm}
           onSubmit={handleSubmit}
+        />
+      )}
+
+      {editingReply && (
+        <ReplyEditModal
+          reply={editingReply}
+          comment={replyComment}
+          submitting={replySubmitting}
+          onChange={setReplyComment}
+          onClose={closeEditReplyModal}
+          onSubmit={handleUpdateReply}
         />
       )}
     </>
@@ -351,7 +429,7 @@ function ReviewableItemCard({ item, onReview }) {
           )}
 
           <p className="mt-1 text-xs font-bold text-slate-400">
-            Đơn: {item.order_code || `#${item.order_id || "—"}`} · Số lượng: {item.quantity} {product?.unit || ""}
+            Đơn: {item.order_code || `#${item.order_id || "—"}`} · Khối lượng: {formatQuantity(item.quantity)} {product?.unit || "kg"}
           </p>
         </div>
       </div>
@@ -367,49 +445,105 @@ function ReviewableItemCard({ item, onReview }) {
   );
 }
 
-function MyReviewsSection({ reviews, actionLoadingId, onEdit, onDelete, focusReviewId }) {
+function MyReviewsSection({
+  reviews,
+  replies,
+  actionLoadingId,
+  onEdit,
+  onDelete,
+  onEditReply,
+  onDeleteReply,
+  focusReviewId,
+}) {
+  const hasContent = reviews.length > 0 || replies.length > 0;
+
   return (
     <section>
       <div className="mb-3 flex items-center gap-2">
         <MessageSquare size={19} className="text-green-700" />
-
-        <h3 className="font-bold text-slate-950">Đánh giá & bình luận đã viết</h3>
-
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
-          {reviews.length}
-        </span>
+        <h3 className="font-bold text-slate-950">Nội dung của tôi</h3>
       </div>
 
-      {reviews.length === 0 ? (
+      {!hasContent ? (
         <div className="rounded-2xl border border-dashed border-green-200 bg-green-50 p-6 text-center">
           <MessageSquare size={36} className="mx-auto text-green-700" />
-
           <p className="mt-3 font-bold text-slate-900">
-            Bạn chưa có đánh giá hoặc bình luận nào
+            Bạn chưa có đánh giá, bình luận hoặc phản hồi nào
           </p>
-
           <p className="mt-1 text-sm text-slate-500">
-            Sau khi nhận hàng, bạn có thể chọn chấm sao hoặc chỉ bình luận sản phẩm.
+            Hồ sơ chỉ hiển thị nội dung do chính bạn tạo.
           </p>
         </div>
       ) : (
-        <div className="grid gap-4">
-          <ProgressiveList items={reviews} initialCount={3} step={3} moreLabel="Xem thêm nội dung" collapseLabel="Đóng bớt" ensureVisibleItemId={focusReviewId} renderItem={(review) => (
-            <ReviewCard
-              key={review.id}
-              review={review}
-              actionLoadingId={actionLoadingId}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
-          )} />
+        <div className="space-y-6">
+          {reviews.length > 0 && (
+            <div>
+              <h4 className="mb-3 text-sm font-black text-slate-700">
+                Đánh giá và bình luận của tôi
+              </h4>
+              <div className="grid gap-4">
+                <ProgressiveList
+                  items={reviews}
+                  initialCount={3}
+                  step={3}
+                  moreLabel="Xem thêm nội dung"
+                  collapseLabel="Đóng bớt"
+                  ensureVisibleItemId={focusReviewId}
+                  renderItem={(review) => (
+                    <ReviewCard
+                      key={review.id}
+                      review={review}
+                      actionLoadingId={actionLoadingId}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      onEditReply={onEditReply}
+                      onDeleteReply={onDeleteReply}
+                    />
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {replies.length > 0 && (
+            <div>
+              <h4 className="mb-3 text-sm font-black text-slate-700">
+                Phản hồi của tôi
+              </h4>
+              <div className="grid gap-4">
+                <ProgressiveList
+                  items={replies}
+                  initialCount={3}
+                  step={3}
+                  moreLabel="Xem thêm phản hồi"
+                  collapseLabel="Đóng bớt"
+                  renderItem={(reply) => (
+                    <MyReplyCard
+                      key={reply.id}
+                      reply={reply}
+                      actionLoadingId={actionLoadingId}
+                      onEdit={onEditReply}
+                      onDelete={onDeleteReply}
+                    />
+                  )}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
   );
 }
 
-function ReviewCard({ review, actionLoadingId, onEdit, onDelete }) {
+function ReviewCard({
+  review,
+  actionLoadingId,
+  onEdit,
+  onDelete,
+  onEditReply,
+  onDeleteReply,
+}) {
   const product = review.product;
   const image = getImage(product);
   const productPath = getPublicProductPath(product);
@@ -419,6 +553,8 @@ function ReviewCard({ review, actionLoadingId, onEdit, onDelete }) {
   const removed = Boolean(review.deleted_at);
   const hidden = !removed && Number(review.status) === 0;
   const ratingEntry = isRatingReview(review);
+  const canEditReview = review.can_edit ?? review.is_owner ?? true;
+  const canDeleteReview = review.can_delete ?? review.is_owner ?? true;
 
   return (
     <div id={`my-review-${review.id}`} className="scroll-mt-24 rounded-2xl border border-green-100 p-4 shadow-sm">
@@ -487,33 +623,37 @@ function ReviewCard({ review, actionLoadingId, onEdit, onDelete }) {
           <span className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-black text-red-700">
             Đã bị xóa
           </span>
-        ) : (
+        ) : (canEditReview || canDeleteReview) ? (
           <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => onEdit(review)}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Edit size={15} />
-              Sửa
-            </button>
+            {canEditReview && (
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => onEdit(review)}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Edit size={15} />
+                Sửa
+              </button>
+            )}
 
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => onDelete(review)}
-              className="inline-flex items-center gap-1 rounded-xl border border-red-100 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {deleting ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Trash2 size={15} />
-              )}
-              Xóa
-            </button>
+            {canDeleteReview && (
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => onDelete(review)}
+                className="inline-flex items-center gap-1 rounded-xl border border-red-100 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleting ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+                Xóa
+              </button>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {(hidden || removed) && (
@@ -546,17 +686,178 @@ function ReviewCard({ review, actionLoadingId, onEdit, onDelete }) {
             step={3}
             moreLabel="Xem thêm phản hồi"
             collapseLabel="Đóng bớt"
-            renderItem={(reply) => (
-              <div key={reply.id} className="mt-2 rounded-xl border-l-4 border-green-500 bg-green-50 px-4 py-3">
-                <p className="text-xs font-black text-green-800">
-                  {reply.user?.name || "Organic Farm"} · {reply.created_at}
-                </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-700">
-                  {reply.comment}
-                </p>
-              </div>
-            )}
+            renderItem={(reply) => {
+              const deletingReply = actionLoadingId === `delete-reply-${reply.id}`;
+
+              return (
+                <div key={reply.id} className="mt-2 rounded-xl border-l-4 border-green-500 bg-green-50 px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black text-green-800">
+                        {reply.user?.name || "Organic Farm"} · {reply.created_at}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-700">
+                        {reply.comment}
+                      </p>
+                      {reply.deleted_at && (
+                        <p className="mt-2 text-xs font-black text-red-600">
+                          Phản hồi đã bị xóa lúc {reply.deleted_at}
+                        </p>
+                      )}
+                    </div>
+
+                    {!reply.deleted_at && (reply.can_edit || reply.can_delete) && (
+                      <div className="flex shrink-0 gap-2">
+                        {reply.can_edit && (
+                          <button
+                            type="button"
+                            onClick={() => onEditReply(reply)}
+                            disabled={deletingReply}
+                            className="inline-flex items-center gap-1 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs font-black text-green-700 disabled:opacity-60"
+                          >
+                            <Edit size={14} /> Sửa
+                          </button>
+                        )}
+                        {reply.can_delete && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteReply(reply)}
+                            disabled={deletingReply}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-black text-red-600 disabled:opacity-60"
+                          >
+                            {deletingReply ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                            Xóa
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }}
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MyReplyCard({
+  reply,
+  actionLoadingId,
+  onEdit,
+  onDelete,
+}) {
+  const product = reply.product;
+  const image = getImage(product);
+  const productPath = getPublicProductPath(product);
+  const farmPath = getPublicFarmPath(product?.farm);
+  const deleting = actionLoadingId === `delete-reply-${reply.id}`;
+  const removed = Boolean(reply.deleted_at);
+
+  return (
+    <div
+      id={`my-reply-${reply.id}`}
+      className="rounded-2xl border border-green-100 p-4 shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 gap-4 text-left">
+          <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl bg-green-50">
+            {image ? (
+              <img
+                src={image}
+                alt={product?.name || "Sản phẩm"}
+                className="h-full w-full object-contain p-2"
+              />
+            ) : (
+              <MessageSquare size={28} className="text-green-700" />
+            )}
+          </div>
+
+          <div className="min-w-0">
+            {productPath ? (
+              <Link
+                to={productPath}
+                className="font-bold text-slate-950 hover:text-green-700 hover:underline"
+              >
+                {product?.name || "Sản phẩm"}
+              </Link>
+            ) : (
+              <h4 className="font-bold text-slate-950">
+                {product?.name || "Sản phẩm"}
+              </h4>
+            )}
+
+            {farmPath ? (
+              <Link
+                to={farmPath}
+                className="mt-1 block text-sm font-medium text-slate-500 hover:text-green-700 hover:underline"
+              >
+                {product?.farm?.name || "Organic Farm"}
+              </Link>
+            ) : (
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                {product?.farm?.name || "Organic Farm"}
+              </p>
+            )}
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-black text-green-700">
+                Phản hồi của tôi
+              </span>
+              <span className="text-xs font-bold text-slate-400">
+                {reply.created_at}
+              </span>
+            </div>
+
+            <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6 text-slate-600">
+              {reply.comment}
+            </p>
+          </div>
+        </div>
+
+        {removed ? (
+          <span className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-black text-red-700">
+            Đã bị xóa
+          </span>
+        ) : (
+          <div className="flex gap-2">
+            {reply.can_edit && (
+              <button
+                type="button"
+                onClick={() => onEdit(reply)}
+                disabled={deleting}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                <Edit size={15} /> Sửa
+              </button>
+            )}
+            {reply.can_delete && (
+              <button
+                type="button"
+                onClick={() => onDelete(reply)}
+                disabled={deleting}
+                className="inline-flex items-center gap-1 rounded-xl border border-red-100 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60"
+              >
+                {deleting ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+                Xóa
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {removed && (
+        <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm font-semibold text-orange-900">
+          Bạn đã xóa phản hồi này{reply.deleted_at ? ` lúc ${reply.deleted_at}` : ""}.
         </div>
       )}
     </div>
@@ -576,7 +877,7 @@ function ReviewModal({
   const isComment = form.entry_type === "buyer_comment";
 
   return (
-    <div className="fixed inset-0 z-999 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="text-xl font-bold text-slate-950">
@@ -653,7 +954,7 @@ function ReviewModal({
             <button
               type="button"
               onClick={onClose}
-              disabled={submitting || (isComment && !form.comment.trim())}
+              disabled={submitting}
               className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
             >
               Hủy
@@ -670,6 +971,93 @@ function ReviewModal({
                 <Save size={18} />
               )}
               {editingReview ? "Cập nhật" : (isComment ? "Gửi bình luận" : "Gửi đánh giá")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ReplyEditModal({
+  reply,
+  comment,
+  submitting,
+  onChange,
+  onClose,
+  onSubmit,
+}) {
+  return (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 p-4">
+      <button
+        type="button"
+        aria-label="Đóng biểu mẫu sửa phản hồi"
+        onClick={onClose}
+        className="absolute inset-0"
+      />
+
+      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-xl font-bold text-slate-950">
+              Cập nhật phản hồi
+            </h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Phản hồi #{reply.id} do chính tài khoản này đăng.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            aria-label="Đóng"
+            className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100 disabled:opacity-60"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="p-6">
+          <label className="mb-2 block text-sm font-bold text-slate-800">
+            Nội dung phản hồi
+          </label>
+
+          <textarea
+            autoFocus
+            value={comment}
+            onChange={(event) => onChange(event.target.value)}
+            required
+            maxLength={2000}
+            rows={5}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium outline-none transition focus:border-green-600"
+          />
+
+          <div className="mt-1 text-right text-xs font-semibold text-slate-400">
+            {comment.length}/2000
+          </div>
+
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Hủy
+            </button>
+
+            <button
+              type="submit"
+              disabled={submitting || !comment.trim()}
+              className="inline-flex items-center gap-2 rounded-xl bg-green-700 px-5 py-3 text-sm font-bold text-white hover:bg-green-800 disabled:opacity-60"
+            >
+              {submitting ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Save size={18} />
+              )}
+              Cập nhật
             </button>
           </div>
         </form>

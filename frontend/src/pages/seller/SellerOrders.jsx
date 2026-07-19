@@ -6,6 +6,7 @@ import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 import useDebounce from "../../hooks/useDebounce";
 import { getApiErrorMessage } from "../../utils/apiError";
 import { highlight } from "../../utils/highlight";
+import { formatKg, formatQuantity } from "../../utils/quantity";
 
 const STATUS_TABS = [
   { label: "Tất cả", value: "" },
@@ -557,10 +558,10 @@ function OrdersTable({
 
                   <td className="px-5 py-4">
                     <div className="font-semibold text-gray-800">
-                      {order.items_count} sản phẩm
+                      {order.items_count} loại sản phẩm
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
-                      Tổng SL: {order.items_quantity}
+                      Tổng khối lượng: {formatKg(order.items_quantity)}
                     </div>
                   </td>
 
@@ -680,10 +681,10 @@ function OrderMobileCard({ order, keyword, onViewDetail, actions, openActionModa
         <div className="rounded-2xl bg-gray-50 p-3">
           <p className="text-xs font-bold uppercase text-gray-400">Sản phẩm</p>
           <p className="mt-1 font-black text-gray-800">
-            {order.items_count} sản phẩm
+            {order.items_count} loại sản phẩm
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            Tổng SL: {order.items_quantity}
+            Tổng khối lượng: {formatKg(order.items_quantity)}
           </p>
         </div>
 
@@ -861,7 +862,7 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                         )}
 
                         <p className="mt-1 text-sm text-gray-500">
-                          {item.quantity} {item.unit} x{" "}
+                          {formatQuantity(item.quantity)} {item.unit || "kg"} x{" "}
                           {formatMoney(item.price)}
                         </p>
 
@@ -872,7 +873,7 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                                 key={`${lot.harvest_lot_id}-${lot.lot_code}`}
                                 className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700"
                               >
-                                {lot.lot_code}: {lot.quantity}
+                                {lot.lot_code}: {formatQuantity(lot.quantity)} {item.unit || "kg"}
                               </span>
                             ))}
                           </div>

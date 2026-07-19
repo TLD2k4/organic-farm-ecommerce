@@ -17,7 +17,8 @@ class UpdateCartItemRequest extends FormRequest
             'quantity' => [
                 'required',
                 'numeric',
-                'gt:0',
+                'gte:0.1',
+                'decimal:0,2',
             ],
         ];
     }
@@ -27,7 +28,8 @@ class UpdateCartItemRequest extends FormRequest
         return [
             'quantity.required' => 'Vui lòng nhập số lượng.',
             'quantity.numeric' => 'Số lượng phải là số.',
-            'quantity.gt' => 'Số lượng phải lớn hơn 0.',
+            'quantity.gte' => 'Khối lượng tối thiểu là 0,1 kg.',
+            'quantity.decimal' => 'Khối lượng chỉ được có tối đa 2 chữ số thập phân.',
         ];
     }
 }

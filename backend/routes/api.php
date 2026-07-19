@@ -89,7 +89,10 @@ Route::middleware('auth:sanctum')->group(function () {
     //Review
     Route::post('/reviews', [ReviewController::class, 'store']);
     Route::put('/reviews/{review}', [ReviewController::class, 'update']);
+    Route::patch('/reviews/{review}', [ReviewController::class, 'update']);
     Route::delete('/reviews/{review}', [ReviewController::class, 'destroy']);
+    Route::patch('/review-replies/{reply}', [ReviewController::class, 'updateReply']);
+    Route::delete('/review-replies/{reply}', [ReviewController::class, 'destroyReply']);
 
     // ĐỊA CHỈ
     Route::get('/addresses', [AddressController::class, 'index']);

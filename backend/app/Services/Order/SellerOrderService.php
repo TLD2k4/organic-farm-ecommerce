@@ -5,6 +5,7 @@ namespace App\Services\Order;
 use App\Models\Farm;
 use App\Models\Order;
 use App\Models\SubOrder;
+use App\Services\Revenue\RevenueMetricsService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -14,6 +15,7 @@ class SellerOrderService
 {
     public function __construct(
         private InventoryService $inventoryService,
+        private RevenueMetricsService $revenueMetrics,
     ) {
     }
 
@@ -240,20 +242,11 @@ class SellerOrderService
     private function getStats(int $farmId): array
     {
         $query = SubOrder::where('farm_id', $farmId);
-        $dateColumn = $this->getRevenueDateColumn();
-        $monthRevenueQuery = DB::table('order_items')
-            ->join('sub_orders', 'sub_orders.id', '=', 'order_items.sub_order_id')
-            ->where('sub_orders.farm_id', $farmId)
-            ->where('sub_orders.status', 3)
-            ->whereBetween($dateColumn, [now()->startOfMonth(), now()->endOfMonth()]);
-
-        if (Schema::hasColumn('sub_orders', 'payment_status')) {
-            $monthRevenueQuery->whereIn('sub_orders.payment_status', [0, 1]);
-        }
-
-        $monthRevenue = (float) ($monthRevenueQuery
-            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')
-            ->value('total') ?? 0);
+        $monthRevenueTotals = $this->revenueMetrics->totals(
+            $farmId,
+            now()->startOfMonth(),
+            now()->endOfMonth()
+        );
 
         return [
             'total_orders' => (clone $query)->count(),
@@ -282,21 +275,10 @@ class SellerOrderService
                 ->whereDate('created_at', today())
                 ->count(),
 
-            'month_revenue' => $monthRevenue,
+            'month_revenue' => $monthRevenueTotals['total_revenue'],
+            'month_items_revenue' => $monthRevenueTotals['items_revenue'],
+            'month_shipping_revenue' => $monthRevenueTotals['shipping_revenue'],
         ];
-    }
-
-    private function getRevenueDateColumn(): string
-    {
-        if (Schema::hasColumn('sub_orders', 'completed_at')) {
-            return 'sub_orders.completed_at';
-        }
-
-        if (Schema::hasColumn('sub_orders', 'delivered_at')) {
-            return 'sub_orders.delivered_at';
-        }
-
-        return 'sub_orders.updated_at';
     }
 
     /**

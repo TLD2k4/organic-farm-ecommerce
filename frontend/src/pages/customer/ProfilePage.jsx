@@ -15,10 +15,10 @@ export default function ProfilePage() {
   const tab = searchParams.get("tab") || "info";
 
   return (
-    <div className="grid lg:grid-cols-[280px_1fr] gap-4">
+    <div className="grid w-full min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
       <ProfileSidebar />
 
-      <div>
+      <div className="w-full min-w-0">
         {tab === "info" && <ProfileInfoForm />}
 
         {tab === "password" && <ChangePasswordForm />}

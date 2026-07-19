@@ -284,6 +284,7 @@ class OrderBuilderService
     private function validateCartItemCanCheckout($item): void
     {
         $product = $item->product;
+        $quantity = round((float) $item->quantity, 2);
 
         if (!$product) {
             throw ValidationException::withMessages([
@@ -305,6 +306,14 @@ class OrderBuilderService
             throw ValidationException::withMessages([
                 'product' => [
                     'Sản phẩm "' . $product->name . '" chưa có chứng nhận hợp lệ.'
+                ]
+            ]);
+        }
+
+        if ($quantity < 0.1) {
+            throw ValidationException::withMessages([
+                'quantity' => [
+                    'Khối lượng tối thiểu của sản phẩm "' . $product->name . '" là 0,1 kg.'
                 ]
             ]);
         }

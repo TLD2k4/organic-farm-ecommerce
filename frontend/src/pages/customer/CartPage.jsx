@@ -17,6 +17,16 @@ import {
 import buyerCartService from "../../services/buyerCartService";
 import { confirmAction } from "../../utils/actionDialog";
 import { getApiErrorMessage } from "../../utils/apiError";
+import {
+  formatKg,
+  formatQuantity,
+  isQuantityDraft,
+  MIN_CART_QUANTITY,
+  parseQuantityInput,
+  roundQuantity,
+  stepQuantity,
+  sumItemQuantity,
+} from "../../utils/quantity";
 
 const DEFAULT_SHIPPING_FEE = 30000;
 
@@ -105,9 +115,10 @@ export default function CartPage() {
   const handleUpdateQuantity = async (item, nextQuantity) => {
     if (updatingItemId || removingItemId) return;
 
-    const quantity = Number(nextQuantity);
+    const quantity = roundQuantity(nextQuantity);
 
-    if (quantity < 1) {
+    if (!Number.isFinite(quantity) || quantity < MIN_CART_QUANTITY) {
+      toast.error("Khối lượng tối thiểu là 0,1 kg.");
       return;
     }
 
@@ -186,7 +197,10 @@ export default function CartPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader totalQuantity={totalQuantity} />
+      <PageHeader
+        itemTypes={cart.items.length}
+        totalQuantity={cart.total_quantity}
+      />
 
       {loading ? (
         <CartSkeleton />
@@ -202,7 +216,7 @@ export default function CartPage() {
                 </h2>
 
                 <p className="mt-1 text-sm font-semibold text-slate-500">
-                  {totalQuantity} sản phẩm từ {groups.length} nông trại
+                  {selectedItems.length} loại sản phẩm · {formatKg(totalQuantity)} · {groups.length} nông trại
                 </p>
               </div>
 
@@ -247,6 +261,7 @@ export default function CartPage() {
 
           <div className="xl:col-span-4">
             <CartSummary
+              itemTypes={selectedItems.length}
               itemsTotal={itemsTotal}
               totalQuantity={totalQuantity}
               farmsCount={groups.length}
@@ -261,7 +276,7 @@ export default function CartPage() {
   );
 }
 
-function PageHeader({ totalQuantity }) {
+function PageHeader({ itemTypes, totalQuantity }) {
   return (
     <div className="overflow-hidden rounded-[28px] bg-linear-to-r from-[#5fa846] via-emerald-500 to-lime-500 p-6 text-white shadow-lg shadow-green-100">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -282,7 +297,7 @@ function PageHeader({ totalQuantity }) {
         </div>
 
         <div className="rounded-2xl bg-white/20 px-5 py-3 text-sm font-black backdrop-blur">
-          {totalQuantity} sản phẩm
+          {itemTypes} loại · {formatKg(totalQuantity)}
         </div>
       </div>
     </div>
@@ -320,7 +335,9 @@ function CartFarmGroup({
         </div>
 
         <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-[#5fa846]">
-          {group.farmAcceptingOrders ? `${group.items.length} sản phẩm` : "Tạm ngừng nhận đơn"}
+          {group.farmAcceptingOrders
+            ? `${group.items.length} loại · ${formatKg(sumItemQuantity(group.items))}`
+            : "Tạm ngừng nhận đơn"}
         </span>
       </div>
 
@@ -387,8 +404,8 @@ function CartItemRow({
     Number(item.quantity || 0) > Number(item.stock_quantity || 0);
 
   return (
-    <div className="grid grid-cols-1 gap-4 px-5 py-4 lg:grid-cols-12 lg:items-center">
-      <div className="lg:col-span-6">
+    <div className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-3 sm:items-end 2xl:grid-cols-[minmax(0,1fr)_7rem_10rem_minmax(11rem,auto)] 2xl:items-center">
+      <div className="min-w-0 sm:col-span-3 2xl:col-span-1">
         <div className="flex gap-4">
           <input aria-label={`Chọn ${item.product_name}`} type="checkbox" checked={selected} disabled={unavailable} onChange={onToggle} className="mt-10 h-5 w-5 shrink-0 accent-green-600 disabled:cursor-not-allowed disabled:opacity-40" />
           {item.is_publicly_visible && item.product_slug ? (
@@ -430,7 +447,7 @@ function CartItemRow({
 
               {item.stock_quantity > 0 && (
                 <span className="rounded-md bg-slate-50 px-2 py-1 text-xs font-bold text-slate-500">
-                  Còn {formatNumber(item.stock_quantity)}
+                  Còn {formatQuantity(item.stock_quantity)} kg
                 </span>
               )}
 
@@ -458,8 +475,11 @@ function CartItemRow({
         </div>
       </div>
 
-      <div className="lg:col-span-2">
-        <p className="font-extrabold text-slate-900">
+      <div className="min-w-0 sm:col-span-1">
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400 2xl:hidden">
+          Đơn giá
+        </p>
+        <p className="break-words font-extrabold text-slate-900">
           {formatMoney(item.price)}
         </p>
 
@@ -470,46 +490,22 @@ function CartItemRow({
         )}
       </div>
 
-      <div className="lg:col-span-2">
-        <div className="inline-flex h-10 items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <button
-            disabled={disabled || unavailable || item.quantity <= 1}
-            onClick={() => onUpdateQuantity(item, item.quantity - 1)}
-            aria-label={`Giảm số lượng ${item.product_name}`}
-            title={`Giảm số lượng ${item.product_name}`}
-            className="flex h-10 w-10 items-center justify-center text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Minus size={15} />
-          </button>
-
-          <div className="flex h-10 min-w-12 items-center justify-center border-x border-slate-200 px-3 text-sm font-extrabold text-slate-900">
-            {updating ? (
-              <Loader2 size={16} className="animate-spin text-[#5fa846]" />
-            ) : (
-              item.quantity
-            )}
-          </div>
-
-          <button
-            disabled={
-              disabled ||
-              unavailable ||
-              (item.stock_quantity > 0 && item.quantity >= item.stock_quantity)
-            }
-            onClick={() => onUpdateQuantity(item, item.quantity + 1)}
-            aria-label={`Tăng số lượng ${item.product_name}`}
-            title={`Tăng số lượng ${item.product_name}`}
-            className="flex h-10 w-10 items-center justify-center text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Plus size={15} />
-          </button>
-        </div>
+      <div className="min-w-0 sm:col-span-1">
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400 2xl:hidden">
+          Số lượng
+        </p>
+        <CartQuantityControl
+          item={item}
+          updating={updating}
+          disabled={disabled || unavailable}
+          onUpdateQuantity={onUpdateQuantity}
+        />
       </div>
 
-      <div className="flex items-center justify-between gap-3 lg:col-span-2 lg:justify-end">
-        <div className="text-right">
+      <div className="flex min-w-0 items-end justify-between gap-3 sm:col-span-1 2xl:items-center 2xl:justify-end">
+        <div className="min-w-0 text-left sm:text-right">
           <p className="text-sm font-semibold text-slate-400">Tạm tính</p>
-          <p className="text-lg font-extrabold text-[#5fa846]">
+          <p className="break-words text-base font-extrabold text-[#5fa846] sm:text-lg">
             {formatMoney(item.subtotal)}
           </p>
         </div>
@@ -532,7 +528,110 @@ function CartItemRow({
   );
 }
 
+function CartQuantityControl({ item, updating, disabled, onUpdateQuantity }) {
+  const currentQuantity = Number(item.quantity || 0);
+  const stockQuantity = Number(item.stock_quantity || 0);
+  const [draft, setDraft] = useState(formatQuantity(currentQuantity));
+
+  useEffect(() => {
+    setDraft(formatQuantity(currentQuantity));
+  }, [currentQuantity]);
+
+  const commitDraft = () => {
+    const parsed = roundQuantity(parseQuantityInput(draft));
+
+    if (!Number.isFinite(parsed) || parsed < MIN_CART_QUANTITY) {
+      toast.error("Khối lượng tối thiểu là 0,1 kg.");
+      setDraft(formatQuantity(currentQuantity));
+      return;
+    }
+
+    if (stockQuantity > 0 && parsed > stockQuantity) {
+      toast.error(`Khối lượng vượt tồn kho. Hiện còn ${formatQuantity(stockQuantity)} kg.`);
+      setDraft(formatQuantity(currentQuantity));
+      return;
+    }
+
+    setDraft(formatQuantity(parsed));
+
+    if (parsed !== currentQuantity) onUpdateQuantity(item, parsed);
+  };
+
+  const changeByStep = (direction) => {
+    const next = stepQuantity(
+      currentQuantity,
+      direction,
+      stockQuantity > 0 ? stockQuantity : Number.POSITIVE_INFINITY,
+    );
+
+    setDraft(formatQuantity(next));
+
+    if (next !== currentQuantity) onUpdateQuantity(item, next);
+  };
+
+  return (
+    <div className="min-w-0">
+      <div className="inline-flex h-10 w-full max-w-40 items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <button
+          type="button"
+          disabled={disabled || currentQuantity <= MIN_CART_QUANTITY}
+          onClick={() => changeByStep(-1)}
+          aria-label={`Giảm 0,1 kg ${item.product_name}`}
+          title="Giảm 0,1 kg"
+          className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Minus size={15} />
+        </button>
+
+        {updating ? (
+          <div className="flex h-10 min-w-0 flex-1 items-center justify-center border-x border-slate-200">
+            <Loader2 size={16} className="animate-spin text-[#5fa846]" />
+          </div>
+        ) : (
+          <input
+            type="text"
+            inputMode="decimal"
+            value={draft}
+            disabled={disabled}
+            onChange={(event) => {
+              if (isQuantityDraft(event.target.value)) setDraft(event.target.value);
+            }}
+            onBlur={commitDraft}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                setDraft(formatQuantity(currentQuantity));
+                event.currentTarget.blur();
+              }
+            }}
+            aria-label={`Khối lượng ${item.product_name}, đơn vị kg`}
+            title="Nhập khối lượng, ví dụ 0,5 hoặc 1,25 kg"
+            className="h-10 min-w-0 flex-1 border-x border-slate-200 px-1 text-center text-sm font-extrabold text-slate-900 outline-none disabled:bg-slate-50"
+          />
+        )}
+
+        <button
+          type="button"
+          disabled={
+            disabled ||
+            (stockQuantity > 0 && currentQuantity >= stockQuantity)
+          }
+          onClick={() => changeByStep(1)}
+          aria-label={`Tăng 0,1 kg ${item.product_name}`}
+          title="Tăng 0,1 kg"
+          className="flex h-10 w-10 shrink-0 items-center justify-center text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+
+      <p className="mt-1 text-xs font-semibold text-slate-400">Tối thiểu 0,1 kg</p>
+    </div>
+  );
+}
+
 function CartSummary({
+  itemTypes,
   itemsTotal,
   totalQuantity,
   farmsCount,
@@ -547,7 +646,8 @@ function CartSummary({
       </h2>
 
       <div className="mt-5 space-y-3">
-        <SummaryRow label="Số sản phẩm" value={`${totalQuantity} sản phẩm`} />
+        <SummaryRow label="Số loại sản phẩm" value={`${itemTypes} loại`} />
+        <SummaryRow label="Tổng khối lượng" value={formatKg(totalQuantity)} />
         <SummaryRow label="Số gian hàng" value={`${farmsCount} nông trại`} />
         <SummaryRow label="Tiền hàng" value={formatMoney(itemsTotal)} />
         <SummaryRow
@@ -790,10 +890,6 @@ function groupItemsByFarm(items) {
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("vi-VN") + "đ";
-}
-
-function formatNumber(value) {
-  return Number(value || 0).toLocaleString("vi-VN");
 }
 
 function getFarmShippingFee(group) {
