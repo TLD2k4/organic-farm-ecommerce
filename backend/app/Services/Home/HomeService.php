@@ -112,6 +112,8 @@ class HomeService
             ->withCount([
                 'completedOrderItems as order_count',
                 'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withSum(
@@ -189,7 +191,7 @@ class HomeService
                     ->join('sub_orders', 'order_items.sub_order_id', '=', 'sub_orders.id')
                     ->whereColumn('sub_orders.farm_id', 'farms.id')
                     ->where('sub_orders.status', 3)
-                    ->whereIn('sub_orders.payment_status', [0, 1])
+                    ->where('sub_orders.payment_status', 1)
                     ->whereNull('sub_orders.deleted_at')
                     ->selectRaw('COALESCE(SUM(order_items.quantity), 0)');
             }, 'sold_quantity')
@@ -201,8 +203,9 @@ class HomeService
                     ->join('sub_orders', 'order_items.sub_order_id', '=', 'sub_orders.id')
                     ->whereColumn('sub_orders.farm_id', 'farms.id')
                     ->where('sub_orders.status', 3)
-                    ->whereIn('sub_orders.payment_status', [0, 1])
+                    ->where('sub_orders.payment_status', 1)
                     ->where('reviews.status', 1)
+                    ->whereNotNull('reviews.rating')
                     ->whereNull('reviews.deleted_at')
                     ->whereNull('sub_orders.deleted_at')
                     ->selectRaw('COUNT(reviews.id)');
@@ -215,8 +218,9 @@ class HomeService
                     ->join('sub_orders', 'order_items.sub_order_id', '=', 'sub_orders.id')
                     ->whereColumn('sub_orders.farm_id', 'farms.id')
                     ->where('sub_orders.status', 3)
-                    ->whereIn('sub_orders.payment_status', [0, 1])
+                    ->where('sub_orders.payment_status', 1)
                     ->where('reviews.status', 1)
+                    ->whereNotNull('reviews.rating')
                     ->whereNull('reviews.deleted_at')
                     ->whereNull('sub_orders.deleted_at')
                     ->selectRaw('AVG(reviews.rating)');
@@ -235,7 +239,7 @@ class HomeService
         $customerCount = Order::query()
             ->whereHas('subOrders', function ($q) {
                 $q->where('status', 3)
-                    ->whereIn('payment_status', [0, 1]);
+                    ->where('payment_status', 1);
             })
             ->distinct('user_id')
             ->count('user_id');
@@ -244,9 +248,10 @@ class HomeService
             ->join('order_items', 'reviews.order_item_id', '=', 'order_items.id')
             ->join('sub_orders', 'order_items.sub_order_id', '=', 'sub_orders.id')
             ->where('reviews.status', 1)
+            ->whereNotNull('reviews.rating')
             ->whereNull('reviews.deleted_at')
             ->where('sub_orders.status', 3)
-            ->whereIn('sub_orders.payment_status', [0, 1])
+            ->where('sub_orders.payment_status', 1)
             ->whereNull('sub_orders.deleted_at')
             ->selectRaw('COUNT(reviews.id) as total_reviews')
             ->selectRaw('SUM(CASE WHEN reviews.rating >= 4 THEN 1 ELSE 0 END) as satisfied_reviews')
@@ -320,6 +325,8 @@ class HomeService
             : $price;
 
         $reviewCount = (int) ($product->review_count ?? 0);
+        $commentCount = (int) ($product->comment_count ?? 0)
+            + (int) ($product->reply_comment_count ?? 0);
 
         $rating = $reviewCount > 0 && $product->rating_avg !== null
             ? round((float) $product->rating_avg, 1)
@@ -375,6 +382,7 @@ class HomeService
             'rating' => $rating,
             'rating_avg' => $rating,
             'review_count' => $reviewCount,
+            'comment_count' => $commentCount,
 
             'order_count' => (int) ($product->order_count ?? 0),
             'sold_quantity' => $soldQuantity,

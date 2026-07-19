@@ -5,6 +5,7 @@ import StatusBadge from "@/components/common/StatusBadge";
 import { formatDate } from "@/utils/date";
 import { getImageUrl } from "@/utils/image";
 import { getAdminProductLink } from "@/utils/adminEntityLink";
+import { formatQuantity } from "@/utils/quantity";
 import {
   formatMoney,
   orderStatusConfig,
@@ -176,7 +177,7 @@ export default function AdminOrderDrawer({
                             <tr className="text-left text-sm text-slate-500">
                               <th className="px-4 py-3">Sản phẩm</th>
                               <th className="px-4 py-3 text-right">Giá</th>
-                              <th className="px-4 py-3 text-center">SL</th>
+                              <th className="px-4 py-3 text-center">Khối lượng</th>
                               <th className="px-4 py-3 text-right">Thành tiền</th>
                               <th className="px-4 py-3">Lô FIFO</th>
                             </tr>
@@ -191,7 +192,7 @@ export default function AdminOrderDrawer({
                                   {formatMoney(item.price)}
                                 </td>
                                 <td className="px-4 py-3 text-center">
-                                  {item.quantity} {item.unit}
+                                  {formatQuantity(item.quantity)} {item.unit || "kg"}
                                 </td>
                                 <td className="px-4 py-3 text-right font-bold">
                                   {formatMoney(item.subtotal)}
@@ -323,7 +324,7 @@ function Lots({ lots = [] }) {
           className="rounded-lg bg-green-50 px-2 py-1 text-xs font-semibold text-green-700"
           title={`Thu hoạch: ${lot.harvest_date || "—"}; HSD: ${lot.expiry_date || "—"}`}
         >
-          {lot.lot_code || `Lô #${lot.harvest_lot_id}`}: {lot.quantity}
+          {lot.lot_code || `Lô #${lot.harvest_lot_id}`}: {formatQuantity(lot.quantity)} kg
         </span>
       ))}
     </div>

@@ -3,15 +3,18 @@
 namespace App\Services\Dashboard;
 
 use App\Models\Farm;
-use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\HarvestLot;
+use App\Services\Revenue\RevenueMetricsService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class SellerDashboardService
 {
+    public function __construct(
+        private RevenueMetricsService $revenueMetrics,
+    ) {}
+
     public function getSellerDashboard(int $sellerId, array $filters = []): array
     {
         $farm = $this->getSellerFarm($sellerId);
@@ -106,17 +109,20 @@ class SellerDashboardService
         $previousMonthFrom = now()->subMonthNoOverflow()->startOfMonth();
         $previousMonthTo = $previousMonthFrom->copy()->endOfMonth();
 
-        $monthRevenue = (float) ($this->baseRevenueQuery(
+        $currentRevenueTotals = $this->revenueMetrics->totals(
             $farm->id,
             $currentMonthFrom,
             $currentMonthTo
-        )->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')->value('total') ?? 0);
+        );
 
-        $lastMonthRevenue = (float) ($this->baseRevenueQuery(
+        $previousRevenueTotals = $this->revenueMetrics->totals(
             $farm->id,
             $previousMonthFrom,
             $previousMonthTo
-        )->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')->value('total') ?? 0);
+        );
+
+        $monthRevenue = $currentRevenueTotals['total_revenue'];
+        $lastMonthRevenue = $previousRevenueTotals['total_revenue'];
 
         $revenueGrowth = null;
 
@@ -139,6 +145,8 @@ class SellerDashboardService
             'new_orders' => $newOrders,
 
             'month_revenue' => (float) $monthRevenue,
+            'month_items_revenue' => $currentRevenueTotals['items_revenue'],
+            'month_shipping_revenue' => $currentRevenueTotals['shipping_revenue'],
             'month_revenue_text' => $this->formatMoney($monthRevenue),
             'revenue_growth' => $revenueGrowth,
 
@@ -150,11 +158,12 @@ class SellerDashboardService
     {
         $from = today()->subDays(6)->startOfDay();
         $to = today()->endOfDay();
-        $dateColumn = $this->getRevenueDateColumn();
-        $rows = $this->baseRevenueQuery($farm->id, $from, $to)
-            ->selectRaw("DATE({$dateColumn}) as revenue_date")
-            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as revenue')
-            ->groupBy(DB::raw("DATE({$dateColumn})"))
+        $dateExpression = $this->revenueMetrics->recognizedAtExpression();
+        $rows = $this->revenueMetrics
+            ->completedPaidSubOrders($farm->id, $from, $to)
+            ->selectRaw("DATE({$dateExpression}) as revenue_date")
+            ->selectRaw('COALESCE(SUM(sub_orders.total), 0) as revenue')
+            ->groupBy(DB::raw("DATE({$dateExpression})"))
             ->orderBy('revenue_date')
             ->get()
             ->keyBy('revenue_date');
@@ -184,41 +193,6 @@ class SellerDashboardService
                     : 5,
             ];
         })->values()->toArray();
-    }
-
-    private function baseRevenueQuery(int $farmId, Carbon $from, Carbon $to)
-    {
-        $dateColumn = $this->getRevenueDateColumn();
-
-        $query = OrderItem::query()
-            ->join('products', 'products.id', '=', 'order_items.product_id')
-            ->join('sub_orders', 'sub_orders.id', '=', 'order_items.sub_order_id')
-            ->join('orders', 'orders.id', '=', 'sub_orders.order_id')
-            ->where('sub_orders.farm_id', $farmId)
-            ->where('sub_orders.status', 3)
-            ->whereBetween($dateColumn, [
-                $from->copy()->startOfDay(),
-                $to->copy()->endOfDay(),
-            ]);
-
-        if (Schema::hasColumn('sub_orders', 'payment_status')) {
-            $query->whereIn('sub_orders.payment_status', [0, 1]);
-        }
-
-        return $query;
-    }
-
-    private function getRevenueDateColumn(): string
-    {
-        if (Schema::hasColumn('sub_orders', 'completed_at')) {
-            return 'sub_orders.completed_at';
-        }
-
-        if (Schema::hasColumn('sub_orders', 'delivered_at')) {
-            return 'sub_orders.delivered_at';
-        }
-
-        return 'sub_orders.updated_at';
     }
 
     private function getOrderStatus(Farm $farm): array

@@ -3,6 +3,7 @@
 namespace App\Services\Review;
 
 use App\Models\Review;
+use App\Models\ReviewReply;
 use App\Models\Product;
 use App\Models\Farm;
 use App\Models\User;
@@ -24,9 +25,19 @@ class AdminReviewService
         }
 
         if (($filters['type'] ?? '') === 'rating_review') {
-            $query->whereNotNull('order_item_id')->whereNotNull('rating');
+            $query->whereNotNull('rating');
         } elseif (($filters['type'] ?? '') === 'comment') {
-            $query->whereNull('order_item_id')->whereNull('rating');
+            $query->where(function (Builder $contentQuery) {
+                $contentQuery
+                    ->where(function (Builder $commentQuery) {
+                        $commentQuery->whereNotNull('comment')
+                            ->whereRaw("TRIM(comment) <> ''");
+                    })
+                    ->orWhereHas('replies', function (Builder $replyQuery) {
+                        $replyQuery->whereNotNull('comment')
+                            ->whereRaw("TRIM(comment) <> ''");
+                    });
+            });
         }
 
         if (($filters['deleted'] ?? '') === 'only') {
@@ -41,6 +52,9 @@ class AdminReviewService
 
             $query->where(function (Builder $builder) use ($keyword, $productId) {
                 $builder->where('comment', 'like', "%{$keyword}%")
+                    ->orWhereHas('replies', function (Builder $replyQuery) use ($keyword) {
+                        $replyQuery->where('comment', 'like', "%{$keyword}%");
+                    })
                     ->orWhereHas('user', function (Builder $userQuery) use ($keyword) {
                         $userQuery->where('name', 'like', "%{$keyword}%")
                             ->orWhere('email', 'like', "%{$keyword}%");
@@ -255,12 +269,50 @@ class AdminReviewService
 
     private function getStats(): array
     {
+        // Đánh giá chỉ phụ thuộc vào việc có chấm sao.
         $ratingReviews = Review::query()
-            ->whereNotNull('order_item_id')
             ->whereNotNull('rating');
-        $comments = Review::query()
-            ->whereNull('order_item_id')
-            ->whereNull('rating');
+
+        // Bình luận gốc: mọi reviews.comment có nội dung, kể cả đánh giá có sao.
+        $directComments = Review::query()
+            ->whereNotNull('comment')
+            ->whereRaw("TRIM(comment) <> ''");
+
+        // Phản hồi review_replies cũng là bình luận.
+        // Chỉ tính reply có parent review chưa bị xóa mềm.
+        $replyComments = ReviewReply::query()
+            ->whereHas('review')
+            ->whereNotNull('comment')
+            ->whereRaw("TRIM(comment) <> ''");
+
+        $totalComments = (clone $directComments)->count()
+            + (clone $replyComments)->count();
+
+        $visibleComments = (clone $directComments)
+            ->where('status', 1)
+            ->count()
+            + (clone $replyComments)
+                ->where('status', 1)
+                ->whereHas('review', function (Builder $reviewQuery) {
+                    $reviewQuery->where('status', 1);
+                })
+                ->count();
+
+        $deletedComments = Review::onlyTrashed()
+            ->whereNotNull('comment')
+            ->whereRaw("TRIM(comment) <> ''")
+            ->count()
+            + ReviewReply::onlyTrashed()
+                ->whereNotNull('comment')
+                ->whereRaw("TRIM(comment) <> ''")
+                ->count()
+            + ReviewReply::query()
+                ->whereNotNull('comment')
+                ->whereRaw("TRIM(comment) <> ''")
+                ->whereHas('review', function (Builder $reviewQuery) {
+                    $reviewQuery->onlyTrashed();
+                })
+                ->count();
 
         return [
             'total' => (clone $ratingReviews)->count(),
@@ -268,13 +320,13 @@ class AdminReviewService
             'hidden' => (clone $ratingReviews)->where('status', 0)->count(),
             'deleted' => Review::onlyTrashed()->count(),
             'deleted_reviews' => Review::onlyTrashed()
-                ->whereNotNull('order_item_id')->whereNotNull('rating')->count(),
+                ->whereNotNull('rating')
+                ->count(),
             'average_rating' => round((float) (clone $ratingReviews)->avg('rating'), 1),
-            'total_comments' => (clone $comments)->count(),
-            'visible_comments' => (clone $comments)->where('status', 1)->count(),
-            'hidden_comments' => (clone $comments)->where('status', 0)->count(),
-            'deleted_comments' => Review::onlyTrashed()
-                ->whereNull('order_item_id')->whereNull('rating')->count(),
+            'total_comments' => $totalComments,
+            'visible_comments' => $visibleComments,
+            'hidden_comments' => max(0, $totalComments - $visibleComments),
+            'deleted_comments' => $deletedComments,
         ];
     }
 
@@ -285,7 +337,8 @@ class AdminReviewService
     {
         $product = $review->product ?: $review->orderItem?->product;
         $author = $review->user;
-        $isRatingReview = $review->order_item_id !== null && $review->rating !== null;
+        $isRatingReview = $review->rating !== null;
+        $hasComment = trim((string) $review->comment) !== '';
         $isAdminComment = !$isRatingReview && $author?->hasRole('admin');
         $isSellerComment = !$isRatingReview && !$isAdminComment && $author?->hasRole('seller');
         $isBuyerComment = !$isRatingReview && !$isAdminComment && !$isSellerComment;
@@ -296,7 +349,9 @@ class AdminReviewService
             default => 'buyer_comment',
         };
         $entryTypeLabel = match ($entryType) {
-            'rating_review' => 'Đánh giá người mua',
+            'rating_review' => $hasComment
+                ? 'Đánh giá kèm bình luận'
+                : 'Đánh giá người mua',
             'admin_comment' => 'Bình luận quản trị',
             'seller_comment' => 'Bình luận người bán',
             default => 'Bình luận người mua',

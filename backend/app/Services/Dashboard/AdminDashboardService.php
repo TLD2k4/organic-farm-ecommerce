@@ -4,16 +4,21 @@ namespace App\Services\Dashboard;
 
 use App\Models\Farm;
 use App\Models\Order;
-use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Review;
+use App\Models\ReviewReply;
 use App\Models\User;
+use App\Services\Revenue\RevenueMetricsService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 
 class AdminDashboardService
 {
+    public function __construct(
+        private RevenueMetricsService $revenueMetrics,
+    ) {}
+
     public function getOverview(int $days = 30): array
     {
         $startDate = now()
@@ -29,6 +34,8 @@ class AdminDashboardService
          * kể cả sản phẩm thuộc farm đã bị xóa mềm.
          */
         $productQuery = Product::withoutGlobalScope('farm_not_deleted');
+
+        $revenueTotals = $this->revenueMetrics->totals();
 
         $cards = [
             'total_users' => User::query()->count(),
@@ -56,14 +63,28 @@ class AdminDashboardService
                 ->count(),
 
             /*
-             * Doanh thu chỉ tính payment đã thanh toán.
-             * Không tính payment Pending, Failed, Refunded.
+             * Doanh thu chuẩn = tổng tiền của đơn con đã hoàn tất và đã
+             * thanh toán. Không dùng payment/order cha vì đơn đa farm có
+             * thể có một phần hoàn tất và một phần bị hủy.
              */
-            'total_revenue' => (float) Payment::query()
-                ->where('status', 1)
-                ->sum('amount'),
+            'total_revenue' => $revenueTotals['total_revenue'],
+            'items_revenue' => $revenueTotals['items_revenue'],
+            'shipping_revenue' => $revenueTotals['shipping_revenue'],
+            // Đánh giá = mọi review có chấm sao.
+            'total_reviews' => Review::query()
+                ->whereNotNull('rating')
+                ->count(),
 
-            'total_reviews' => Review::query()->count(),
+            // Bình luận = reviews.comment có nội dung + review_replies.comment.
+            'total_comments' => Review::query()
+                ->whereNotNull('comment')
+                ->whereRaw("TRIM(comment) <> ''")
+                ->count()
+                + ReviewReply::query()
+                    ->whereHas('review')
+                    ->whereNotNull('comment')
+                    ->whereRaw("TRIM(comment) <> ''")
+                    ->count(),
         ];
 
         return [
@@ -120,29 +141,25 @@ class AdminDashboardService
         }
 
         /*
-         * Doanh thu theo ngày thanh toán.
+         * Doanh thu theo ngày đơn con hoàn tất. Cùng nguồn dữ liệu với thẻ
+         * tổng doanh thu và trang quản trị đơn hàng.
          */
-        $payments = DB::table('payments')
-            ->select([
-                'paid_at',
-                'amount',
-            ])
-            ->whereNull('deleted_at')
-            ->where('status', 1)
-            ->whereNotNull('paid_at')
-            ->whereBetween('paid_at', [
-                $startDate,
-                $endDate,
-            ])
+        $revenueDateExpression = $this->revenueMetrics
+            ->recognizedAtExpression();
+
+        $recognizedSubOrders = $this->revenueMetrics
+            ->completedPaidSubOrders(null, $startDate, $endDate)
+            ->selectRaw("DATE({$revenueDateExpression}) as revenue_date")
+            ->selectRaw('COALESCE(SUM(sub_orders.total), 0) as revenue')
+            ->groupBy(DB::raw("DATE({$revenueDateExpression})"))
             ->get();
 
-        foreach ($payments as $payment) {
-            $key = Carbon::parse($payment->paid_at)
+        foreach ($recognizedSubOrders as $row) {
+            $key = Carbon::parse($row->revenue_date)
                 ->format('Y-m-d');
 
             if (isset($series[$key])) {
-                $series[$key]['revenue'] +=
-                    (float) $payment->amount;
+                $series[$key]['revenue'] = (float) $row->revenue;
             }
         }
 

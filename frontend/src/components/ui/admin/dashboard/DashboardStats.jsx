@@ -7,6 +7,7 @@ import {
   PackageCheck,
   ShoppingBag,
   Star,
+  MessageSquare,
   Users,
 } from "lucide-react";
 
@@ -84,6 +85,12 @@ export default function DashboardStats({ cards = {}, loading = false }) {
       value: formatNumber(cards.total_reviews),
       icon: Star,
       iconClass: "bg-amber-100 text-amber-700",
+    },
+    {
+      label: "Tổng bình luận",
+      value: formatNumber(cards.total_comments),
+      icon: MessageSquare,
+      iconClass: "bg-blue-100 text-blue-700",
     },
   ];
 

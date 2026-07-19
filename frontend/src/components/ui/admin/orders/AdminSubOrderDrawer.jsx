@@ -5,6 +5,7 @@ import StatusBadge from "@/components/common/StatusBadge";
 import { formatDate } from "@/utils/date";
 import { getImageUrl } from "@/utils/image";
 import { getAdminProductLink } from "@/utils/adminEntityLink";
+import { formatQuantity } from "@/utils/quantity";
 import {
   formatMoney,
   orderStatusConfig,
@@ -182,7 +183,7 @@ export default function AdminSubOrderDrawer({
                             {formatMoney(item.price)}
                           </td>
                           <td className="px-4 py-4 text-center">
-                            {item.quantity} {item.unit}
+                            {formatQuantity(item.quantity)} {item.unit || "kg"}
                           </td>
                           <td className="px-4 py-4 text-right font-bold">
                             {formatMoney(item.subtotal)}
@@ -196,7 +197,7 @@ export default function AdminSubOrderDrawer({
                                     className="rounded-lg bg-green-50 px-2 py-1 text-xs text-green-800"
                                   >
                                     <strong>{lot.lot_code || `#${lot.harvest_lot_id}`}</strong>
-                                    {` · ${lot.quantity} ${item.unit}`}
+                                    {` · ${formatQuantity(lot.quantity)} ${item.unit || "kg"}`}
                                     {` · HSD ${lot.expiry_date || "—"}`}
                                   </div>
                                 ))}

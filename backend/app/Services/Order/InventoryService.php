@@ -21,7 +21,7 @@ class InventoryService
     public function allocateLots(OrderItem $orderItem): void
     {
         DB::transaction(function () use ($orderItem) {
-            $needQuantity = (float) $orderItem->quantity;
+            $needQuantity = round((float) $orderItem->quantity, 2);
 
             $lots = $this->getAvailableLots($orderItem->product_id);
 
@@ -30,13 +30,13 @@ class InventoryService
                     break;
                 }
 
-                $available = (float) $lot->quantity_remaining;
+                $available = round((float) $lot->quantity_remaining, 2);
 
                 if ($available <= 0) {
                     continue;
                 }
 
-                $take = min($available, $needQuantity);
+                $take = round(min($available, $needQuantity), 2);
 
                 OrderItemLot::create([
                     'order_item_id' => $orderItem->id,
@@ -44,8 +44,8 @@ class InventoryService
                     'quantity' => $take,
                 ]);
 
-                $lot->quantity_sold += $take;
-                $lot->quantity_remaining -= $take;
+                $lot->quantity_sold = round((float) $lot->quantity_sold + $take, 2);
+                $lot->quantity_remaining = round($available - $take, 2);
 
                 if ($lot->expiry_date->lt(today())) {
                     $lot->status = 4;
@@ -57,10 +57,10 @@ class InventoryService
 
                 $lot->save();
 
-                $needQuantity -= $take;
+                $needQuantity = round($needQuantity - $take, 2);
             }
 
-            if ($needQuantity > 0) {
+            if ($needQuantity > 0.001) {
                 throw ValidationException::withMessages([
                     'stock' => [
                         'Sản phẩm "' . $orderItem->product_name . '" không đủ tồn kho.'
@@ -86,8 +86,15 @@ class InventoryService
                     continue;
                 }
 
-                $lot->quantity_remaining += $itemLot->quantity;
-                $lot->quantity_sold -= $itemLot->quantity;
+                $restoredQuantity = round((float) $itemLot->quantity, 2);
+                $lot->quantity_remaining = round(
+                    (float) $lot->quantity_remaining + $restoredQuantity,
+                    2,
+                );
+                $lot->quantity_sold = round(
+                    (float) $lot->quantity_sold - $restoredQuantity,
+                    2,
+                );
 
                 if ($lot->quantity_sold < 0) {
                     $lot->quantity_sold = 0;
@@ -125,7 +132,7 @@ class InventoryService
             ->whereDate('expiry_date', '>=', today())
             ->sum('quantity_remaining');
 
-        if ($available < $quantity) {
+        if ((float) $available + 0.0001 < round($quantity, 2)) {
             $product = Product::find($productId);
 
             throw ValidationException::withMessages([

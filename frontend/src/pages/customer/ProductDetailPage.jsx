@@ -26,6 +26,14 @@ import adminReviewService from "../../services/adminReviewService";
 import { getImageUrl } from "../../utils/image";
 import { useAuthStore } from "../../store/authStore";
 import ProgressiveList from "../../components/common/ProgressiveList";
+import {
+  formatQuantity,
+  isQuantityDraft,
+  MIN_CART_QUANTITY,
+  parseQuantityInput,
+  roundQuantity,
+  stepQuantity,
+} from "../../utils/quantity";
 
 function getPayload(res) {
   return res?.data?.success !== undefined
@@ -136,6 +144,7 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [quantityInput, setQuantityInput] = useState("1");
   const [reviews, setReviews] = useState([]);
   const [reviewsMeta, setReviewsMeta] = useState(DEFAULT_REVIEWS_META);
   const [reviewsLoading, setReviewsLoading] = useState(false);
@@ -161,6 +170,8 @@ export default function ProductDetailPage() {
         const productData = payload?.data || payload;
 
         setProduct(productData);
+        setQuantity(1);
+        setQuantityInput("1");
         setReviewableItem(null);
         setReviewEligibility(DEFAULT_REVIEW_ELIGIBILITY);
 
@@ -363,12 +374,46 @@ export default function ProductDetailPage() {
     product?.farm?.avatar ||
     "";
 
+  const setCommittedQuantity = (nextQuantity) => {
+    const rounded = roundQuantity(nextQuantity);
+    const normalizedMax = roundQuantity(maxQuantity);
+    const next = Math.max(
+      MIN_CART_QUANTITY,
+      Number.isFinite(normalizedMax) && normalizedMax >= MIN_CART_QUANTITY
+        ? Math.min(rounded, normalizedMax)
+        : rounded,
+    );
+
+    setQuantity(next);
+    setQuantityInput(formatQuantity(next));
+
+    return next;
+  };
+
+  const commitQuantityInput = ({ showError = false } = {}) => {
+    const parsed = roundQuantity(parseQuantityInput(quantityInput));
+
+    if (!Number.isFinite(parsed) || parsed < MIN_CART_QUANTITY) {
+      if (showError) toast.error("Khối lượng tối thiểu là 0,1 kg.");
+      return setCommittedQuantity(MIN_CART_QUANTITY);
+    }
+
+    if (Number.isFinite(stockValue) && parsed > stockValue) {
+      if (showError) {
+        toast.error(`Khối lượng vượt tồn kho. Hiện còn ${formatQuantity(stockValue)} kg.`);
+      }
+      return setCommittedQuantity(stockValue);
+    }
+
+    return setCommittedQuantity(parsed);
+  };
+
   const increaseQuantity = () => {
-    setQuantity((prev) => Math.min(prev + 1, maxQuantity));
+    setCommittedQuantity(stepQuantity(quantity, 1, maxQuantity));
   };
 
   const decreaseQuantity = () => {
-    setQuantity((prev) => Math.max(prev - 1, 1));
+    setCommittedQuantity(stepQuantity(quantity, -1, maxQuantity));
   };
 
   const handleAddToCart = async () => {
@@ -388,15 +433,17 @@ export default function ProductDetailPage() {
       return;
     }
 
-    if (Number.isFinite(stockValue) && stockValue <= 0) {
+    if (Number.isFinite(stockValue) && stockValue < MIN_CART_QUANTITY) {
       toast.error("Sản phẩm hiện đã hết hàng.");
       return;
     }
 
+    const requestedQuantity = commitQuantityInput({ showError: true });
+
     setAddingToCart(true);
 
     try {
-      const response = await buyerCartService.addItem(product.id, quantity);
+      const response = await buyerCartService.addItem(product.id, requestedQuantity);
 
       window.dispatchEvent(
         new CustomEvent("cart:updated", { detail: response?.data }),
@@ -695,45 +742,71 @@ export default function ProductDetailPage() {
             )}
 
             <div className="mt-6 border-t border-slate-100 pt-5">
-              <p className="mb-2 font-black text-slate-900">Số lượng</p>
+              <p className="mb-2 font-black text-slate-900">Khối lượng (kg)</p>
 
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white">
                   <button
                     type="button"
                     onClick={decreaseQuantity}
-                    aria-label={`Giảm số lượng ${product.name}`}
-                    title={`Giảm số lượng ${product.name}`}
-                    className="grid w-11 place-items-center text-slate-600 hover:bg-slate-50"
+                    disabled={quantity <= MIN_CART_QUANTITY}
+                    aria-label={`Giảm 0,1 kg ${product.name}`}
+                    title="Giảm 0,1 kg"
+                    className="grid w-11 place-items-center text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Minus size={16} />
                   </button>
 
                   <input
-                    value={quantity}
+                    type="text"
+                    inputMode="decimal"
+                    value={quantityInput}
                     onChange={(e) => {
-                      const value = Number(e.target.value || 1);
-                      setQuantity(Math.max(1, Math.min(value, maxQuantity)));
+                      const value = e.target.value;
+
+                      if (!isQuantityDraft(value)) return;
+
+                      setQuantityInput(value);
+
+                      const parsed = roundQuantity(parseQuantityInput(value));
+                      if (
+                        Number.isFinite(parsed) &&
+                        parsed >= MIN_CART_QUANTITY &&
+                        parsed <= maxQuantity
+                      ) {
+                        setQuantity(parsed);
+                      }
                     }}
-                    className="w-14 border-x border-slate-200 text-center text-sm font-black outline-none"
+                    onBlur={() => commitQuantityInput()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    aria-label={`Khối lượng ${product.name}, đơn vị kg`}
+                    title="Nhập khối lượng, ví dụ 0,5 hoặc 1,25 kg"
+                    className="w-16 border-x border-slate-200 text-center text-sm font-black outline-none"
                   />
 
                   <button
                     type="button"
                     onClick={increaseQuantity}
-                    aria-label={`Tăng số lượng ${product.name}`}
-                    title={`Tăng số lượng ${product.name}`}
-                    className="grid w-11 place-items-center text-slate-600 hover:bg-slate-50"
+                    disabled={quantity >= maxQuantity}
+                    aria-label={`Tăng 0,1 kg ${product.name}`}
+                    title="Tăng 0,1 kg"
+                    className="grid w-11 place-items-center text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Plus size={16} />
                   </button>
                 </div>
 
+                <span className="text-xs font-semibold text-slate-500">
+                  Tối thiểu 0,1 kg · nhập được 0,5 hoặc 1.25
+                </span>
+
                 <p className="text-sm font-semibold text-slate-500">
                   Còn lại:{" "}
                   {stockValue === null || stockValue === undefined
                     ? "Đang cập nhật"
-                    : stockValue}
+                    : `${formatQuantity(stockValue)} kg`}
                 </p>
               </div>
             </div>
@@ -751,7 +824,7 @@ export default function ProductDetailPage() {
                 disabled={
                   addingToCart ||
                   product.accepting_orders === false ||
-                  (Number.isFinite(stockValue) && stockValue <= 0)
+                  (Number.isFinite(stockValue) && stockValue < MIN_CART_QUANTITY)
                 }
                 className="flex min-w-55 items-center justify-center gap-2 rounded-xl bg-green-700 px-6 py-3 text-sm font-black text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
               >

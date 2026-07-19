@@ -38,14 +38,15 @@ class FarmService
                             'farm_id',
                         ])
                         ->where('status', 1)
-                        ->with([
-                            'reviews' => function ($reviewQuery) {
-                                $reviewQuery->where(
-                                    'status',
-                                    1
-                                );
-                            },
-                        ]);
+                        ->withCount([
+                            'visibleRatingReviews as review_count',
+                            'visibleComments as comment_count',
+                            'visibleReviewReplies as reply_comment_count',
+                        ])
+                        ->withAvg(
+                            'visibleRatingReviews as rating_avg',
+                            'rating'
+                        );
                 },
             ])
             ->withCount([
@@ -96,22 +97,29 @@ class FarmService
             function (Farm $farm) {
                 $orderAvailability = $this->sellerPolicyAccessService
                     ->availability($farm);
-                $reviews = $farm->products
-                    ->flatMap(function ($product) {
-                        return $product->reviews;
-                    });
+                $totalReviews = (int) $farm->products->sum(
+                    fn ($product) => (int) ($product->review_count ?? 0)
+                );
+                $totalComments = (int) $farm->products->sum(
+                    fn ($product) => (int) ($product->comment_count ?? 0)
+                        + (int) ($product->reply_comment_count ?? 0)
+                );
+                $ratingTotal = (float) $farm->products->sum(
+                    fn ($product) => (float) ($product->rating_avg ?? 0)
+                        * (int) ($product->review_count ?? 0)
+                );
 
                 $farm->setAttribute(
                     'rating',
                     [
-                        'average' => round(
-                            $reviews->avg('rating') ?? 0,
-                            1
-                        ),
-
-                        'total' => $reviews->count(),
+                        'average' => $totalReviews > 0
+                            ? round($ratingTotal / $totalReviews, 1)
+                            : 0,
+                        'total' => $totalReviews,
                     ]
                 );
+
+                $farm->setAttribute('comment_count', $totalComments);
 
                 $farm->setAttribute(
                     'accepting_orders',
@@ -204,22 +212,12 @@ class FarmService
                 },
             ])
             ->withCount([
-                'reviews as review_count' => function ($reviewQuery) {
-                    $reviewQuery->where(
-                        'status',
-                        1
-                    );
-                },
+                'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withAvg(
-                [
-                    'reviews as rating_avg' => function ($reviewQuery) {
-                        $reviewQuery->where(
-                            'status',
-                            1
-                        );
-                    },
-                ],
+                'visibleRatingReviews as rating_avg',
                 'rating'
             )
             ->withSum(
@@ -335,7 +333,11 @@ class FarmService
                                 $reviewQuery->where(
                                     'status',
                                     1
-                                );
+                                )->with([
+                                    'replies' => function ($replyQuery) {
+                                        $replyQuery->where('status', 1);
+                                    },
+                                ]);
                             },
                         ])
                         ->orderByDesc('created_at');
@@ -769,7 +771,7 @@ class FarmService
                                 ]);
                             },
 
-                            'reviews',
+                            'reviews.replies',
                         ])
                         ->orderByDesc('created_at');
                 },
@@ -1394,22 +1396,12 @@ class FarmService
                 1
             )
             ->withCount([
-                'reviews as review_count' => function ($reviewQuery) {
-                    $reviewQuery->where(
-                        'status',
-                        1
-                    );
-                },
+                'visibleRatingReviews as review_count',
+                'visibleComments as comment_count',
+                'visibleReviewReplies as reply_comment_count',
             ])
             ->withAvg(
-                [
-                    'reviews as rating_avg' => function ($reviewQuery) {
-                        $reviewQuery->where(
-                            'status',
-                            1
-                        );
-                    },
-                ],
+                'visibleRatingReviews as rating_avg',
                 'rating'
             )
             ->with([
@@ -1462,6 +1454,14 @@ class FarmService
 
                 'total' => $totalReviews,
             ]
+        );
+
+        $farm->setAttribute(
+            'comment_count',
+            (int) $products->sum(
+                fn ($product) => (int) ($product->comment_count ?? 0)
+                    + (int) ($product->reply_comment_count ?? 0)
+            )
         );
 
         $certifications = $products
@@ -1538,6 +1538,12 @@ class FarmService
         );
 
         $product->setAttribute(
+            'comment_count',
+            (int) ($product->comment_count ?? 0)
+                + (int) ($product->reply_comment_count ?? 0)
+        );
+
+        $product->setAttribute(
             'sold_quantity',
             $soldQuantity
         );
@@ -1574,21 +1580,38 @@ class FarmService
     private function appendRatingAndCertifications(
         Farm $farm
     ): Farm {
-        $reviews = $farm->products
+        $contents = $farm->products
             ->flatMap(function ($product) {
                 return $product->reviews;
             });
+
+        $ratingReviews = $contents->filter(
+            fn ($review) => $review->rating !== null
+        );
+
+        $directComments = $contents->filter(
+            fn ($review) => trim((string) $review->comment) !== ''
+        );
+
+        $replyComments = $contents
+            ->flatMap(fn ($review) => $review->replies ?? collect())
+            ->filter(fn ($reply) => trim((string) $reply->comment) !== '');
 
         $farm->setAttribute(
             'rating',
             [
                 'average' => round(
-                    $reviews->avg('rating') ?? 0,
+                    $ratingReviews->avg('rating') ?? 0,
                     1
                 ),
 
-                'total' => $reviews->count(),
+                'total' => $ratingReviews->count(),
             ]
+        );
+
+        $farm->setAttribute(
+            'comment_count',
+            $directComments->count() + $replyComments->count()
         );
 
         $farm->products->each(

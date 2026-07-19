@@ -37,6 +37,8 @@ class CartService
      */
     public function addItem(int $userId, int $productId, float $quantity): array
     {
+        $quantity = $this->normalizeQuantity($quantity);
+
         return DB::transaction(function () use ($userId, $productId, $quantity) {
             $cart = Cart::firstOrCreate([
                 'user_id' => $userId,
@@ -53,7 +55,9 @@ class CartService
                 ->first();
 
             if ($cartItem) {
-                $newQuantity = (float) $cartItem->quantity + $quantity;
+                $newQuantity = $this->normalizeQuantity(
+                    (float) $cartItem->quantity + $quantity,
+                );
 
                 $this->validateProductCanBuy($product, $newQuantity);
 
@@ -82,6 +86,8 @@ class CartService
      */
     public function updateItem(int $userId, int $cartItemId, float $quantity): array
     {
+        $quantity = $this->normalizeQuantity($quantity);
+
         return DB::transaction(function () use ($userId, $cartItemId, $quantity) {
             $cart = Cart::where('user_id', $userId)->first();
 
@@ -198,9 +204,9 @@ class CartService
 
         $this->sellerPolicyAccessService->ensureCanReceiveNewOrder($product->farm);
 
-        if ($quantity <= 0) {
+        if ($quantity < 0.1) {
             throw ValidationException::withMessages([
-                'quantity' => ['Số lượng phải lớn hơn 0.'],
+                'quantity' => ['Khối lượng tối thiểu là 0,1 kg.'],
             ]);
         }
 
@@ -210,7 +216,7 @@ class CartService
             ]);
         }
 
-        if ($quantity > (float) $product->stock_quantity) {
+        if ($quantity - (float) $product->stock_quantity > 0.0001) {
             throw ValidationException::withMessages([
                 'quantity' => [
                     'Số lượng vượt quá tồn kho hiện có. Hiện còn '
@@ -218,6 +224,11 @@ class CartService
                 ],
             ]);
         }
+    }
+
+    private function normalizeQuantity(float $quantity): float
+    {
+        return round($quantity, 2);
     }
 
     /**
@@ -228,6 +239,7 @@ class CartService
         $items = [];
         $itemsTotal = 0;
         $itemsCount = 0;
+        $totalQuantity = 0;
 
         foreach ($cart->items as $item) {
             $product = $item->product;
@@ -242,6 +254,7 @@ class CartService
 
             $itemsTotal += $subtotal;
             $itemsCount += 1;
+            $totalQuantity += $quantity;
 
             $orderAvailability = $this->sellerPolicyAccessService
                 ->availability($product->farm);
@@ -285,6 +298,7 @@ class CartService
             'id' => $cart->id,
             'user_id' => $cart->user_id,
             'items_count' => $itemsCount,
+            'total_quantity' => $totalQuantity,
             'items_total' => $itemsTotal,
             'items' => $items,
         ];

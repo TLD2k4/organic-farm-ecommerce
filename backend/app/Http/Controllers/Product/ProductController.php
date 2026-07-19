@@ -350,6 +350,8 @@ class ProductController extends Controller
         }
 
         $reviewCount = (int) ($product->review_count ?? 0);
+        $commentCount = (int) ($product->comment_count ?? 0)
+            + (int) ($product->reply_comment_count ?? 0);
 
         $rating = $reviewCount > 0 && $product->rating_avg !== null
             ? round((float) $product->rating_avg, 1)
@@ -393,7 +395,7 @@ class ProductController extends Controller
             'rating' => $rating,
             'rating_avg' => $rating,
             'review_count' => $reviewCount,
-            'comment_count' => (int) ($product->comment_count ?? 0),
+            'comment_count' => $commentCount,
 
             'order_count' => (int) ($product->order_count ?? 0),
             'sold_quantity' => $soldQuantity,

@@ -5,20 +5,24 @@ namespace App\Services\Dashboard;
 use App\Models\Farm;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Services\Revenue\RevenueMetricsService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class SellerRevenueService
 {
+    public function __construct(
+        private RevenueMetricsService $revenueMetrics,
+    ) {}
+
     public function getReport(User $user, array $filters = []): array
     {
         $farm = $this->getSellerFarm($user);
 
         [$from, $to] = $this->resolveDateRange(
-            $filters['period'] ?? '30d',
+            $filters['period'] ?? 'month',
             $filters['from'] ?? null,
             $filters['to'] ?? null
         );
@@ -39,7 +43,7 @@ class SellerRevenueService
             ],
 
             'filters' => [
-                'period' => $filters['period'] ?? '30d',
+                'period' => $filters['period'] ?? 'month',
                 'from' => $from->format('Y-m-d'),
                 'to' => $to->format('Y-m-d'),
                 'previous_from' => $previousFrom->format('Y-m-d'),
@@ -81,7 +85,7 @@ class SellerRevenueService
                 $from,
                 $to,
                 $limit,
-                $currentSummary['total_revenue']
+                $currentSummary['items_revenue']
             ),
         ];
     }
@@ -103,54 +107,51 @@ class SellerRevenueService
 
     private function getSummary(int $farmId, Carbon $from, Carbon $to): array
     {
-        $baseQuery = $this->baseRevenueQuery($farmId, $from, $to);
+        $revenueTotals = $this->revenueMetrics->totals(
+            $farmId,
+            $from,
+            $to
+        );
 
-        $totalRevenue = (float) ((clone $baseQuery)
-            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as total')
-            ->value('total') ?? 0);
-
-        $completedOrders = (int) (clone $baseQuery)
-            ->distinct('sub_orders.id')
-            ->count('sub_orders.id');
-
-        $soldQuantity = (float) ((clone $baseQuery)
+        $soldQuantity = (float) ($this->baseSoldItemsQuery(
+            $farmId,
+            $from,
+            $to
+        )
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as total')
             ->value('total') ?? 0);
 
-        $avgOrderValue = $completedOrders > 0
-            ? round($totalRevenue / $completedOrders, 2)
-            : 0;
+        $completedOrders = $revenueTotals['completed_sub_orders'];
+        $totalRevenue = $revenueTotals['total_revenue'];
 
         return [
             'total_revenue' => $totalRevenue,
+            'items_revenue' => $revenueTotals['items_revenue'],
+            'shipping_revenue' => $revenueTotals['shipping_revenue'],
             'completed_orders' => $completedOrders,
             'sold_quantity' => $soldQuantity,
-            'avg_order_value' => $avgOrderValue,
+            'avg_order_value' => $completedOrders > 0
+                ? round($totalRevenue / $completedOrders, 2)
+                : 0,
         ];
     }
 
-    private function baseRevenueQuery(int $farmId, Carbon $from, Carbon $to)
+    private function baseSoldItemsQuery(int $farmId, Carbon $from, Carbon $to)
     {
-        $dateColumn = $this->getRevenueDateColumn();
+        $dateExpression = $this->revenueMetrics
+            ->recognizedAtExpression();
 
-        $query = OrderItem::query()
+        return OrderItem::query()
             ->join('products', 'products.id', '=', 'order_items.product_id')
             ->join('sub_orders', 'sub_orders.id', '=', 'order_items.sub_order_id')
-            ->join('orders', 'orders.id', '=', 'sub_orders.order_id')
-            // Dùng farm được chốt trên đơn con để số liệu lịch sử không mất
-            // khi sản phẩm bị ẩn, xóa hoặc thay đổi thông tin sau khi bán.
+            ->whereNull('sub_orders.deleted_at')
             ->where('sub_orders.farm_id', $farmId)
             ->where('sub_orders.status', 3)
-            ->whereBetween($dateColumn, [
+            ->where('sub_orders.payment_status', 1)
+            ->whereBetween(DB::raw($dateExpression), [
                 $from->copy()->startOfDay(),
                 $to->copy()->endOfDay(),
             ]);
-
-        if (Schema::hasColumn('sub_orders', 'payment_status')) {
-            $query->whereIn('sub_orders.payment_status', [0, 1]);
-        }
-
-        return $query;
     }
 
     private function getRevenueChart(
@@ -158,26 +159,51 @@ class SellerRevenueService
         Carbon $from,
         Carbon $to,
         string $groupBy
-    )
-    {
-        $dateColumn = $this->getRevenueDateColumn();
+    ) {
+        $dateExpression = $this->revenueMetrics
+            ->recognizedAtExpression();
+
         $dateSelect = match ($groupBy) {
-            'month' => "DATE_FORMAT({$dateColumn}, '%Y-%m-01')",
-            'week' => "DATE_SUB(DATE({$dateColumn}), INTERVAL WEEKDAY({$dateColumn}) DAY)",
-            default => "DATE({$dateColumn})",
+            'month' => "DATE_FORMAT({$dateExpression}, '%Y-%m-01')",
+            'week' => "DATE_SUB(DATE({$dateExpression}), INTERVAL WEEKDAY({$dateExpression}) DAY)",
+            default => "DATE({$dateExpression})",
         };
 
-        $rows = $this->baseRevenueQuery($farmId, $from, $to)
+        $revenueRows = $this->revenueMetrics
+            ->completedPaidSubOrders($farmId, $from, $to)
             ->selectRaw("{$dateSelect} as period_date")
-            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as revenue')
-            ->selectRaw('COUNT(DISTINCT sub_orders.id) as order_count')
-            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as sold_quantity')
+            ->selectRaw('COALESCE(SUM(sub_orders.total), 0) as revenue')
+            ->selectRaw('COUNT(sub_orders.id) as order_count')
             ->groupBy(DB::raw($dateSelect))
             ->orderBy('period_date')
             ->get()
             ->keyBy('period_date');
 
+        $soldRows = $this->baseSoldItemsQuery($farmId, $from, $to)
+            ->selectRaw("{$dateSelect} as period_date")
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as sold_quantity')
+            ->groupBy(DB::raw($dateSelect))
+            ->get()
+            ->keyBy('period_date');
+
         $result = collect();
+
+        $pushPeriod = function (Carbon $cursor, string $key, string $label) use (
+            $result,
+            $revenueRows,
+            $soldRows
+        ): void {
+            $revenueRow = $revenueRows->get($key);
+            $soldRow = $soldRows->get($key);
+
+            $result->push([
+                'date' => $label,
+                'raw_date' => $key,
+                'revenue' => (float) ($revenueRow?->revenue ?? 0),
+                'order_count' => (int) ($revenueRow?->order_count ?? 0),
+                'sold_quantity' => (float) ($soldRow?->sold_quantity ?? 0),
+            ]);
+        };
 
         if ($groupBy === 'month') {
             $cursor = $from->copy()->startOfMonth();
@@ -185,16 +211,7 @@ class SellerRevenueService
 
             while ($cursor->lte($end)) {
                 $key = $cursor->format('Y-m-01');
-                $row = $rows->get($key);
-
-                $result->push([
-                    'date' => $cursor->format('m/Y'),
-                    'raw_date' => $key,
-                    'revenue' => (float) ($row?->revenue ?? 0),
-                    'order_count' => (int) ($row?->order_count ?? 0),
-                    'sold_quantity' => (float) ($row?->sold_quantity ?? 0),
-                ]);
-
+                $pushPeriod($cursor, $key, $cursor->format('m/Y'));
                 $cursor->addMonth();
             }
 
@@ -207,22 +224,17 @@ class SellerRevenueService
 
             while ($cursor->lte($end)) {
                 $key = $cursor->format('Y-m-d');
-                $row = $rows->get($key);
                 $weekEnd = $cursor->copy()->endOfWeek(Carbon::SUNDAY);
 
                 if ($weekEnd->gt($to)) {
                     $weekEnd = $to->copy();
                 }
 
-                $result->push([
-                    'date' => $cursor->format('d/m')
-                        . '–' . $weekEnd->format('d/m'),
-                    'raw_date' => $key,
-                    'revenue' => (float) ($row?->revenue ?? 0),
-                    'order_count' => (int) ($row?->order_count ?? 0),
-                    'sold_quantity' => (float) ($row?->sold_quantity ?? 0),
-                ]);
-
+                $pushPeriod(
+                    $cursor,
+                    $key,
+                    $cursor->format('d/m') . '–' . $weekEnd->format('d/m')
+                );
                 $cursor->addWeek();
             }
 
@@ -231,15 +243,7 @@ class SellerRevenueService
 
         foreach (CarbonPeriod::create($from, $to) as $date) {
             $key = $date->format('Y-m-d');
-            $row = $rows->get($key);
-
-            $result->push([
-                'date' => $date->format('d/m'),
-                'raw_date' => $key,
-                'revenue' => (float) ($row?->revenue ?? 0),
-                'order_count' => (int) ($row?->order_count ?? 0),
-                'sold_quantity' => (float) ($row?->sold_quantity ?? 0),
-            ]);
+            $pushPeriod($date, $key, $date->format('d/m'));
         }
 
         return $result->values();
@@ -267,7 +271,7 @@ class SellerRevenueService
         int $limit,
         float $totalRevenue
     ) {
-        return $this->baseRevenueQuery($farmId, $from, $to)
+        return $this->baseSoldItemsQuery($farmId, $from, $to)
             ->select([
                 'products.id',
                 'products.name',
@@ -275,7 +279,7 @@ class SellerRevenueService
                 'products.unit',
             ])
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as sold_quantity')
-            ->selectRaw('COALESCE(SUM(order_items.quantity * order_items.price), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(order_items.subtotal), 0) as revenue')
             ->selectRaw('COUNT(DISTINCT sub_orders.id) as order_count')
             ->groupBy(
                 'products.id',
@@ -305,19 +309,6 @@ class SellerRevenueService
                 ];
             })
             ->values();
-    }
-
-    private function getRevenueDateColumn(): string
-    {
-        if (Schema::hasColumn('sub_orders', 'completed_at')) {
-            return 'sub_orders.completed_at';
-        }
-
-        if (Schema::hasColumn('sub_orders', 'delivered_at')) {
-            return 'sub_orders.delivered_at';
-        }
-
-        return 'sub_orders.updated_at';
     }
 
     private function resolvePreviousRange(Carbon $from, Carbon $to): array

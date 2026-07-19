@@ -300,6 +300,15 @@ class BuyerOrderService
     {
         $query = Order::where('user_id', $userId);
 
+        $totalSpent = (float) DB::table('sub_orders')
+            ->join('orders', 'orders.id', '=', 'sub_orders.order_id')
+            ->whereNull('sub_orders.deleted_at')
+            ->whereNull('orders.deleted_at')
+            ->where('orders.user_id', $userId)
+            ->where('sub_orders.status', 3)
+            ->where('sub_orders.payment_status', 1)
+            ->sum('sub_orders.total');
+
         return [
             'total_orders' => (clone $query)->count(),
 
@@ -323,9 +332,7 @@ class BuyerOrderService
                 ->where('status', 4)
                 ->count(),
 
-            'total_spent' => (clone $query)
-                ->where('status', 3)
-                ->sum('grand_total'),
+            'total_spent' => $totalSpent,
         ];
     }
 

@@ -9,6 +9,7 @@ import {
   paymentStatusConfig,
 } from "@/utils/adminOrder";
 import { highlight } from "@/utils/highlight";
+import { formatKg } from "@/utils/quantity";
 
 export default function AdminOrdersTable({ orders, loading, keyword, onView }) {
   if (loading) {
@@ -76,9 +77,9 @@ export default function AdminOrdersTable({ orders, loading, keyword, onView }) {
                 </td>
 
                 <td className="px-4 py-4 text-center">
-                  <p className="font-bold">{order.items_count}</p>
+                  <p className="font-bold">{order.items_count} loại</p>
                   <p className="text-xs text-slate-500">
-                    {order.items_quantity} sản lượng
+                    {formatKg(order.items_quantity)}
                   </p>
                 </td>
 
