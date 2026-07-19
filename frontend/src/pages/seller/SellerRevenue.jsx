@@ -30,13 +30,15 @@ import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 const DEFAULT_DATA = {
   farm: null,
   filters: {
-    period: "30d",
+    period: "month",
     from: "",
     to: "",
     group_by: "day",
   },
   summary: {
     total_revenue: 0,
+    items_revenue: 0,
+    shipping_revenue: 0,
     completed_orders: 0,
     sold_quantity: 0,
     avg_order_value: 0,
@@ -142,7 +144,7 @@ export default function SellerRevenue() {
   const [chartMetric, setChartMetric] = useState("revenue");
 
   const [filters, setFilters] = useState({
-    period: "30d",
+    period: "month",
     from: "",
     to: "",
   });
@@ -358,7 +360,7 @@ export default function SellerRevenue() {
           icon={DollarSign}
           label="Tổng doanh thu"
           value={formatCurrency(summary.total_revenue)}
-          subText="Doanh thu sản phẩm, không gồm phí vận chuyển"
+          subText={`Tiền hàng ${formatCurrency(summary.items_revenue)} + phí vận chuyển ${formatCurrency(summary.shipping_revenue)}`}
         />
 
         <StatCard

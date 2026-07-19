@@ -16,7 +16,9 @@ return new class extends Migration
 
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('order_item_id')->nullable()->unique()->constrained('order_items')->cascadeOnDelete();
-            $table->foreignId('product_id')->nullable()->constrained('products')->nullOnDelete();
+            // Mọi đánh giá hoặc bình luận đều phải thuộc về một sản phẩm.
+            // Sản phẩm có lịch sử đánh giá chỉ được xóa mềm, không được xóa cứng.
+            $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
 
             $table->tinyInteger('rating')->nullable()->check('rating between 1 and 5');
             $table->text('comment')->nullable();

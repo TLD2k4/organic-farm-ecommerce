@@ -1,0 +1,37 @@
+{
+  "name": "Organic Farm - Nông sản sạch cho mọi nhà",
+  "short_name": "Organic Farm",
+  "description": "Nông sản sạch, có nguồn gốc rõ ràng từ các nông trại uy tín.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7fbf5",
+  "theme_color": "#5fa846",
+  "icons": [
+    {
+      "src": "/favicon-48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/organic-farm-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/organic-farm-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

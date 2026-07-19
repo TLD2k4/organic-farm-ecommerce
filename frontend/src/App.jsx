@@ -13,6 +13,7 @@ import { applyPreferences, getPreferences } from "./utils/preferences";
 import NotificationCenter from "./components/common/NotificationCenter";
 import ThemeToggle from "./components/common/ThemeToggle";
 import SellerPolicyGate from "./components/farm/SellerPolicyGate";
+import SeoManager from "./components/common/SeoManager";
 
 function App() {
   const token = useAuthStore((state) => state.token);
@@ -41,6 +42,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <SeoManager />
       <AppRoutes />
       <ThemeToggle />
       <NotificationCenter />

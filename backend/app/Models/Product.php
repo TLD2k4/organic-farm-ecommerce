@@ -174,7 +174,34 @@ class Product extends Model
     {
         return $this->reviews()
             ->where('reviews.status', 1)
-            ->whereNull('reviews.order_item_id')
-            ->whereNull('reviews.rating');
+            ->whereNotNull('reviews.comment')
+            ->whereRaw("TRIM(reviews.comment) <> ''")
+            ->where(function ($query) {
+                $query->whereNull('order_item_id')
+                    ->orWhereHas('orderItem.subOrder', function ($q) {
+                        $q->where('status', 3)
+                            ->where('payment_status', 1)
+                            ->whereNotNull('completed_at')
+                            ->whereHas('order', function ($orderQuery) {
+                                $orderQuery->where('status', 3);
+                            });
+                    });
+            });
+    }
+
+    public function visibleReviewReplies()
+    {
+        return $this->hasManyThrough(
+            ReviewReply::class,
+            Review::class,
+            'product_id',
+            'review_id',
+            'id',
+            'id'
+        )
+            ->where('reviews.status', 1)
+            ->where('review_replies.status', 1)
+            ->whereNotNull('review_replies.comment')
+            ->whereRaw("TRIM(review_replies.comment) <> ''");
     }
 }

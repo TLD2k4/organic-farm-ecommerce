@@ -79,7 +79,7 @@ export default function ProfileSidebar() {
   ];
 
   return (
-    <div className="profile-sidebar h-fit rounded-2xl bg-white p-5 shadow-sm">
+    <div className="profile-sidebar h-fit w-full min-w-0 rounded-2xl bg-white p-4 shadow-sm sm:p-5">
       <div className="border-b pb-5 text-center">
         <img
           src={

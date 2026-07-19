@@ -2,11 +2,16 @@
 
 namespace App\Services\Report;
 
+use App\Services\Revenue\RevenueMetricsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class AdminReportService
 {
+    public function __construct(
+        private RevenueMetricsService $revenueMetrics,
+    ) {}
+
     public function getReport(array $filters): array
     {
         $startDate = !empty($filters['from_date'])
@@ -95,19 +100,14 @@ class AdminReportService
             ->where('status', 4)
             ->count();
 
-        $paymentQuery = DB::table('payments')
-            ->whereNull('deleted_at')
-            ->where('status', 1)
-            ->whereNotNull('paid_at')
-            ->whereBetween('paid_at', [
-                $startDate,
-                $endDate,
-            ]);
+        $revenueTotals = $this->revenueMetrics->totals(
+            null,
+            $startDate,
+            $endDate
+        );
 
-        $paidOrders = (clone $paymentQuery)->count();
-
-        $revenue = (float) (clone $paymentQuery)
-            ->sum('amount');
+        $paidOrders = $revenueTotals['completed_sub_orders'];
+        $revenue = $revenueTotals['total_revenue'];
 
         $newUsers = DB::table('users')
             ->whereNull('deleted_at')
@@ -117,6 +117,9 @@ class AdminReportService
             ])
             ->count();
 
+        $revenueDateExpression = $this->revenueMetrics
+            ->recognizedAtExpression('so');
+
         $totalItemsSold = (float) DB::table('order_items as oi')
             ->join(
                 'sub_orders as so',
@@ -124,23 +127,10 @@ class AdminReportService
                 '=',
                 'oi.sub_order_id'
             )
-            ->join(
-                'orders as o',
-                'o.id',
-                '=',
-                'so.order_id'
-            )
-            ->join(
-                'payments as pay',
-                'pay.order_id',
-                '=',
-                'o.id'
-            )
             ->whereNull('so.deleted_at')
-            ->whereNull('o.deleted_at')
-            ->whereNull('pay.deleted_at')
-            ->where('pay.status', 1)
-            ->whereBetween('pay.paid_at', [
+            ->where('so.status', 3)
+            ->where('so.payment_status', 1)
+            ->whereBetween(DB::raw($revenueDateExpression), [
                 $startDate,
                 $endDate,
             ])
@@ -148,6 +138,9 @@ class AdminReportService
 
         return [
             'revenue' => $revenue,
+            'items_revenue' => $revenueTotals['items_revenue'],
+            'shipping_revenue' => $revenueTotals['shipping_revenue'],
+            'completed_paid_sub_orders' => $revenueTotals['completed_sub_orders'],
 
             'total_orders' => $totalOrders,
 
@@ -195,37 +188,29 @@ class AdminReportService
         );
 
         /*
-         * Revenue và số đơn đã thanh toán.
+         * Doanh thu được ghi nhận theo ngày đơn con hoàn tất và đã thanh
+         * toán. Số đơn ghi nhận được tính theo đơn con để khớp split order.
          */
-        $payments = DB::table('payments')
+        $recognizedAtExpression = $this->revenueMetrics
+            ->recognizedAtExpression();
+
+        $recognizedSubOrders = $this->revenueMetrics
+            ->completedPaidSubOrders(null, $startDate, $endDate)
             ->select([
-                'paid_at',
-                'amount',
+                'sub_orders.total',
             ])
-            ->whereNull('deleted_at')
-            ->where('status', 1)
-            ->whereNotNull('paid_at')
-            ->whereBetween('paid_at', [
-                $startDate,
-                $endDate,
-            ])
+            ->selectRaw("{$recognizedAtExpression} as recognized_at")
             ->get();
 
-        foreach ($payments as $payment) {
-            $date = Carbon::parse($payment->paid_at);
-
-            $key = $this->periodKey(
-                $date,
-                $groupBy,
-            );
+        foreach ($recognizedSubOrders as $subOrder) {
+            $date = Carbon::parse($subOrder->recognized_at);
+            $key = $this->periodKey($date, $groupBy);
 
             if (!isset($series[$key])) {
                 continue;
             }
 
-            $series[$key]['revenue'] +=
-                (float) $payment->amount;
-
+            $series[$key]['revenue'] += (float) $subOrder->total;
             $series[$key]['paid_orders']++;
         }
 
@@ -325,6 +310,9 @@ class AdminReportService
         Carbon $endDate,
         int $limit
     ): array {
+        $revenueDateExpression = $this->revenueMetrics
+            ->recognizedAtExpression('so');
+
         $validCertificates = DB::table('product_certificates')
             ->select('product_id')
             ->whereNull('deleted_at')
@@ -364,17 +352,11 @@ class AdminReportService
                 '=',
                 'so.order_id'
             )
-            ->join(
-                'payments as pay',
-                'pay.order_id',
-                '=',
-                'o.id'
-            )
             ->whereNull('so.deleted_at')
             ->whereNull('o.deleted_at')
-            ->whereNull('pay.deleted_at')
-            ->where('pay.status', 1)
-            ->whereBetween('pay.paid_at', [
+            ->where('so.status', 3)
+            ->where('so.payment_status', 1)
+            ->whereBetween(DB::raw($revenueDateExpression), [
                 $startDate,
                 $endDate,
             ])
@@ -452,6 +434,9 @@ class AdminReportService
         Carbon $endDate,
         int $limit
     ): array {
+        $revenueDateExpression = $this->revenueMetrics
+            ->recognizedAtExpression('so');
+
         return DB::table('order_items as oi')
             ->join(
                 'products as p',
@@ -477,17 +462,11 @@ class AdminReportService
                 '=',
                 'so.order_id'
             )
-            ->join(
-                'payments as pay',
-                'pay.order_id',
-                '=',
-                'o.id'
-            )
             ->whereNull('so.deleted_at')
             ->whereNull('o.deleted_at')
-            ->whereNull('pay.deleted_at')
-            ->where('pay.status', 1)
-            ->whereBetween('pay.paid_at', [
+            ->where('so.status', 3)
+            ->where('so.payment_status', 1)
+            ->whereBetween(DB::raw($revenueDateExpression), [
                 $startDate,
                 $endDate,
             ])
@@ -535,6 +514,9 @@ class AdminReportService
         Carbon $endDate,
         int $limit
     ): array {
+        $revenueDateExpression = $this->revenueMetrics
+            ->recognizedAtExpression('so');
+
         return DB::table('sub_orders as so')
             ->join(
                 'farms as f',
@@ -542,16 +524,10 @@ class AdminReportService
                 '=',
                 'so.farm_id'
             )
-            ->join(
-                'payments as pay',
-                'pay.order_id',
-                '=',
-                'so.order_id'
-            )
             ->whereNull('so.deleted_at')
-            ->whereNull('pay.deleted_at')
-            ->where('pay.status', 1)
-            ->whereBetween('pay.paid_at', [
+            ->where('so.status', 3)
+            ->where('so.payment_status', 1)
+            ->whereBetween(DB::raw($revenueDateExpression), [
                 $startDate,
                 $endDate,
             ])

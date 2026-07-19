@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\SubOrder;
 use App\Models\User;
+use App\Services\Revenue\RevenueMetricsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -16,6 +17,7 @@ class AdminOrderService
 {
     public function __construct(
         private InventoryService $inventoryService,
+        private RevenueMetricsService $revenueMetrics,
     ) {}
 
     public function getOptions(): array
@@ -370,6 +372,7 @@ class AdminOrderService
     private function getOrderStats(): array
     {
         $query = Order::query();
+        $revenueTotals = $this->revenueMetrics->totals();
 
         return [
             'total' => (clone $query)->count(),
@@ -379,15 +382,16 @@ class AdminOrderService
             'completed' => (clone $query)->where('status', 3)->count(),
             'cancelled' => (clone $query)->where('status', 4)->count(),
             'today' => (clone $query)->whereDate('created_at', today())->count(),
-            'completed_revenue' => (float) (clone $query)
-                ->where('status', 3)
-                ->sum('grand_total'),
+            'completed_revenue' => $revenueTotals['total_revenue'],
+            'completed_items_revenue' => $revenueTotals['items_revenue'],
+            'completed_shipping_revenue' => $revenueTotals['shipping_revenue'],
         ];
     }
 
     private function getSubOrderStats(): array
     {
         $query = SubOrder::query();
+        $revenueTotals = $this->revenueMetrics->totals();
 
         return [
             'total' => (clone $query)->count(),
@@ -397,9 +401,9 @@ class AdminOrderService
             'completed' => (clone $query)->where('status', 3)->count(),
             'cancelled' => (clone $query)->where('status', 4)->count(),
             'today' => (clone $query)->whereDate('created_at', today())->count(),
-            'completed_revenue' => (float) (clone $query)
-                ->where('status', 3)
-                ->sum('total'),
+            'completed_revenue' => $revenueTotals['total_revenue'],
+            'completed_items_revenue' => $revenueTotals['items_revenue'],
+            'completed_shipping_revenue' => $revenueTotals['shipping_revenue'],
         ];
     }
 

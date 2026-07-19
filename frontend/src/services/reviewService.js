@@ -32,7 +32,7 @@ const reviewService = {
   },
 
   updateReview: async (id, payload) => {
-    const response = await axiosClient.put(`/reviews/${id}`, payload);
+    const response = await axiosClient.patch(`/reviews/${id}`, payload);
     return unwrapResponse(response);
   },
 
@@ -41,7 +41,18 @@ const reviewService = {
     return unwrapResponse(response);
   },
 
-  
+  updateReply: async (id, comment) => {
+    const response = await axiosClient.patch(`/review-replies/${id}`, {
+      comment,
+    });
+    return unwrapResponse(response);
+  },
+
+  deleteReply: async (id) => {
+    const response = await axiosClient.delete(`/review-replies/${id}`);
+    return unwrapResponse(response);
+  },
+
 };
 
 export default reviewService;

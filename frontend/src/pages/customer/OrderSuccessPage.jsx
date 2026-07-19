@@ -23,6 +23,7 @@ import {
 
 import buyerOrderService from "../../services/buyerOrderService";
 import { getPublicFarmPath } from "../../utils/entityLink";
+import { formatKg } from "../../utils/quantity";
 
 export default function OrderSuccessPage() {
   const [searchParams] = useSearchParams();
@@ -124,6 +125,8 @@ export default function OrderSuccessPage() {
       : "Chưa xác định";
 
   const itemsTotal = Number(order?.items_total ?? 0);
+  const itemTypes = Number(order?.items_count ?? 0);
+  const totalQuantity = Number(order?.items_quantity ?? 0);
   const shippingFee = Number(order?.shipping_fee ?? 0);
   const grandTotal = Number(order?.grand_total ?? 0);
 
@@ -212,6 +215,8 @@ export default function OrderSuccessPage() {
                 <div className="lg:col-span-4">
                   <OrderSummaryCard
                     loading={loading}
+                    itemTypes={itemTypes}
+                    totalQuantity={totalQuantity}
                     itemsTotal={itemsTotal}
                     shippingFee={shippingFee}
                     grandTotal={grandTotal}
@@ -554,7 +559,14 @@ function SubOrderProgress({ subOrders }) {
   );
 }
 
-function OrderSummaryCard({ loading, itemsTotal, shippingFee, grandTotal }) {
+function OrderSummaryCard({
+  loading,
+  itemTypes,
+  totalQuantity,
+  itemsTotal,
+  shippingFee,
+  grandTotal,
+}) {
   return (
     <div className="h-full rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
       <div className="mb-5 flex items-center gap-2">
@@ -566,6 +578,16 @@ function OrderSummaryCard({ loading, itemsTotal, shippingFee, grandTotal }) {
       </div>
 
       <div className="space-y-3">
+        <MoneyRow
+          label="Số loại sản phẩm"
+          value={loading ? "Đang tải..." : `${itemTypes} loại`}
+        />
+
+        <MoneyRow
+          label="Tổng khối lượng"
+          value={loading ? "Đang tải..." : formatKg(totalQuantity)}
+        />
+
         <MoneyRow
           label="Tạm tính"
           value={loading ? "Đang tải..." : formatMoney(itemsTotal)}

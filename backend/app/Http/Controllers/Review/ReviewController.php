@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Review\StoreReviewRequest;
 use App\Http\Requests\Review\UpdateReviewRequest;
 use App\Models\Review;
+use App\Models\ReviewReply;
 use App\Services\Review\ReviewService;
 use Illuminate\Http\Request;
 use App\Notifications\MarketplaceNotification;
@@ -18,13 +19,14 @@ class ReviewController extends Controller
 
     public function myReviews(Request $request)
     {
-        $reviews = $this->reviewService->getMyReviews($request->user());
+        $result = $this->reviewService->getMyReviews($request->user());
 
         return response()->json([
             'success' => true,
             'message' => 'Lấy danh sách đánh giá thành công.',
             'data' => [
-                'reviews' => $reviews,
+                'reviews' => $result['reviews'],
+                'replies' => $result['replies'],
             ],
         ]);
     }
@@ -137,6 +139,40 @@ class ReviewController extends Controller
             'message' => $isRatingReview
                 ? 'Xóa đánh giá thành công.'
                 : 'Xóa bình luận thành công.',
+        ]);
+    }
+
+    public function updateReply(Request $request, ReviewReply $reply)
+    {
+        $validated = $request->validate([
+            'comment' => ['required', 'string', 'max:2000'],
+        ], [
+            'comment.required' => 'Vui lòng nhập nội dung phản hồi.',
+            'comment.max' => 'Nội dung phản hồi tối đa 2000 ký tự.',
+        ]);
+
+        $data = $this->reviewService->updateReply(
+            $request->user(),
+            $reply,
+            $validated['comment']
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cập nhật phản hồi thành công.',
+            'data' => [
+                'reply' => $data,
+            ],
+        ]);
+    }
+
+    public function destroyReply(Request $request, ReviewReply $reply)
+    {
+        $this->reviewService->deleteReply($request->user(), $reply);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Xóa phản hồi thành công.',
         ]);
     }
 }

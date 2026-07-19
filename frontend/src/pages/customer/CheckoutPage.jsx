@@ -19,6 +19,7 @@ import buyerCartService from "../../services/buyerCartService";
 import checkoutService from "../../services/checkoutService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 import { getApiErrorMessage } from "../../utils/apiError";
+import { formatKg, formatQuantity, sumItemQuantity } from "../../utils/quantity";
 
 const DEFAULT_SHIPPING_FEE = 30000;
 
@@ -497,7 +498,7 @@ function SplitOrderPreview({ groups }) {
                 </div>
 
                 <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">
-                  {group.items.length} loại sản phẩm
+                  {group.items.length} loại · {formatKg(sumItemQuantity(group.items))}
                 </span>
               </div>
 
@@ -575,7 +576,7 @@ function SplitOrderPreview({ groups }) {
                       </span>
 
                       <span className="font-bold text-slate-700">
-                        x {item.quantity}
+                        {formatQuantity(item.quantity)} {item.unit || "kg"}
                       </span>
                     </div>
 
@@ -632,13 +633,11 @@ function CheckoutSummary({
   unavailable,
   onCheckout,
 }) {
-  const totalProducts = groups.reduce((total, group) => {
-    return (
-      total +
-      group.items.reduce((sum, item) => {
-        return sum + Number(item.quantity || 0);
-      }, 0)
-    );
+  const totalTypes = groups.reduce((total, group) => {
+    return total + group.items.length;
+  }, 0);
+  const totalQuantity = groups.reduce((total, group) => {
+    return total + sumItemQuantity(group.items);
   }, 0);
 
   return (
@@ -654,10 +653,9 @@ function CheckoutSummary({
       <div className="mt-5 space-y-3">
         <SummaryRow label="Số đơn con" value={`${groups.length} đơn`} />
 
-        <SummaryRow
-          label="Tổng số sản phẩm"
-          value={`${totalProducts} sản phẩm`}
-        />
+        <SummaryRow label="Số loại sản phẩm" value={`${totalTypes} loại`} />
+
+        <SummaryRow label="Tổng khối lượng" value={formatKg(totalQuantity)} />
 
         <SummaryRow label="Tiền hàng" value={formatMoney(itemsTotal)} />
 

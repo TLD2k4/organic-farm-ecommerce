@@ -5,6 +5,7 @@ namespace App\Services\Review;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Farm;
 use App\Models\Review;
+use App\Models\ReviewReply;
 use App\Models\User;
 use App\Models\Product;
 
@@ -36,9 +37,19 @@ class SellerReviewService
         }
 
         if (($filters['type'] ?? '') === 'rating_review') {
-            $query->whereNotNull('order_item_id')->whereNotNull('rating');
+            $query->whereNotNull('rating');
         } elseif (($filters['type'] ?? '') === 'comment') {
-            $query->whereNull('order_item_id')->whereNull('rating');
+            $query->where(function ($contentQuery) {
+                $contentQuery
+                    ->where(function ($commentQuery) {
+                        $commentQuery->whereNotNull('comment')
+                            ->whereRaw("TRIM(comment) <> ''");
+                    })
+                    ->orWhereHas('replies', function ($replyQuery) {
+                        $replyQuery->whereNotNull('comment')
+                            ->whereRaw("TRIM(comment) <> ''");
+                    });
+            });
         }
 
         if (($filters['status'] ?? '') !== null && ($filters['status'] ?? '') !== '') {
@@ -51,6 +62,9 @@ class SellerReviewService
 
             $query->where(function ($q) use ($keyword, $productId) {
                 $q->where('comment', 'like', "%{$keyword}%")
+                    ->orWhereHas('replies', function ($replyQuery) use ($keyword) {
+                        $replyQuery->where('comment', 'like', "%{$keyword}%");
+                    })
                     ->orWhereHas('orderItem.product', function ($productQ) use ($keyword, $productId) {
                         $productQ->where(function ($nested) use ($keyword, $productId) {
                             $nested->where('products.name', 'like', "%{$keyword}%")
@@ -226,6 +240,20 @@ class SellerReviewService
             });
     }
 
+    private function baseSellerReplyQuery(int $farmId)
+    {
+        return ReviewReply::query()
+            ->whereHas('review', function ($reviewQuery) use ($farmId) {
+                $reviewQuery->where(function ($query) use ($farmId) {
+                    $query->whereHas('product', function ($q) use ($farmId) {
+                        $q->where('farm_id', $farmId);
+                    })->orWhereHas('orderItem.product', function ($q) use ($farmId) {
+                        $q->where('farm_id', $farmId);
+                    });
+                });
+            });
+    }
+
     private function ensureReviewBelongsToFarm(Review $review, int $farmId): void
     {
         $review->loadMissing(['product', 'orderItem.product']);
@@ -239,27 +267,46 @@ class SellerReviewService
 
     private function getStats(int $farmId): array
     {
-        $baseQuery = $this->baseSellerReviewQuery($farmId)
-            ->whereNotNull('order_item_id')
+        // Đánh giá = review có rating.
+        $ratingReviews = $this->baseSellerReviewQuery($farmId)
             ->whereNotNull('rating');
 
-        $ratingCounts = (clone $baseQuery)
+        $ratingCounts = (clone $ratingReviews)
             ->selectRaw('rating, COUNT(*) as total')
             ->groupBy('rating')
             ->pluck('total', 'rating');
 
-        $comments = $this->baseSellerReviewQuery($farmId)
-            ->whereNull('order_item_id')
-            ->whereNull('rating');
+        // Bình luận gốc = reviews.comment có nội dung, kể cả review có sao.
+        $directComments = $this->baseSellerReviewQuery($farmId)
+            ->whereNotNull('comment')
+            ->whereRaw("TRIM(comment) <> ''");
+
+        // Mọi review_replies.comment thuộc sản phẩm của farm cũng là bình luận.
+        $replyComments = $this->baseSellerReplyQuery($farmId)
+            ->whereNotNull('comment')
+            ->whereRaw("TRIM(comment) <> ''");
+
+        $totalComments = (clone $directComments)->count()
+            + (clone $replyComments)->count();
+
+        $visibleComments = (clone $directComments)
+            ->where('status', 1)
+            ->count()
+            + (clone $replyComments)
+                ->where('status', 1)
+                ->whereHas('review', function ($reviewQuery) {
+                    $reviewQuery->where('status', 1);
+                })
+                ->count();
 
         return [
-            'total_reviews' => (clone $baseQuery)->count(),
-            'visible_reviews' => (clone $baseQuery)->where('status', 1)->count(),
-            'hidden_reviews' => (clone $baseQuery)->where('status', 0)->count(),
-            'avg_rating' => round((float) (clone $baseQuery)->avg('rating'), 1),
-            'total_comments' => (clone $comments)->count(),
-            'visible_comments' => (clone $comments)->where('status', 1)->count(),
-            'hidden_comments' => (clone $comments)->where('status', 0)->count(),
+            'total_reviews' => (clone $ratingReviews)->count(),
+            'visible_reviews' => (clone $ratingReviews)->where('status', 1)->count(),
+            'hidden_reviews' => (clone $ratingReviews)->where('status', 0)->count(),
+            'avg_rating' => round((float) (clone $ratingReviews)->avg('rating'), 1),
+            'total_comments' => $totalComments,
+            'visible_comments' => $visibleComments,
+            'hidden_comments' => max(0, $totalComments - $visibleComments),
 
             'rating_counts' => [
                 5 => (int) ($ratingCounts[5] ?? 0),
@@ -275,7 +322,8 @@ class SellerReviewService
     {
         $product = $review->product ?: $review->orderItem?->product;
         $author = $review->user ?: $review->orderItem?->subOrder?->order?->user;
-        $isRatingReview = $review->order_item_id !== null && $review->rating !== null;
+        $isRatingReview = $review->rating !== null;
+        $hasComment = trim((string) $review->comment) !== '';
         $isAdminComment = !$isRatingReview && $author?->hasRole('admin');
         $isSellerComment = !$isRatingReview && !$isAdminComment && $author?->hasRole('seller');
         $isBuyerComment = !$isRatingReview && !$isAdminComment && !$isSellerComment;
@@ -286,7 +334,9 @@ class SellerReviewService
             default => 'buyer_comment',
         };
         $entryTypeLabel = match ($entryType) {
-            'rating_review' => 'Đánh giá người mua',
+            'rating_review' => $hasComment
+                ? 'Đánh giá kèm bình luận'
+                : 'Đánh giá người mua',
             'admin_comment' => 'Bình luận quản trị',
             'seller_comment' => 'Bình luận người bán',
             default => 'Bình luận người mua',

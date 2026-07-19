@@ -22,6 +22,11 @@ import {
   getPublicProductPath,
 } from "../../../../utils/entityLink";
 import ResponsiveSelect from "../../../common/ResponsiveSelect";
+import {
+  formatKg,
+  formatQuantity,
+  sumItemQuantity,
+} from "../../../../utils/quantity";
 
 const ORDER_TABS = [
   { label: "Tất cả", value: "" },
@@ -143,7 +148,7 @@ export default function OrderSection() {
       const added = results.filter((result) => result.status === "fulfilled").length;
       if (!added) throw results.find((result) => result.status === "rejected")?.reason || new Error("Không thể mua lại sản phẩm.");
       window.dispatchEvent(new Event("cart:updated"));
-      toast.success(`Đã thêm ${added}/${items.length} sản phẩm vào giỏ.`);
+      toast.success(`Đã thêm ${added}/${items.length} loại sản phẩm vào giỏ.`);
       navigate("/cart");
     } catch (error) {
       toast.error(error?.message || "Không thể thêm lại sản phẩm vào giỏ.");
@@ -315,15 +320,15 @@ export default function OrderSection() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="w-full min-w-0 space-y-4 sm:space-y-5">
       <div>
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-green-50 text-[#5fa846]">
+        <div className="flex min-w-0 items-start gap-3 sm:items-center">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-[#5fa846] sm:h-11 sm:w-11 sm:rounded-2xl">
             <ClipboardList size={22} />
           </div>
 
-          <div>
-            <h2 className="text-2xl font-extrabold text-slate-900">
+          <div className="min-w-0">
+            <h2 className="break-words text-xl font-extrabold text-slate-900 sm:text-2xl">
               Đơn hàng của tôi
             </h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -415,8 +420,8 @@ function OrderTabs({ value, stats, onChange }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-      <div className="flex overflow-x-auto">
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      <div className="flex max-w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain">
         {ORDER_TABS.map((tab) => {
           const active = String(value) === String(tab.value);
           const count = getCount(tab.value);
@@ -425,15 +430,21 @@ function OrderTabs({ value, stats, onChange }) {
             <button
               key={tab.label}
               onClick={() => onChange(tab.value)}
+              aria-pressed={active}
+              title={`Lọc đơn: ${tab.label}`}
               className={`
                 relative
                 min-w-max
-                flex-1
-                px-5
-                py-4
+                shrink-0
+                snap-start
+                px-4
+                py-3.5
                 text-sm
                 font-bold
                 transition
+                sm:flex-1
+                sm:px-5
+                sm:py-4
                 ${
                   active
                     ? "text-[#5fa846]"
@@ -461,7 +472,7 @@ function OrderTabs({ value, stats, onChange }) {
 
 function OrderFilters({ keyword, setKeyword, filters, loading, onChange }) {
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
       <div className="lg:col-span-3">
         <div>
           <ResponsiveSelect
@@ -480,7 +491,7 @@ function OrderFilters({ keyword, setKeyword, filters, loading, onChange }) {
         </div>
       </div>
 
-      <div className="lg:col-span-5">
+      <div className="min-w-0 sm:col-span-2 lg:col-span-5">
         <div className="relative">
           <Search
             size={18}
@@ -491,7 +502,7 @@ function OrderFilters({ keyword, setKeyword, filters, loading, onChange }) {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="Tìm theo mã đơn, nông trại, sản phẩm..."
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50"
+            className="h-12 w-full min-w-0 rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#6BAE4F] focus:ring-4 focus:ring-green-50"
           />
         </div>
       </div>
@@ -527,20 +538,31 @@ function OrderFilters({ keyword, setKeyword, filters, loading, onChange }) {
   );
 }
 
-function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retrying, actionLoading, onChangePaymentMethod, onRebuy }) {
+function OrderCard({
+  order,
+  onViewDetail,
+  onCancel,
+  onReview,
+  onRetryMomo,
+  retrying,
+  actionLoading,
+  onChangePaymentMethod,
+  onRebuy,
+}) {
   const subOrders = getSubOrders(order);
   const allItems = getOrderItems(order);
   const previewItems = allItems.slice(0, 2);
-  const itemCount = getOrderItemCount(order);
+  const itemTypeCount = getOrderItemTypeCount(order, allItems);
+  const totalQuantity = getOrderTotalQuantity(order, allItems);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-px hover:shadow-md">
-      <div className="flex flex-col gap-3 border-b border-slate-100 bg-white px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+    <article className="min-w-0 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-px hover:shadow-md">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-slate-100 bg-white px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 font-extrabold text-slate-900">
-              <ClipboardList size={18} className="text-[#5fa846]" />
-              Đơn hàng {order.order_code}
+            <div className="flex min-w-0 items-start gap-2 font-extrabold text-slate-900 sm:items-center">
+              <ClipboardList size={18} className="mt-0.5 shrink-0 text-[#5fa846] sm:mt-0" />
+              <span className="min-w-0 break-words">Đơn hàng {order.order_code}</span>
             </div>
 
             {subOrders.length > 1 && (
@@ -550,21 +572,21 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
             )}
           </div>
 
-          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-400">
-            <span>Mã đơn: {order.order_code}</span>
-            <span>|</span>
+          <div className="mt-2 flex min-w-0 flex-col gap-1 text-xs font-semibold text-slate-400 min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:gap-2">
+            <span className="break-all">Mã đơn: {order.order_code}</span>
+            <span className="hidden min-[420px]:inline">|</span>
             <span>Đặt ngày: {formatDateTime(order.created_at)}</span>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-start gap-2 lg:justify-end">
           <PaymentText order={order} />
           <StatusBadge status={order.status} text={order.status_text} />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 px-5 py-4 lg:grid-cols-12 lg:items-center">
-        <div className="lg:col-span-6">
+      <div className="grid min-w-0 grid-cols-1 gap-4 px-4 py-4 sm:px-5 lg:grid-cols-12 lg:items-center">
+        <div className="min-w-0 lg:col-span-6">
           {previewItems.length > 0 ? (
             <div className="space-y-3">
               {previewItems.map((item) => (
@@ -576,7 +598,7 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
                   onClick={() => onViewDetail(order.id)}
                   className="text-sm font-bold text-[#5fa846] hover:underline"
                 >
-                  Xem thêm {allItems.length - previewItems.length} sản phẩm khác
+                  Xem thêm {allItems.length - previewItems.length} loại sản phẩm khác
                 </button>
               )}
             </div>
@@ -595,9 +617,9 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
           )}
         </div>
 
-        <div className="border-slate-100 lg:col-span-3 lg:border-l lg:px-5">
+        <div className="min-w-0 border-t border-slate-100 pt-4 lg:col-span-3 lg:border-l lg:border-t-0 lg:px-5 lg:pt-0">
           <p className="text-sm font-semibold text-slate-500">
-            Tổng tiền ({itemCount} sản phẩm)
+            {itemTypeCount} loại · {formatKg(totalQuantity)}
           </p>
 
           <p
@@ -620,28 +642,28 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 lg:col-span-3">
+        <div className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:col-span-3 lg:flex lg:flex-col">
           <button
             onClick={() => onViewDetail(order.id)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-[#6BAE4F] hover:bg-green-50 hover:text-[#5fa846]"
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-[#6BAE4F] hover:bg-green-50 hover:text-[#5fa846]"
           >
             Xem chi tiết
           </button>
 
           {canRetryMomo(order) && (
-            <button disabled={retrying} onClick={() => onRetryMomo(order)} className="h-10 rounded-xl bg-fuchsia-600 px-4 text-sm font-bold text-white hover:bg-fuchsia-700 disabled:opacity-60">
+            <button disabled={retrying} onClick={() => onRetryMomo(order)} className="h-10 w-full rounded-xl bg-fuchsia-600 px-3 text-sm font-bold text-white hover:bg-fuchsia-700 disabled:opacity-60">
               {retrying ? "Đang tạo link..." : "Thanh toán lại MoMo"}
             </button>
           )}
 
           {canChangePaymentMethod(order) && (
-            <button disabled={actionLoading} onClick={() => onChangePaymentMethod(order)} className="h-10 rounded-xl border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+            <button disabled={actionLoading} onClick={() => onChangePaymentMethod(order)} className="h-10 w-full rounded-xl border border-blue-200 bg-white px-3 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
               {(order.payment?.payment_method || order.payment_method) === "MOMO" ? "Đổi sang COD" : "Đổi sang MoMo"}
             </button>
           )}
 
           {Number(order.status) === 3 && (
-            <button disabled={actionLoading} onClick={() => onRebuy(order)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#6BAE4F] px-4 text-sm font-bold text-white transition hover:bg-[#5d9d43] disabled:opacity-50">
+            <button disabled={actionLoading} onClick={() => onRebuy(order)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#6BAE4F] px-4 text-sm font-bold text-white transition hover:bg-[#5d9d43] disabled:opacity-50">
               <RotateCcw size={16} />
               Mua lại
             </button>
@@ -650,7 +672,7 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
           {Number(order.status) === 3 && (
             <button
               onClick={onReview}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-green-200 bg-white px-4 text-sm font-bold text-[#5fa846] transition hover:bg-green-50"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-green-200 bg-white px-4 text-sm font-bold text-[#5fa846] transition hover:bg-green-50"
             >
               <Star size={16} />
               Đánh giá
@@ -660,14 +682,14 @@ function OrderCard({ order, onViewDetail, onCancel, onReview, onRetryMomo, retry
           {canCancelOrder(order) && (
             <button
               onClick={() => onCancel(order)}
-              className="h-10 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold text-red-500 transition hover:bg-red-50"
+              className="h-10 w-full rounded-xl border border-red-200 bg-white px-4 text-sm font-bold text-red-500 transition hover:bg-red-50"
             >
               Hủy đơn
             </button>
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -675,7 +697,7 @@ function ProductLine({ item }) {
   const productPath = getPublicProductPath(item.product);
 
   return (
-    <div className="flex gap-3">
+    <div className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[80px_minmax(0,1fr)_auto]">
       {productPath ? (
         <Link to={productPath} className="flex-none">
           <img
@@ -685,7 +707,7 @@ function ProductLine({ item }) {
               "https://placehold.co/100x100?text=Product"
             }
             alt={item.product_name}
-            className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
+            className="h-16 w-16 rounded-xl border border-slate-100 object-cover sm:h-20 sm:w-20"
           />
         </Link>
       ) : (
@@ -696,7 +718,7 @@ function ProductLine({ item }) {
             "https://placehold.co/100x100?text=Product"
           }
           alt={item.product_name}
-          className="h-20 w-20 rounded-xl border border-slate-100 object-cover"
+          className="h-16 w-16 rounded-xl border border-slate-100 object-cover sm:h-20 sm:w-20"
         />
       )}
 
@@ -723,10 +745,12 @@ function ProductLine({ item }) {
         </p>
       </div>
 
-      <div className="text-right">
-        <p className="text-sm font-semibold text-slate-500">x {item.quantity}</p>
+      <div className="col-start-2 flex min-w-0 items-center justify-between gap-3 text-left sm:col-start-3 sm:row-start-1 sm:block sm:text-right">
+        <p className="shrink-0 text-sm font-semibold text-slate-500">
+          {formatQuantity(item.quantity)} {item.unit || "kg"}
+        </p>
 
-        <p className="mt-2 font-bold text-slate-800">
+        <p className="min-w-0 break-words font-bold text-slate-800 sm:mt-2">
           {formatMoney(item.subtotal)}
         </p>
       </div>
@@ -744,7 +768,7 @@ function PaymentText({ order }) {
 
   if (paymentStatus === 1) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1.5 text-xs font-bold text-green-600">
+      <span className="inline-flex max-w-full items-center gap-1 whitespace-normal rounded-full bg-green-50 px-3 py-1.5 text-left text-xs font-bold text-green-600">
         <CheckCircle2 size={14} />
         {paymentMethod === "MOMO" ? "MoMo · Đã thanh toán" : "COD · Đã thu khi giao"}
       </span>
@@ -753,7 +777,7 @@ function PaymentText({ order }) {
 
   if (paymentStatus === 2) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1.5 text-xs font-bold text-red-500">
+      <span className="inline-flex max-w-full items-center gap-1 whitespace-normal rounded-full bg-red-50 px-3 py-1.5 text-left text-xs font-bold text-red-500">
         <X size={14} />
         Thanh toán thất bại
       </span>
@@ -762,7 +786,7 @@ function PaymentText({ order }) {
 
   if (paymentMethod === "MOMO") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600">
+      <span className="inline-flex max-w-full items-center gap-1 whitespace-normal rounded-full bg-blue-50 px-3 py-1.5 text-left text-xs font-bold text-blue-600">
         <Truck size={14} />
         Chờ thanh toán MoMo
       </span>
@@ -770,7 +794,7 @@ function PaymentText({ order }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600">
+    <span className="inline-flex max-w-full items-center gap-1 whitespace-normal rounded-full bg-blue-50 px-3 py-1.5 text-left text-xs font-bold text-blue-600">
       <Truck size={14} />
       Thanh toán khi nhận hàng
     </span>
@@ -792,12 +816,14 @@ function StatusBadge({ status, text }) {
     <span
       className={`
         inline-flex
+        max-w-full
         rounded-full
         border
         px-3
         py-1.5
         text-xs
         font-extrabold
+        whitespace-normal
         ${config[numberStatus] || "bg-slate-50 text-slate-500 border-slate-100"}
       `}
     >
@@ -809,21 +835,33 @@ function StatusBadge({ status, text }) {
 function Pagination({ pagination, loading, onChangePage }) {
   const currentPage = Number(pagination.current_page || 1);
   const lastPage = Number(pagination.last_page || 1);
+  const pageCount = Math.min(lastPage, 5);
+  const firstPage = Math.max(
+    1,
+    Math.min(currentPage - 2, lastPage - pageCount + 1),
+  );
+  const pages = Array.from({ length: pageCount }, (_, index) => firstPage + index);
 
   if (lastPage <= 1) return null;
 
   return (
-    <div className="flex items-center justify-center gap-2 pt-2">
+    <div className="flex min-w-0 flex-col items-center gap-2 pt-2 sm:flex-row sm:justify-between">
+      <p className="text-xs font-semibold text-slate-500 sm:text-sm">
+        Trang {currentPage}/{lastPage} · {pagination.total || 0} đơn hàng
+      </p>
+
+      <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
       <button
         disabled={loading || currentPage <= 1}
         onClick={() => onChangePage(currentPage - 1)}
+        aria-label="Trang trước"
+        title="Trang trước"
         className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
       >
         ‹
       </button>
 
-      {Array.from({ length: Math.min(lastPage, 5) }).map((_, index) => {
-        const page = index + 1;
+      {pages.map((page) => {
         const active = page === currentPage;
 
         return (
@@ -852,10 +890,13 @@ function Pagination({ pagination, loading, onChangePage }) {
       <button
         disabled={loading || currentPage >= lastPage}
         onClick={() => onChangePage(currentPage + 1)}
+        aria-label="Trang sau"
+        title="Trang sau"
         className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
       >
         ›
       </button>
+      </div>
     </div>
   );
 }
@@ -864,7 +905,7 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
   const subOrders = order?.sub_orders || [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-sm">
       <button
         type="button"
         onClick={onClose}
@@ -873,13 +914,13 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
         className="absolute inset-0 h-full w-full cursor-default"
       />
 
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-130 flex-col bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
-          <div>
+      <div className="absolute inset-y-0 right-0 flex h-[100dvh] w-full max-w-130 min-w-0 flex-col bg-white shadow-2xl">
+        <div className="flex min-w-0 items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-500">
               Chi tiết đơn hàng
             </p>
-            <h3 className="mt-1 text-2xl font-extrabold text-slate-900">
+            <h3 className="mt-1 break-all text-xl font-extrabold text-slate-900 sm:text-2xl">
               {order?.order_code || "Đang tải..."}
             </h3>
           </div>
@@ -894,7 +935,7 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 min-[380px]:p-4 sm:p-6">
           {loading || !order ? (
             <DetailSkeleton />
           ) : (
@@ -927,13 +968,13 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
                     key={subOrder.id}
                     className="overflow-hidden rounded-2xl border border-slate-100 bg-white"
                   >
-                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                      <div className="flex items-center gap-2 font-bold text-slate-900">
-                        <Store size={17} className="text-[#5fa846]" />
+                    <div className="flex min-w-0 flex-col gap-2 border-b border-slate-100 px-3 py-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:px-4">
+                      <div className="flex min-w-0 items-start gap-2 font-bold text-slate-900">
+                        <Store size={17} className="mt-0.5 shrink-0 text-[#5fa846]" />
                         {getPublicFarmPath(subOrder.farm) ? (
                           <Link
                             to={getPublicFarmPath(subOrder.farm)}
-                            className="hover:text-[#5fa846] hover:underline"
+                            className="min-w-0 break-words hover:text-[#5fa846] hover:underline"
                           >
                             {subOrder.farm?.name || subOrder.farm_name || "Nông trại"}
                           </Link>
@@ -942,15 +983,20 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
                         )}
                       </div>
 
-                      <StatusBadge
-                        status={subOrder.status}
-                        text={subOrder.status_text}
-                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500">
+                          {Number(subOrder.items_count ?? subOrder.items?.length ?? 0)} loại · {formatKg(subOrder.items_quantity ?? sumItemQuantity(subOrder.items))}
+                        </span>
+                        <StatusBadge
+                          status={subOrder.status}
+                          text={subOrder.status_text}
+                        />
+                      </div>
                     </div>
 
                     <div className="divide-y divide-slate-100">
                       {(subOrder.items || []).map((item) => (
-                        <div key={item.id} className="p-4">
+                        <div key={item.id} className="p-3 sm:p-4">
                           <ProductLine item={item} />
                         </div>
                       ))}
@@ -980,7 +1026,7 @@ function OrderDetailDrawer({ order, loading, onClose, onCancel }) {
         </div>
 
         {!loading && order && (
-          <div className="border-t border-slate-100 p-5">
+          <div className="border-t border-slate-100 p-3 sm:p-5">
             {canCancelOrder(order) && (
               <button
                 onClick={() => onCancel(order)}
@@ -1012,9 +1058,9 @@ function CancelOrderModal({
   onSubmit,
 }) {
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="px-6 py-5">
+    <div className="fixed inset-0 z-60 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl">
+        <div className="px-4 py-5 sm:px-6">
           <h3 className="text-xl font-extrabold text-slate-900">
             Hủy đơn hàng
           </h3>
@@ -1022,7 +1068,7 @@ function CancelOrderModal({
           <p className="mt-1 text-sm text-slate-500">{order?.order_code}</p>
         </div>
 
-        <div className="space-y-4 px-6 pb-6">
+        <div className="space-y-4 px-4 pb-4 sm:px-6 sm:pb-6">
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="text-sm text-slate-500">Tổng thanh toán</p>
             <p className="mt-1 text-2xl font-extrabold text-slate-900">
@@ -1036,14 +1082,14 @@ function CancelOrderModal({
             disabled={loading}
             rows="4"
             placeholder="Nhập lý do hủy đơn..."
-            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-50 disabled:opacity-60"
+            className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-50 disabled:opacity-60"
           />
 
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               onClick={onClose}
               disabled={loading}
-              className="h-10 rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-600 disabled:opacity-60"
+              className="h-11 w-full rounded-xl border border-slate-200 px-5 text-sm font-bold text-slate-600 disabled:opacity-60 sm:h-10 sm:w-auto"
             >
               Đóng
             </button>
@@ -1051,7 +1097,7 @@ function CancelOrderModal({
             <button
               onClick={onSubmit}
               disabled={loading}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-red-500 px-5 text-sm font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-5 text-sm font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-70 sm:h-10 sm:w-auto"
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
               {loading ? "Đang hủy..." : "Xác nhận hủy"}
@@ -1065,16 +1111,16 @@ function CancelOrderModal({
 
 function InfoRow({ label, value }) {
   return (
-    <div className="grid grid-cols-3 gap-3 border-b border-slate-100 py-3 last:border-b-0">
+    <div className="flex min-w-0 flex-col gap-1 border-b border-slate-100 py-3 last:border-b-0 sm:grid sm:grid-cols-[minmax(100px,1fr)_minmax(0,2fr)] sm:gap-3">
       <p className="text-sm font-semibold text-slate-400">{label}</p>
-      <p className="col-span-2 text-sm font-bold text-slate-700">{value}</p>
+      <p className="min-w-0 break-words text-sm font-bold text-slate-700">{value}</p>
     </div>
   );
 }
 
 function MoneyRow({ label, value, bold = false }) {
   return (
-    <div className="flex items-center justify-between py-1">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-1">
       <span
         className={
           bold ? "font-extrabold text-slate-900" : "font-semibold text-slate-500"
@@ -1209,37 +1255,35 @@ function getOrderItems(order) {
   return [...directItems, ...nestedItems].filter(Boolean);
 }
 
-  function getOrderItemCount(order) {
-    const items = getOrderItems(order);
-
-    if (items.length > 0) {
-      return items.reduce((total, item) => {
-        return total + Number(item.quantity || 0);
-      }, 0);
-    }
-
-    if (order?.items_quantity !== undefined && order?.items_quantity !== null) {
-      return Number(order.items_quantity || 0);
-    }
-
-    if (order?.items_count !== undefined && order?.items_count !== null) {
-      return Number(order.items_count || 0);
-    }
-
-    const subOrders = getSubOrders(order);
-
-    return subOrders.reduce((total, subOrder) => {
-      return (
-        total +
-        Number(
-          subOrder.items_quantity ||
-            subOrder.items_count ||
-            subOrder.total_quantity ||
-            0
-        )
-      );
-    }, 0);
+function getOrderItemTypeCount(order, items = getOrderItems(order)) {
+  if (order?.items_count !== undefined && order?.items_count !== null) {
+    return Number(order.items_count || 0);
   }
+
+  if (items.length > 0) return items.length;
+
+  const subOrders = getSubOrders(order);
+
+  return subOrders.reduce((total, subOrder) => {
+    return total + Number(subOrder.items_count || subOrder.items?.length || 0);
+  }, 0);
+}
+
+function getOrderTotalQuantity(order, items = getOrderItems(order)) {
+  if (order?.items_quantity !== undefined && order?.items_quantity !== null) {
+    return Number(order.items_quantity || 0);
+  }
+
+  if (items.length > 0) return sumItemQuantity(items);
+
+  return getSubOrders(order).reduce((total, subOrder) => {
+    return total + Number(
+      subOrder.items_quantity ??
+        subOrder.total_quantity ??
+        sumItemQuantity(subOrder.items),
+    );
+  }, 0);
+}
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString("vi-VN") + "đ";
@@ -1256,4 +1300,3 @@ function formatDateTime(value) {
     year: "numeric",
   });
 }
-
