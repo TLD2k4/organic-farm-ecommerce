@@ -694,3 +694,78 @@ html.dark nav {
   padding-top: 0.55rem !important;
   padding-bottom: 0.55rem !important;
 }
+
+/* Huy hiệu xếp hạng giữ màu riêng trong cả light/dark mode. */
+.rank-badge {
+  border: 1px solid transparent;
+}
+
+.dark .rank-badge-1 {
+  background-color: #4a3815 !important;
+  color: #f7d56c !important;
+  border-color: #8b6b25 !important;
+  box-shadow: 0 0 0 1px rgba(247, 213, 108, 0.12) inset;
+}
+
+.dark .rank-badge-2 {
+  background-color: #273139 !important;
+  color: #d7e0e7 !important;
+  border-color: #55636d !important;
+  box-shadow: 0 0 0 1px rgba(215, 224, 231, 0.1) inset;
+}
+
+.dark .rank-badge-3 {
+  background-color: #4a2d1d !important;
+  color: #e7ad7e !important;
+  border-color: #865135 !important;
+  box-shadow: 0 0 0 1px rgba(231, 173, 126, 0.1) inset;
+}
+
+.dark .rank-badge-other {
+  background-color: #1c2922 !important;
+  color: #a9b8af !important;
+  border-color: #35483e !important;
+  box-shadow: 0 0 0 1px rgba(169, 184, 175, 0.08) inset;
+}
+
+/* Liên kết tên đối tượng dùng chung cho Admin/Seller. */
+.entity-name-link {
+  transition: color 150ms ease;
+  text-underline-offset: 3px;
+}
+
+.entity-name-link:hover {
+  text-decoration-line: underline;
+}
+
+.entity-name-link-public:hover {
+  color: #15803d !important;
+}
+
+.entity-name-link-management:hover {
+  color: #0284c7 !important;
+}
+
+.dark .entity-name-link-public:hover {
+  color: #4ade80 !important;
+}
+
+.dark .entity-name-link-management:hover {
+  color: #38bdf8 !important;
+}
+
+/* Nhật ký Admin: không đổi nền khi hover để tránh che chữ trong dark mode. */
+.audit-subject-link,
+.audit-subject-link:hover {
+  background-color: transparent !important;
+}
+
+.audit-subject-link:hover .audit-subject-name {
+  color: #0284c7 !important;
+  text-decoration-line: underline;
+  text-underline-offset: 3px;
+}
+
+.dark .audit-subject-link:hover .audit-subject-name {
+  color: #38bdf8 !important;
+}

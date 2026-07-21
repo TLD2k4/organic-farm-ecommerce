@@ -135,6 +135,9 @@ class AdminDashboardService
                 'cancelled_orders' => 0,
                 'sub_orders' => 0,
                 'processing_sub_orders' => 0,
+                'pending_sub_orders' => 0,
+                'preparing_sub_orders' => 0,
+                'shipping_sub_orders' => 0,
                 'completed_sub_orders' => 0,
                 'cancelled_sub_orders' => 0,
             ];
@@ -224,11 +227,20 @@ class AdminDashboardService
 
             $series[$key]['sub_orders']++;
 
-            match ((int) $subOrder->status) {
+            $status = (int) $subOrder->status;
+
+            match ($status) {
+                0 => $series[$key]['pending_sub_orders']++,
+                1 => $series[$key]['preparing_sub_orders']++,
+                2 => $series[$key]['shipping_sub_orders']++,
                 3 => $series[$key]['completed_sub_orders']++,
                 4 => $series[$key]['cancelled_sub_orders']++,
-                default => $series[$key]['processing_sub_orders']++,
+                default => null,
             };
+
+            if (in_array($status, [0, 1, 2], true)) {
+                $series[$key]['processing_sub_orders']++;
+            }
         }
 
         return array_values($series);

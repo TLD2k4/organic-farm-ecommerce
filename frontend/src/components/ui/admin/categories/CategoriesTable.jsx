@@ -1,4 +1,5 @@
 import { ImageIcon } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import CategoryActions from "./CategoryActions";
 
@@ -7,6 +8,7 @@ import StatusBadge from "@/components/common/StatusBadge";
 import { highlight } from "@/utils/highlight";
 import { getImageUrl } from "@/utils/image";
 import { getParentBadgeColor } from "@/utils/categoryBadge";
+import { getAdminCategoryLink } from "@/utils/adminEntityLink";
 
 const categoryStatusConfig = {
   1: {
@@ -120,7 +122,10 @@ export default function CategoriesTable({
           </thead>
 
           <tbody>
-            {categories.map((category) => (
+            {categories.map((category) => {
+              const categoryLink = getAdminCategoryLink(category);
+
+              return (
               <tr
                 key={category.id}
                 className="border-t border-slate-100 transition hover:bg-slate-50"
@@ -164,7 +169,27 @@ export default function CategoriesTable({
 
                 <td className="px-4 py-4 font-semibold">
                   <div className="max-w-55">
-                    {highlight(category.name, params.keyword)}
+                    {categoryLink?.isPublic ? (
+                      <Link
+                        to={categoryLink.to}
+                        title={categoryLink.title}
+                        className="block wrap-break-word text-slate-900 entity-name-link entity-name-link-public hover:underline"
+                      >
+                        {highlight(category.name, params.keyword)}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        title={categoryLink?.title}
+                        onClick={() => {
+                          setSelectedCategoryId(category.id);
+                          setOpenDrawer(true);
+                        }}
+                        className="block wrap-break-word text-left text-slate-900 entity-name-link entity-name-link-management hover:underline"
+                      >
+                        {highlight(category.name, params.keyword)}
+                      </button>
+                    )}
                   </div>
                 </td>
 
@@ -230,7 +255,8 @@ export default function CategoriesTable({
                   />
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

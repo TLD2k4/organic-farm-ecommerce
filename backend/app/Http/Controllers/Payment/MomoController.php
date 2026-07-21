@@ -48,9 +48,11 @@ class MomoController extends Controller
                 'paid_at' => now(),
             ]);
 
-            $order->subOrders()->update([
-                'payment_status' => 1,
-            ]);
+            $order->subOrders()
+                ->where('status', '!=', 4)
+                ->update([
+                    'payment_status' => 1,
+                ]);
         } else {
             $updated = $order->payment()
                 ->where('status', '!=', 1)
@@ -100,9 +102,11 @@ class MomoController extends Controller
             'paid_at' => now(),
         ]);
 
-        $order->subOrders()->update([
-            'payment_status' => 1,
-        ]);
+        $order->subOrders()
+            ->where('status', '!=', 4)
+            ->update([
+                'payment_status' => 1,
+            ]);
 
         return response()->json([
             'success' => true,
@@ -152,9 +156,11 @@ class MomoController extends Controller
             'paid_at' => now(),
         ]);
 
-        $order->subOrders()->update([
-            'payment_status' => 1,
-        ]);
+        $order->subOrders()
+            ->where('status', '!=', 4)
+            ->update([
+                'payment_status' => 1,
+            ]);
 
         $frontendUrl = rtrim(config('services.frontend_url'), '/');
 

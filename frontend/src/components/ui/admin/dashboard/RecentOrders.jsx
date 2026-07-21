@@ -1,8 +1,9 @@
 import dayjs from "dayjs";
+import { Link } from "react-router-dom";
 
 const orderStatusConfig = {
   0: {
-    label: "Chờ xử lý",
+    label: "Chờ xác nhận",
     className: "bg-yellow-100 text-yellow-700",
   },
   1: {
@@ -14,7 +15,7 @@ const orderStatusConfig = {
     className: "bg-violet-100 text-violet-700",
   },
   3: {
-    label: "Đã giao",
+    label: "Hoàn thành",
     className: "bg-green-100 text-green-700",
   },
   4: {
@@ -82,7 +83,13 @@ export default function RecentOrders({ orders = [], loading = false }) {
                     className="border-t border-slate-100 hover:bg-slate-50"
                   >
                     <td className="whitespace-nowrap px-4 py-4 font-semibold">
-                      {order.order_code}
+                      <Link
+                        to={`/admin/orders?mode=orders&view=${order.id}`}
+                        title={`Xem chi tiết đơn ${order.order_code}`}
+                        className="text-slate-900 entity-name-link entity-name-link-management hover:underline"
+                      >
+                        {order.order_code}
+                      </Link>
                     </td>
 
                     <td className="px-4 py-4">

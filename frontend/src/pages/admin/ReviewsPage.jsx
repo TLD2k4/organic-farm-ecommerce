@@ -71,8 +71,8 @@ function ProductReference({ product, keyword }) {
           title={productLink.title}
           className={`block max-w-52 font-bold hover:underline ${
             productLink.isPublic
-              ? "text-slate-700 hover:text-green-700"
-              : "text-slate-700 hover:text-sky-600"
+              ? "text-slate-700 entity-name-link entity-name-link-public"
+              : "text-slate-700 entity-name-link entity-name-link-management"
           }`}
         >
           {highlight(product.name, keyword)}
@@ -89,8 +89,8 @@ function ProductReference({ product, keyword }) {
           title={farmLink.title}
           className={`mt-1 block max-w-52 truncate text-xs hover:underline ${
             farmLink.isPublic
-              ? "text-slate-500 hover:text-green-700"
-              : "text-slate-500 hover:text-sky-600"
+              ? "text-slate-500 entity-name-link entity-name-link-public"
+              : "text-slate-500 entity-name-link entity-name-link-management"
           }`}
         >
           {highlight(product.farm?.name || product.farm_name, keyword)}

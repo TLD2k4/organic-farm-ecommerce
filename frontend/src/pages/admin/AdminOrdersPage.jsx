@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ClipboardList, Store } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -30,6 +31,7 @@ const initialParams = {
 };
 
 export default function AdminOrdersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     options,
     orders,
@@ -64,6 +66,7 @@ export default function AdminOrdersPage() {
   const [openOrderDrawer, setOpenOrderDrawer] = useState(false);
   const [openSubOrderDrawer, setOpenSubOrderDrawer] = useState(false);
   const [statusTarget, setStatusTarget] = useState(null);
+  const [statusInitialValue, setStatusInitialValue] = useState(null);
 
   const activeParams = mode === "orders" ? orderParams : subOrderParams;
   const setActiveParams = mode === "orders" ? setOrderParams : setSubOrderParams;
@@ -123,6 +126,38 @@ export default function AdminOrdersPage() {
       subOrderKeyword,
     ],
   );
+
+  useEffect(() => {
+    const requestedMode = searchParams.get("mode");
+    const requestedId = Number(searchParams.get("view"));
+
+    if (requestedMode === "sub_orders") {
+      setMode("sub_orders");
+    } else if (requestedMode === "orders") {
+      setMode("orders");
+    }
+
+    if (!Number.isInteger(requestedId) || requestedId <= 0) {
+      return;
+    }
+
+    if (requestedMode === "sub_orders") {
+      setOpenSubOrderDrawer(true);
+      getSubOrder(requestedId).catch((error) => {
+        setOpenSubOrderDrawer(false);
+        toast.error(
+          getErrorMessage(error, "Không thể tải chi tiết đơn nông trại."),
+        );
+      });
+      return;
+    }
+
+    setOpenOrderDrawer(true);
+    getOrder(requestedId).catch((error) => {
+      setOpenOrderDrawer(false);
+      toast.error(getErrorMessage(error, "Không thể tải chi tiết đơn tổng."));
+    });
+  }, [searchParams, getOrder, getSubOrder]);
 
   useEffect(() => {
     getOptions().catch(() => {
@@ -187,8 +222,9 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const handleOpenStatus = (subOrder) => {
+  const handleOpenStatus = (subOrder, initialStatus = null) => {
     setStatusTarget(subOrder);
+    setStatusInitialValue(initialStatus);
   };
 
   const handleUpdateStatus = async (status, reason) => {
@@ -202,6 +238,7 @@ export default function AdminOrdersPage() {
 
       toast.success(response.message || "Cập nhật trạng thái thành công.");
       setStatusTarget(null);
+      setStatusInitialValue(null);
 
       await reloadActive();
 
@@ -219,6 +256,17 @@ export default function AdminOrdersPage() {
       toast.error(getErrorMessage(error, "Cập nhật trạng thái thất bại."));
       throw error;
     }
+  };
+
+  const clearAuditViewParams = () => {
+    if (!searchParams.has("view") && !searchParams.has("mode")) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("view");
+    nextParams.delete("mode");
+    setSearchParams(nextParams, { replace: true });
   };
 
   return (
@@ -292,6 +340,7 @@ export default function AdminOrdersPage() {
         onClose={() => {
           setOpenOrderDrawer(false);
           clearSelectedOrder();
+          clearAuditViewParams();
         }}
       />
 
@@ -303,6 +352,7 @@ export default function AdminOrdersPage() {
         onClose={() => {
           setOpenSubOrderDrawer(false);
           clearSelectedSubOrder();
+          clearAuditViewParams();
         }}
       />
 
@@ -310,8 +360,12 @@ export default function AdminOrdersPage() {
         open={Boolean(statusTarget)}
         subOrder={statusTarget}
         loading={actionLoading}
+        initialStatus={statusInitialValue}
         onClose={() => {
-          if (!actionLoading) setStatusTarget(null);
+          if (!actionLoading) {
+            setStatusTarget(null);
+            setStatusInitialValue(null);
+          }
         }}
         onSubmit={handleUpdateStatus}
       />

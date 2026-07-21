@@ -4,10 +4,12 @@ namespace App\Services\Order;
 
 use App\Models\Address;
 use App\Models\Cart;
+use App\Models\Order;
 use App\Models\User;
 use App\Notifications\MarketplaceNotification;
 use App\Services\Payment\MomoPaymentService;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class CheckoutService
 {
@@ -68,40 +70,64 @@ class CheckoutService
         );
 
         $momoPayment = null;
+        $paymentRetryRequired = false;
 
         if ($paymentMethod === 'MOMO') {
-            $momoPayment = $this->momoPaymentService->createPayment($order);
+            try {
+                $momoPayment = $this->momoPaymentService->createPayment($order);
+            } catch (Throwable $exception) {
+                // Đơn đã được tạo và giao dịch database đã commit. Không trả lỗi
+                // như thể checkout thất bại vì Buyer có thể thanh toán lại từ hồ sơ.
+                report($exception);
+                $paymentRetryRequired = true;
+            }
         }
 
-        foreach ($order->subOrders as $subOrder) {
-            $subOrder->farm?->seller?->notify(new MarketplaceNotification(
-                'order.created',
-                'Có đơn hàng mới',
-                'Đơn ' . $subOrder->sub_order_code
-                    . ' vừa được tạo với tổng tiền '
-                    . number_format((float) $subOrder->total, 0, ',', '.') . ' đ.',
-                '/seller/orders',
-                null,
-                ['order_id' => $order->id, 'sub_order_id' => $subOrder->id]
-            ));
-        }
-
-        User::role('admin')->each(function (User $admin) use ($order) {
-            $admin->notify(new MarketplaceNotification(
-                'order.created',
-                'Hệ thống có đơn hàng mới',
-                'Đơn ' . $order->order_code . ' vừa được tạo.',
-                '/admin/orders',
-                null,
-                ['order_id' => $order->id]
-            ));
-        });
+        $this->notifyOrderCreated($order);
 
         return [
             'order' => $order,
             'payment_url' => $momoPayment['payment_url'] ?? null,
             'deeplink' => $momoPayment['deeplink'] ?? null,
             'qr_code_url' => $momoPayment['qr_code_url'] ?? null,
+            'payment_retry_required' => $paymentRetryRequired,
         ];
+    }
+
+    private function notifyOrderCreated(Order $order): void
+    {
+        foreach ($order->subOrders as $subOrder) {
+            try {
+                $subOrder->farm?->seller?->notify(new MarketplaceNotification(
+                    'order.created',
+                    'Có đơn hàng mới',
+                    'Đơn ' . $subOrder->sub_order_code
+                        . ' vừa được tạo với tổng tiền '
+                        . number_format((float) $subOrder->total, 0, ',', '.') . ' đ.',
+                    '/seller/orders',
+                    null,
+                    ['order_id' => $order->id, 'sub_order_id' => $subOrder->id]
+                ));
+            } catch (Throwable $exception) {
+                // Gửi thông báo là bước phụ, không được làm checkout đã commit
+                // bị trả về lỗi và khiến Buyer tưởng đơn chưa được tạo.
+                report($exception);
+            }
+        }
+
+        try {
+            User::role('admin')->each(function (User $admin) use ($order) {
+                $admin->notify(new MarketplaceNotification(
+                    'order.created',
+                    'Hệ thống có đơn hàng mới',
+                    'Đơn ' . $order->order_code . ' vừa được tạo.',
+                    '/admin/orders',
+                    null,
+                    ['order_id' => $order->id]
+                ));
+            });
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 }

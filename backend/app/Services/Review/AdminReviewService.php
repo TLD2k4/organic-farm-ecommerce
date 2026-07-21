@@ -225,11 +225,7 @@ class AdminReviewService
 
         return Product::query()
             ->whereKey($productIds)
-            ->where('status', 1)
-            ->whereHas('farm', function (Builder $farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate')
+            ->publiclyVisible()
             ->pluck('id')
             ->mapWithKeys(fn ($id) => [(int) $id => true])
             ->all();
@@ -433,11 +429,7 @@ class AdminReviewService
 
         return Product::query()
             ->whereKey($product->id)
-            ->where('status', 1)
-            ->whereHas('farm', function (Builder $farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate')
+            ->publiclyVisible()
             ->exists();
     }
 }

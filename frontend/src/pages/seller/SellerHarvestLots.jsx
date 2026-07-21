@@ -1,5 +1,5 @@
-import { Children, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Children, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Package,
@@ -37,15 +37,19 @@ const createFormDefault = {
 };
 
 function SellerHarvestLots() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const handledViewId = useRef(null);
   const [payload, setPayload] = useState(null);
   const [options, setOptions] = useState({
     products: [],
+    filter_products: [],
   });
 
   const [filters, setFilters] = useState({
     keyword: "",
     product_id: "",
     status: "",
+    deleted: "0",
     page: 1,
     per_page: 8,
   });
@@ -72,6 +76,7 @@ function SellerHarvestLots() {
       keyword: debouncedKeyword,
       product_id: filters.product_id,
       status: filters.status,
+      deleted: filters.deleted,
       page: filters.page,
       per_page: filters.per_page,
     }),
@@ -79,6 +84,7 @@ function SellerHarvestLots() {
       debouncedKeyword,
       filters.product_id,
       filters.status,
+      filters.deleted,
       filters.page,
       filters.per_page,
     ],
@@ -108,6 +114,7 @@ function SellerHarvestLots() {
       active: stats.active ?? 0,
       warning: stats.warning ?? 0,
       out: stats.out_of_stock ?? 0,
+      deleted: stats.deleted ?? 0,
     };
   }, [payload?.stats, meta.total]);
 
@@ -132,7 +139,7 @@ function SellerHarvestLots() {
 
     try {
       const res = await harvestLotService.getOptions();
-      setOptions(res.data || { products: [] });
+      setOptions(res.data || { products: [], filter_products: [] });
     } catch (err) {
       console.log("Không thể tải options lô:", err);
     } finally {
@@ -193,6 +200,7 @@ function SellerHarvestLots() {
       keyword: "",
       product_id: "",
       status: "",
+      deleted: filters.deleted,
       page: 1,
       per_page: 8,
     };
@@ -240,13 +248,23 @@ function SellerHarvestLots() {
     }
   };
 
-  const openDetail = async (lot) => {
+  const openDetail = useCallback(async (lot, { syncUrl = true } = {}) => {
+    const lotId = Number(lot?.id || lot);
+
+    if (!lotId) return;
+
+    if (syncUrl) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("view", String(lotId));
+      setSearchParams(nextParams, { replace: true });
+    }
+
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailLot(null);
 
     try {
-      const res = await harvestLotService.getLot(lot.id);
+      const res = await harvestLotService.getLot(lotId);
       setDetailLot(res.data);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không thể tải chi tiết lô."));
@@ -254,7 +272,25 @@ function SellerHarvestLots() {
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, [searchParams, setSearchParams]);
+
+  const closeDetail = useCallback(() => {
+    setDetailOpen(false);
+    setDetailLot(null);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("view");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const viewId = Number(searchParams.get("view"));
+
+    if (!viewId || handledViewId.current === viewId) return;
+
+    handledViewId.current = viewId;
+    openDetail(viewId, { syncUrl: false });
+  }, [openDetail, searchParams]);
 
   const handleFormChange = (name, value) => {
     setForm((prev) => ({
@@ -341,6 +377,51 @@ function SellerHarvestLots() {
     }
   };
 
+  const handleRestore = async (lot) => {
+    const ok = await confirmAction({
+      title: `Khôi phục lô ${lot.lot_code}`,
+      description: "Lô sẽ được khôi phục ở trạng thái Tạm ẩn để bạn kiểm tra trước khi bật bán.",
+      confirmLabel: "Khôi phục",
+    });
+
+    if (!ok) return;
+
+    setActionLoadingId(lot.id);
+
+    try {
+      await harvestLotService.restoreLot(lot.id);
+      toast.success("Khôi phục lô thành công.");
+      await fetchLots(requestFilters, { silent: true });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không thể khôi phục lô."));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleForceDelete = async (lot) => {
+    const ok = await confirmAction({
+      title: `Xóa vĩnh viễn lô ${lot.lot_code}`,
+      description: "Thao tác này không thể hoàn tác. Mã lô sẽ được giải phóng để dùng lại.",
+      confirmLabel: "Xóa vĩnh viễn",
+      danger: true,
+    });
+
+    if (!ok) return;
+
+    setActionLoadingId(lot.id);
+
+    try {
+      await harvestLotService.forceDeleteLot(lot.id);
+      toast.success("Xóa vĩnh viễn lô thành công.");
+      await fetchLots(requestFilters, { silent: true });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không thể xóa vĩnh viễn lô."));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleToggleStatus = async (lot) => {
     const displayStatus = Number(lot.display_status || lot.status);
 
@@ -377,20 +458,56 @@ function SellerHarvestLots() {
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
-            Quản lý lô sản phẩm
+            {filters.deleted === "1" ? "Lô đã xóa" : "Quản lý lô sản phẩm"}
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Theo dõi tồn kho theo từng lô thu hoạch và chứng chỉ đi kèm.
+            {filters.deleted === "1"
+              ? "Khôi phục hoặc xóa vĩnh viễn các lô chưa phát sinh bán hàng."
+              : "Theo dõi tồn kho theo từng lô thu hoạch và chứng chỉ đi kèm."}
           </p>
         </div>
 
-        <button
-          onClick={openCreateModal}
-          className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white shadow-sm transition hover:bg-green-700 sm:w-auto"
-        >
-          <Plus size={18} />
-          Tạo lô mới
-        </button>
+        {filters.deleted !== "1" && (
+          <button
+            onClick={openCreateModal}
+            className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white shadow-sm transition hover:bg-green-700 sm:w-auto"
+          >
+            <Plus size={18} />
+            Tạo lô mới
+          </button>
+        )}
+      </div>
+
+      <div className="flex w-full max-w-full gap-2 overflow-x-auto rounded-2xl border border-slate-100 bg-white p-2 shadow-sm">
+        {[
+          { value: "0", label: `Đang quản lý (${pageStats.total})` },
+          { value: "1", label: `Đã xóa (${pageStats.deleted})` },
+        ].map((tab) => {
+          const active = filters.deleted === tab.value;
+
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  deleted: tab.value,
+                  status: "",
+                  product_id: "",
+                  page: 1,
+                }))
+              }
+              className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-extrabold transition ${
+                active
+                  ? "bg-green-600 text-white shadow-sm"
+                  : "bg-slate-50 text-slate-600 hover:bg-green-50 hover:text-green-700"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-4">
@@ -457,9 +574,11 @@ function SellerHarvestLots() {
                 value: "",
                 label: optionLoading ? "Đang tải sản phẩm..." : "Tất cả sản phẩm",
               },
-              ...options.products.map((product) => ({
+              ...(options.filter_products || options.products).map((product) => ({
                 value: product.id,
-                label: product.name,
+                label: product.is_deleted
+                  ? `${product.name} (Sản phẩm đã xóa)`
+                  : product.name,
               })),
             ]}
           />
@@ -513,12 +632,14 @@ function SellerHarvestLots() {
                 onEdit={openEditModal}
                 onToggle={handleToggleStatus}
                 onDelete={handleDelete}
+                onRestore={handleRestore}
+                onForceDelete={handleForceDelete}
               />
             ))}
 
           {!loading && lots.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-12 text-center font-bold text-slate-400">
-              Chưa có lô sản phẩm nào.
+              {filters.deleted === "1" ? "Chưa có lô đã xóa." : "Chưa có lô sản phẩm nào."}
             </div>
           )}
         </div>
@@ -552,8 +673,8 @@ function SellerHarvestLots() {
                   const displayStatus = Number(
                     lot.display_status || lot.status,
                   );
-                  const canToggle = ![3, 4].includes(displayStatus);
-                  const canEdit = displayStatus !== 4;
+                  const canToggle = Boolean(lot.can_mutate) && ![3, 4].includes(displayStatus);
+                  const canEdit = Boolean(lot.can_mutate) && displayStatus !== 4;
                   return (
                     <tr
                       key={lot.id}
@@ -563,7 +684,18 @@ function SellerHarvestLots() {
                       ].join(" ")}
                     >
                       <td className="px-3 py-3 font-extrabold text-slate-700">
-                        {highlight(lot.lot_code, filters.keyword)}
+                        <button
+                          type="button"
+                          onClick={() => openDetail(lot)}
+                          className="entity-name-link entity-name-link-management text-left"
+                        >
+                          {highlight(lot.lot_code, filters.keyword)}
+                        </button>
+                        {lot.is_deleted && (
+                          <p className="mt-1 text-xs font-bold text-red-500">
+                            Xóa lúc {lot.deleted_at || "—"}
+                          </p>
+                        )}
                       </td>
 
                       <td className="px-3 py-3">
@@ -579,14 +711,17 @@ function SellerHarvestLots() {
 
                           <div className="min-w-0">
                             {lot.product?.id ? (
-                              <Link
-                                to={`/seller/products?view=${lot.product.id}`}
-                                className="block max-w-55 break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline"
+                              <SellerProductNameLink
+                                product={lot.product}
+                                className="block max-w-55 break-words font-extrabold text-slate-900 hover:underline"
                               >
                                 {highlight(lot.product.name, filters.keyword)}
-                              </Link>
+                              </SellerProductNameLink>
                             ) : (
                               <p className="max-w-55 break-words font-extrabold text-slate-900">Không có</p>
+                            )}
+                            {lot.product?.is_deleted && (
+                              <p className="mt-1 text-xs font-bold text-red-500">Sản phẩm đã xóa</p>
                             )}
                             <p className="text-xs font-semibold text-slate-400">
                               ID SP: {lot.product?.id || "-"}
@@ -675,48 +810,63 @@ function SellerHarvestLots() {
                             <Eye size={16} />
                           </button>
 
-                          <button
-                            title={
-                              canEdit
-                                ? "Sửa lô"
-                                : "Lô đã hết hạn, không thể sửa"
-                            }
-                            disabled={isActioning || !canEdit}
-                            onClick={() => openEditModal(lot)}
-                            className="rounded-lg border border-slate-200 p-2 text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <Pencil size={16} />
-                          </button>
+                          {!lot.is_deleted ? (
+                            <>
+                              <button
+                                title={canEdit ? "Sửa lô" : lot.mutation_block_reason || "Lô không thể sửa"}
+                                disabled={isActioning || !canEdit}
+                                onClick={() => openEditModal(lot)}
+                                className="rounded-lg border border-slate-200 p-2 text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Pencil size={16} />
+                              </button>
 
-                          <button
-                            title={
-                              canToggle
-                                ? "Ẩn / hiện"
-                                : "Không thể ẩn / hiện lô hết hàng hoặc hết hạn"
-                            }
-                            disabled={isActioning || !canToggle}
-                            onClick={() => handleToggleStatus(lot)}
-                            className="rounded-lg border border-slate-200 p-2 text-purple-600 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isActioning ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <MoreHorizontal size={16} />
-                            )}
-                          </button>
+                              <button
+                                title={canToggle ? "Ẩn / hiện" : lot.mutation_block_reason || "Không thể ẩn / hiện lô này"}
+                                disabled={isActioning || !canToggle}
+                                onClick={() => handleToggleStatus(lot)}
+                                className="rounded-lg border border-slate-200 p-2 text-purple-600 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {isActioning ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <MoreHorizontal size={16} />
+                                )}
+                              </button>
 
-                          <button
-                            title="Xóa"
-                            disabled={isActioning}
-                            onClick={() => handleDelete(lot)}
-                            className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isActioning ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={16} />
-                            )}
-                          </button>
+                              <button
+                                title={lot.can_delete ? "Xóa lô" : lot.mutation_block_reason || "Lô đã bán chỉ được tạm ẩn"}
+                                disabled={isActioning || !lot.can_delete}
+                                onClick={() => handleDelete(lot)}
+                                className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {isActioning ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={16} />
+                                )}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                title={lot.can_restore ? "Khôi phục lô" : lot.mutation_block_reason || "Hãy khôi phục sản phẩm trước"}
+                                disabled={isActioning || !lot.can_restore}
+                                onClick={() => handleRestore(lot)}
+                                className="rounded-lg border border-green-200 p-2 text-green-700 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <RotateCcw size={16} />
+                              </button>
+                              <button
+                                title={lot.can_force_delete ? "Xóa vĩnh viễn" : "Lô có lịch sử bán/phân bổ nên không thể xóa vĩnh viễn"}
+                                disabled={isActioning || !lot.can_force_delete}
+                                onClick={() => handleForceDelete(lot)}
+                                className="rounded-lg border border-red-200 p-2 text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -729,7 +879,7 @@ function SellerHarvestLots() {
                     colSpan="10"
                     className="px-3 py-12 text-center font-bold text-slate-400"
                   >
-                    Chưa có lô sản phẩm nào.
+                    {filters.deleted === "1" ? "Chưa có lô đã xóa." : "Chưa có lô sản phẩm nào."}
                   </td>
                 </tr>
               )}
@@ -812,7 +962,7 @@ function SellerHarvestLots() {
           lot={detailLot}
           loading={detailLoading}
           getImageUrl={getImageUrl}
-          onClose={() => setDetailOpen(false)}
+          onClose={closeDetail}
         />
       )}
     </div>
@@ -828,11 +978,13 @@ function HarvestLotMobileCard({
   onEdit,
   onToggle,
   onDelete,
+  onRestore,
+  onForceDelete,
 }) {
   const unit = lot.product?.unit || "";
   const displayStatus = Number(lot.display_status || lot.status);
-  const canToggle = ![3, 4].includes(displayStatus);
-  const canEdit = displayStatus !== 4;
+  const canToggle = Boolean(lot.can_mutate) && ![3, 4].includes(displayStatus);
+  const canEdit = Boolean(lot.can_mutate) && displayStatus !== 4;
 
   return (
     <article
@@ -852,18 +1004,28 @@ function HarvestLotMobileCard({
           />
 
           <div className="min-w-0">
-            <h3 className="break-words font-extrabold text-slate-900">
+            <button
+              type="button"
+              onClick={() => onDetail(lot)}
+              className="entity-name-link entity-name-link-management break-words text-left font-extrabold text-slate-900"
+            >
               {highlight(lot.lot_code, keyword)}
-            </h3>
+            </button>
             {lot.product?.id ? (
-              <Link
-                to={`/seller/products?view=${lot.product.id}`}
-                className="mt-1 block break-words text-sm font-bold text-slate-600 hover:text-green-700 hover:underline"
+              <SellerProductNameLink
+                product={lot.product}
+                className="mt-1 block break-words text-sm font-bold text-slate-600 hover:underline"
               >
                 {highlight(lot.product.name, keyword)}
-              </Link>
+              </SellerProductNameLink>
             ) : (
               <p className="mt-1 break-words text-sm font-bold text-slate-600">Không có sản phẩm</p>
+            )}
+            {lot.product?.is_deleted && (
+              <p className="mt-1 text-xs font-bold text-red-500">Sản phẩm đã xóa</p>
+            )}
+            {lot.is_deleted && (
+              <p className="mt-1 text-xs font-bold text-red-500">Xóa lúc {lot.deleted_at || "—"}</p>
             )}
             <p className="mt-1 break-words text-xs font-semibold text-slate-400">
               {highlight(
@@ -909,42 +1071,89 @@ function HarvestLotMobileCard({
         >
           <Eye size={16} /> Xem
         </button>
-        <button
-          type="button"
-          disabled={isActioning || !canEdit}
-          onClick={() => onEdit(lot)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600 disabled:opacity-40"
-        >
-          <Pencil size={16} /> Sửa
-        </button>
-        <button
-          type="button"
-          disabled={isActioning || !canToggle}
-          onClick={() => onToggle(lot)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-100 bg-purple-50 text-sm font-bold text-purple-600 disabled:opacity-40"
-        >
-          {isActioning ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <MoreHorizontal size={16} />
-          )}
-          Ẩn/hiện
-        </button>
-        <button
-          type="button"
-          disabled={isActioning}
-          onClick={() => onDelete(lot)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-600 disabled:opacity-40"
-        >
-          {isActioning ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Trash2 size={16} />
-          )}
-          Xóa
-        </button>
+        {!lot.is_deleted ? (
+          <>
+            <button
+              type="button"
+              title={canEdit ? "Sửa lô" : lot.mutation_block_reason || "Lô không thể sửa"}
+              disabled={isActioning || !canEdit}
+              onClick={() => onEdit(lot)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600 disabled:opacity-40"
+            >
+              <Pencil size={16} /> Sửa
+            </button>
+            <button
+              type="button"
+              title={canToggle ? "Ẩn/hiện" : lot.mutation_block_reason || "Không thể ẩn/hiện"}
+              disabled={isActioning || !canToggle}
+              onClick={() => onToggle(lot)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-100 bg-purple-50 text-sm font-bold text-purple-600 disabled:opacity-40"
+            >
+              {isActioning ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <MoreHorizontal size={16} />
+              )}
+              Ẩn/hiện
+            </button>
+            <button
+              type="button"
+              title={lot.can_delete ? "Xóa lô" : lot.mutation_block_reason || "Lô đã bán chỉ được tạm ẩn"}
+              disabled={isActioning || !lot.can_delete}
+              onClick={() => onDelete(lot)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-600 disabled:opacity-40"
+            >
+              {isActioning ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Trash2 size={16} />
+              )}
+              Xóa
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              title={lot.can_restore ? "Khôi phục lô" : lot.mutation_block_reason || "Hãy khôi phục sản phẩm trước"}
+              disabled={isActioning || !lot.can_restore}
+              onClick={() => onRestore(lot)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-green-100 bg-green-50 text-sm font-bold text-green-700 disabled:opacity-40"
+            >
+              <RotateCcw size={16} /> Khôi phục
+            </button>
+            <button
+              type="button"
+              title={lot.can_force_delete ? "Xóa vĩnh viễn" : "Lô có lịch sử bán/phân bổ nên không thể xóa vĩnh viễn"}
+              disabled={isActioning || !lot.can_force_delete}
+              onClick={() => onForceDelete(lot)}
+              className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-700 disabled:opacity-40 min-[480px]:col-span-2"
+            >
+              <Trash2 size={16} /> Xóa vĩnh viễn
+            </button>
+          </>
+        )}
       </div>
     </article>
+  );
+}
+
+function SellerProductNameLink({ product, className = "", children }) {
+  if (!product?.id) return children;
+
+  const isPublic = Boolean(product.is_publicly_visible && product.slug && !product.is_deleted);
+  const to = isPublic
+    ? `/products/${product.slug}`
+    : `/seller/products?view=${product.id}`;
+
+  return (
+    <Link
+      to={to}
+      title={isPublic ? "Mở trang sản phẩm công khai" : "Mở chi tiết sản phẩm Seller"}
+      className={`${className} entity-name-link ${isPublic ? "entity-name-link-public" : "entity-name-link-management"}`}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -1248,12 +1457,12 @@ function HarvestLotDetailModal({ lot, loading, getImageUrl, onClose }) {
                     </h3>
                     <p className="mt-1 text-sm font-semibold text-slate-400">
                       {lot.product?.id ? (
-                        <Link
-                          to={`/seller/products?view=${lot.product.id}`}
-                          className="hover:text-green-700 hover:underline"
+                        <SellerProductNameLink
+                          product={lot.product}
+                          className="font-bold hover:underline"
                         >
                           {lot.product?.name}
-                        </Link>
+                        </SellerProductNameLink>
                       ) : (
                         lot.product?.name
                       )}{" "}
@@ -1266,6 +1475,14 @@ function HarvestLotDetailModal({ lot, loading, getImageUrl, onClose }) {
                   </StatusBadge>
                 </div>
 
+
+                {(lot.is_deleted || lot.product?.is_deleted) && (
+                  <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                    {lot.is_deleted
+                      ? `Lô đang ở mục Đã xóa${lot.deleted_at ? ` từ ${lot.deleted_at}` : ""}.`
+                      : "Sản phẩm của lô đang ở mục Đã xóa. Lô chỉ được xem cho đến khi sản phẩm được khôi phục."}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-3">
                   <InfoBox label="Ngày thu hoạch" value={lot.harvest_date} />
                   <InfoBox label="Hạn sử dụng" value={lot.expiry_date} />
@@ -1291,7 +1508,7 @@ function HarvestLotDetailModal({ lot, loading, getImageUrl, onClose }) {
                     label="Gian hàng"
                     value={
                       lot.farm?.id ? (
-                        <Link to="/seller/farm" className="hover:text-green-700 hover:underline">
+                        <Link to="/seller/farm" className="entity-name-link entity-name-link-management">
                           {lot.farm?.name || "Chưa có"}
                         </Link>
                       ) : (

@@ -18,6 +18,7 @@ class AdminOrderService
     public function __construct(
         private InventoryService $inventoryService,
         private RevenueMetricsService $revenueMetrics,
+        private OrderAggregateService $orderAggregateService,
     ) {}
 
     public function getOptions(): array
@@ -131,10 +132,14 @@ class AdminOrderService
     public function updateSubOrderStatus(
         int $subOrderId,
         int $newStatus,
+        string $reason,
+        int $actorId,
     ): array {
         return DB::transaction(function () use (
             $subOrderId,
             $newStatus,
+            $reason,
+            $actorId,
         ) {
             $subOrder = SubOrder::query()
                 ->with([
@@ -151,12 +156,17 @@ class AdminOrderService
             $currentStatus = (int) $subOrder->status;
 
             $this->validateStatusTransition($currentStatus, $newStatus);
-            $this->ensureCanCancelPaidMomoOrder($subOrder, $newStatus);
+            $this->ensureMomoPaymentAllowsTransition($subOrder, $newStatus);
 
             if ($newStatus === 4) {
                 foreach ($subOrder->items as $orderItem) {
                     $this->inventoryService->restoreLots($orderItem);
                 }
+
+                $subOrder->cancelled_by = $actorId;
+                $subOrder->cancelled_at = now();
+                $subOrder->cancel_reason = trim($reason);
+                $subOrder->seller_note = trim($reason);
             }
 
             $subOrder->status = $newStatus;
@@ -170,12 +180,15 @@ class AdminOrderService
             }
 
             if ($newStatus === 4) {
-                $subOrder->payment_status = (int) $subOrder->payment_status === 1
-                    ? 3
-                    : 2;
+                // Đơn đã thanh toán bị chặn từ trước; hủy ở đây luôn là chưa thanh toán.
+                $subOrder->payment_status = 2;
             }
 
             $subOrder->save();
+
+            if ($newStatus === 4) {
+                $this->orderAggregateService->syncAmounts($subOrder->order);
+            }
 
             $this->syncParentOrderStatus($subOrder->order);
             $this->syncParentPaymentStatus($subOrder->order);
@@ -238,7 +251,14 @@ class AdminOrderService
                 ]);
             }
 
-            $order->update(['status' => 4, 'cancelled_by' => $actorId, 'cancelled_at' => now(), 'cancel_reason' => trim($reason)]);
+            $this->orderAggregateService->syncAmounts($order);
+
+            $order->update([
+                'status' => 4,
+                'cancelled_by' => $actorId,
+                'cancelled_at' => now(),
+                'cancel_reason' => trim($reason),
+            ]);
             $order->payment?->update(['status' => 2]);
 
             return $this->getOrderDetail($order->id);
@@ -515,7 +535,9 @@ class AdminOrderService
             'seller_note' => $subOrder->seller_note,
             'allowed_next_statuses' => $subOrder->trashed()
                 ? []
-                : $this->getAllowedNextStatuses((int) $subOrder->status),
+                : $this->getAllowedNextStatuses($subOrder),
+            'can_cancel' => $this->canCancelSubOrder($subOrder),
+            'cancel_block_reason' => $this->subOrderCancelBlockReason($subOrder),
             'created_at' => $subOrder->created_at,
             'updated_at' => $subOrder->updated_at,
             'deleted_at' => $subOrder->deleted_at,
@@ -547,13 +569,7 @@ class AdminOrderService
             'orderItemLots.harvestLot',
         ]);
         $product = $item->product;
-        $isPubliclyVisible = $product
-            && !$product->trashed()
-            && (int) $product->status === 1
-            && $product->farm
-            && !$product->farm->trashed()
-            && (int) $product->farm->status === Farm::STATUS_ACTIVE
-            && $product->approvedCertificate !== null;
+        $isPubliclyVisible = $product?->isPubliclyVisible() ?? false;
 
         return [
             'id' => $item->id,
@@ -701,26 +717,32 @@ class AdminOrderService
         }
     }
 
-    private function ensureCanCancelPaidMomoOrder(SubOrder $subOrder, int $newStatus): void
-    {
-        if ($newStatus !== 4) {
-            return;
-        }
-
+    private function ensureMomoPaymentAllowsTransition(
+        SubOrder $subOrder,
+        int $newStatus
+    ): void {
         $subOrder->loadMissing('order.payment');
 
         $payment = $subOrder->order?->payment;
-        $isPaidMomo = $payment?->payment_method === 'MOMO'
-            && (
-                (int) ($payment?->status ?? 0) === 1
-                || (int) $subOrder->payment_status === 1
-            );
 
-        if ($isPaidMomo) {
+        if (strtoupper((string) $payment?->payment_method) !== 'MOMO') {
+            return;
+        }
+
+        $isPaid = (int) ($payment?->status ?? 0) === 1;
+
+        if (!$isPaid && in_array($newStatus, [1, 2, 3], true)) {
+            throw ValidationException::withMessages([
+                'payment' => [
+                    'Đơn MoMo chưa thanh toán thành công nên chưa thể chuẩn bị, giao hoặc hoàn thành.',
+                ],
+            ]);
+        }
+
+        if ($isPaid && $newStatus === 4) {
             throw ValidationException::withMessages([
                 'status' => [
-                    'Không thể hủy đơn MoMo đã thanh toán. '
-                    . 'Phải tích hợp quy trình hoàn tiền trước khi cho phép hủy.',
+                    'Không thể hủy đơn MoMo đã thanh toán. Phải hoàn tiền trước khi hủy.',
                 ],
             ]);
         }
@@ -756,32 +778,51 @@ class AdminOrderService
 
     private function syncParentPaymentStatus(Order $order): void
     {
-        $payment = $order->payment;
+        // Luôn đọc lại trực tiếp từ database để tránh dùng collection subOrders
+        // đã được eager-load trước khi đơn con hiện tại đổi trạng thái.
+        $payment = $order->payment()->first();
 
         if (!$payment) {
             return;
         }
 
-        $statuses = $order->subOrders()
-            ->pluck('status')
-            ->map(fn ($status) => (int) $status);
+        $subOrders = $order->subOrders()
+            ->select(['status', 'payment_status'])
+            ->get();
 
-        if ($statuses->isEmpty()) {
+        if ($subOrders->isEmpty()) {
             return;
         }
 
-        if ($statuses->every(fn ($status) => $status === 4)) {
-            $payment->update([
-                'status' => (int) $payment->status === 1 ? 3 : 2,
-            ]);
+        $allCancelled = $subOrders->every(
+            fn (SubOrder $subOrder) => (int) $subOrder->status === 4
+        );
+
+        if ($allCancelled) {
+            if ((int) $payment->status !== 1) {
+                $payment->update(['status' => 2]);
+            }
 
             return;
         }
 
-        if (
-            $statuses->every(fn ($status) => in_array($status, [3, 4], true))
-            && $statuses->contains(3)
-        ) {
+        // MoMo chỉ được đổi sang Đã thanh toán từ callback của cổng MoMo.
+        if (strtoupper((string) $payment->payment_method) === 'MOMO') {
+            return;
+        }
+
+        $activeSubOrders = $subOrders->reject(
+            fn (SubOrder $subOrder) => (int) $subOrder->status === 4
+        );
+
+        // COD: tất cả đơn con còn hiệu lực phải Hoàn thành và đã ghi nhận thu tiền.
+        $allActiveCompletedAndPaid = $activeSubOrders->isNotEmpty()
+            && $activeSubOrders->every(
+                fn (SubOrder $subOrder) => (int) $subOrder->status === 3
+                    && (int) $subOrder->payment_status === 1
+            );
+
+        if ($allActiveCompletedAndPaid) {
             $payment->update([
                 'status' => 1,
                 'paid_at' => $payment->paid_at ?? now(),
@@ -789,8 +830,9 @@ class AdminOrderService
         }
     }
 
-    private function getAllowedNextStatuses(int $status): array
+    private function getAllowedNextStatuses(SubOrder $subOrder): array
     {
+        $status = (int) $subOrder->status;
         $allowed = [
             0 => [1, 4],
             1 => [2, 4],
@@ -799,7 +841,28 @@ class AdminOrderService
             4 => [],
         ];
 
-        return collect($allowed[$status] ?? [])
+        $nextStatuses = $allowed[$status] ?? [];
+
+        $subOrder->loadMissing('order.payment');
+        $payment = $subOrder->order?->payment;
+
+        if (strtoupper((string) $payment?->payment_method) === 'MOMO') {
+            if ((int) ($payment?->status ?? 0) === 1) {
+                // Đã trả tiền: không hủy trực tiếp.
+                $nextStatuses = array_values(array_filter(
+                    $nextStatuses,
+                    fn (int $nextStatus) => $nextStatus !== 4
+                ));
+            } else {
+                // Chưa trả tiền: chỉ được hủy, chưa được chuẩn bị/giao/hoàn thành.
+                $nextStatuses = array_values(array_filter(
+                    $nextStatuses,
+                    fn (int $nextStatus) => $nextStatus === 4
+                ));
+            }
+        }
+
+        return collect($nextStatuses)
             ->map(fn (int $nextStatus) => [
                 'value' => $nextStatus,
                 'label' => $this->getSubOrderStatusText($nextStatus),
@@ -808,13 +871,50 @@ class AdminOrderService
             ->all();
     }
 
+    private function canCancelSubOrder(SubOrder $subOrder): bool
+    {
+        return !$subOrder->trashed()
+            && in_array((int) $subOrder->status, [0, 1], true)
+            && !$this->isPaidMomoSubOrder($subOrder);
+    }
+
+    private function subOrderCancelBlockReason(SubOrder $subOrder): ?string
+    {
+        if ($subOrder->trashed()) {
+            return 'Đơn con đã bị xóa mềm.';
+        }
+
+        if ($this->isPaidMomoSubOrder($subOrder)) {
+            return 'Đơn MoMo đã thanh toán phải hoàn tiền trước khi hủy.';
+        }
+
+        return match ((int) $subOrder->status) {
+            2 => 'Đơn đang giao nên không thể hủy.',
+            3 => 'Đơn đã hoàn thành nên không thể hủy.',
+            4 => 'Đơn đã bị hủy.',
+            default => null,
+        };
+    }
+
+    private function isPaidMomoSubOrder(SubOrder $subOrder): bool
+    {
+        $subOrder->loadMissing('order.payment');
+        $payment = $subOrder->order?->payment;
+
+        return $payment?->payment_method === 'MOMO'
+            && (
+                (int) ($payment?->status ?? 0) === 1
+                || (int) $subOrder->payment_status === 1
+            );
+    }
+
     private function getOrderStatusText(int $status): string
     {
         return match ($status) {
-            0 => 'Chờ xử lý',
+            0 => 'Chờ xác nhận',
             1 => 'Đang xử lý',
             2 => 'Đang giao',
-            3 => 'Đã giao',
+            3 => 'Hoàn thành',
             4 => 'Đã hủy',
             default => 'Không xác định',
         };
@@ -823,10 +923,10 @@ class AdminOrderService
     private function getSubOrderStatusText(int $status): string
     {
         return match ($status) {
-            0 => 'Chờ xử lý',
-            1 => 'Chuẩn bị hàng',
+            0 => 'Chờ xác nhận',
+            1 => 'Đang chuẩn bị',
             2 => 'Đang giao',
-            3 => 'Hoàn tất',
+            3 => 'Hoàn thành',
             4 => 'Đã hủy',
             default => 'Không xác định',
         };

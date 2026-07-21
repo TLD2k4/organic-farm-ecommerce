@@ -1236,9 +1236,19 @@ function canRetryMomo(order) {
 }
 
 function canChangePaymentMethod(order) {
-  const paymentStatus = Number(order?.payment_status ?? order?.payment?.status ?? 0);
-  const subOrders = getSubOrders(order);
-  return paymentStatus !== 1 && Number(order?.status) === 0 && subOrders.every((subOrder) => Number(subOrder.status) === 0);
+  const paymentStatus = Number(
+    order?.payment_status ?? order?.payment?.status ?? 0
+  );
+  const activeSubOrders = getSubOrders(order).filter(
+    (subOrder) => Number(subOrder.status) !== 4
+  );
+
+  return (
+    paymentStatus !== 1 &&
+    Number(order?.status) === 0 &&
+    activeSubOrders.length > 0 &&
+    activeSubOrders.every((subOrder) => Number(subOrder.status) === 0)
+  );
 }
 
 function getSubOrders(order) {

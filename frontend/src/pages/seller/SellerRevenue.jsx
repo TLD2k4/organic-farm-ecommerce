@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -12,6 +12,8 @@ import {
   ShoppingBag,
   Star,
   TrendingUp,
+  ReceiptText,
+  Truck,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -26,6 +28,7 @@ import {
 } from "recharts";
 import sellerRevenueService from "../../services/sellerRevenueService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
+import { getRankBadgeClass } from "../../utils/rank";
 
 const DEFAULT_DATA = {
   farm: null,
@@ -34,6 +37,7 @@ const DEFAULT_DATA = {
     from: "",
     to: "",
     group_by: "day",
+    limit: 5,
   },
   summary: {
     total_revenue: 0,
@@ -147,11 +151,15 @@ export default function SellerRevenue() {
     period: "month",
     from: "",
     to: "",
+    limit: 5,
   });
 
   const summary = report.summary || DEFAULT_DATA.summary;
   const comparison = summary.comparison || DEFAULT_DATA.summary.comparison;
-  const rawChart = report.revenue_chart || [];
+  const rawChart = useMemo(
+    () => report.revenue_chart || [],
+    [report.revenue_chart],
+  );
   const topProducts = report.top_products || [];
 
   const chartData = useMemo(() => {
@@ -202,7 +210,10 @@ export default function SellerRevenue() {
     month: "tháng",
   }[report.filters?.group_by] || "kỳ";
 
-  const loadReport = async ({ silent = false } = {}) => {
+  const loadReport = useCallback(async (
+    requestFilters,
+    { silent = false } = {},
+  ) => {
     try {
       if (silent) {
         setSubmitting(true);
@@ -211,10 +222,10 @@ export default function SellerRevenue() {
       }
 
       const payload = await sellerRevenueService.getReport({
-        period: filters.period,
-        from: filters.from,
-        to: filters.to,
-        limit: 5,
+        period: requestFilters.period,
+        from: requestFilters.from,
+        to: requestFilters.to,
+        limit: Number(requestFilters.limit || 5),
       });
 
       setReport(getReportData(payload));
@@ -225,11 +236,16 @@ export default function SellerRevenue() {
       setLoading(false);
       setSubmitting(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadReport();
-  }, []);
+    loadReport({
+      period: "month",
+      from: "",
+      to: "",
+      limit: 5,
+    });
+  }, [loadReport]);
 
   const updateFilter = (field, value) => {
     setFilters((prev) => ({
@@ -240,7 +256,7 @@ export default function SellerRevenue() {
 
   const handleSubmitFilter = (e) => {
     e.preventDefault();
-    loadReport({ silent: true });
+    loadReport(filters, { silent: true });
   };
 
   if (loading) {
@@ -305,8 +321,8 @@ export default function SellerRevenue() {
         <div
           className={`grid min-w-0 gap-3 ${
             filters.period === "custom"
-              ? "lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)_auto]"
-              : "lg:grid-cols-[220px_auto]"
+              ? "lg:grid-cols-[220px_190px_minmax(0,1fr)_minmax(0,1fr)_auto]"
+              : "lg:grid-cols-[220px_190px_auto]"
           }`}
         >
           <ResponsiveSelect
@@ -319,6 +335,17 @@ export default function SellerRevenue() {
               { value: "month", label: "Tháng này" },
               { value: "year", label: "Năm nay" },
               { value: "custom", label: "Tùy chọn" },
+            ]}
+          />
+
+          <ResponsiveSelect
+            value={filters.limit}
+            onChange={(value) => updateFilter("limit", Number(value))}
+            options={[
+              { value: 5, label: "Top 5 sản phẩm" },
+              { value: 10, label: "Top 10 sản phẩm" },
+              { value: 15, label: "Top 15 sản phẩm" },
+              { value: 20, label: "Top 20 sản phẩm" },
             ]}
           />
 
@@ -355,7 +382,7 @@ export default function SellerRevenue() {
         </div>
       </form>
 
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           icon={DollarSign}
           label="Tổng doanh thu"
@@ -382,6 +409,20 @@ export default function SellerRevenue() {
           label="Giá trị TB / đơn"
           value={formatCurrency(summary.avg_order_value)}
           subText="Tổng doanh thu / đơn hoàn thành"
+        />
+
+        <StatCard
+          icon={ReceiptText}
+          label="Tiền hàng"
+          value={formatCurrency(summary.items_revenue)}
+          subText="Doanh thu từ chi tiết sản phẩm"
+        />
+
+        <StatCard
+          icon={Truck}
+          label="Phí vận chuyển"
+          value={formatCurrency(summary.shipping_revenue)}
+          subText="Phần phí giao hàng đã ghi nhận"
         />
       </div>
 
@@ -446,7 +487,7 @@ export default function SellerRevenue() {
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-slate-950">
-                Sản phẩm bán chạy
+                Top {Number(report.filters?.limit || filters.limit || 5)} sản phẩm bán chạy
               </h2>
 
               <p className="mt-1 text-sm font-medium text-slate-500">
@@ -611,7 +652,9 @@ function TopProductItem({ product, index }) {
   return (
     <div className="min-w-0 rounded-3xl border border-green-100 p-4 transition hover:bg-green-50/40">
       <div className="flex min-w-0 items-center gap-4">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-green-50 text-sm font-extrabold text-green-700">
+        <div
+          className={`grid h-8 min-w-8 shrink-0 place-items-center rounded-full px-2 text-sm font-black ${getRankBadgeClass(index + 1)}`}
+        >
           {index + 1}
         </div>
 
@@ -629,8 +672,21 @@ function TopProductItem({ product, index }) {
 
         <div className="min-w-0 flex-1">
           <Link
-            to={`/seller/products?view=${product.id}`}
-            className="break-words font-extrabold text-slate-950 hover:text-green-700 hover:underline"
+            to={
+              product.is_publicly_visible && product.slug
+                ? `/products/${product.slug}`
+                : `/seller/products?view=${product.id}`
+            }
+            title={
+              product.is_publicly_visible
+                ? "Mở trang sản phẩm công khai"
+                : "Mở chi tiết sản phẩm Seller"
+            }
+            className={`break-words font-extrabold text-slate-950 hover:underline ${
+              product.is_publicly_visible
+                ? "entity-name-link entity-name-link-public"
+                : "entity-name-link entity-name-link-management"
+            }`}
           >
             {product.name}
           </Link>

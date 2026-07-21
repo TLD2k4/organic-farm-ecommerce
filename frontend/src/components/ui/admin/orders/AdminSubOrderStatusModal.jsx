@@ -7,6 +7,7 @@ export default function AdminSubOrderStatusModal({
   open,
   subOrder,
   loading = false,
+  initialStatus = null,
   onClose,
   onSubmit,
 }) {
@@ -18,7 +19,7 @@ export default function AdminSubOrderStatusModal({
     ? subOrder.allowed_next_statuses
     : [];
 
-  const modalKey = `${subOrder.id}-${subOrder.status}-${options
+  const modalKey = `${subOrder.id}-${subOrder.status}-${initialStatus ?? "auto"}-${options
     .map((option) => option.value)
     .join("-")}`;
 
@@ -28,6 +29,7 @@ export default function AdminSubOrderStatusModal({
       subOrder={subOrder}
       options={options}
       loading={loading}
+      initialStatus={initialStatus}
       onClose={onClose}
       onSubmit={onSubmit}
     />
@@ -38,10 +40,16 @@ function AdminSubOrderStatusContent({
   subOrder,
   options,
   loading,
+  initialStatus,
   onClose,
   onSubmit,
 }) {
-  const [status, setStatus] = useState(() => options[0]?.value ?? "");
+  const [status, setStatus] = useState(() => {
+    const requested = options.find(
+      (option) => Number(option.value) === Number(initialStatus),
+    );
+    return requested?.value ?? options[0]?.value ?? "";
+  });
   const [reason, setReason] = useState("");
 
   const handleSubmit = async (event) => {
@@ -73,28 +81,13 @@ function AdminSubOrderStatusContent({
               id="admin-sub-order-status-title"
               className="text-xl font-extrabold"
             >
-              Cập nhật trạng thái
+              {Number(status) === 4 ? "Hủy đơn con" : "Cập nhật trạng thái"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
               {subOrder.sub_order_code} · {subOrder.farm?.name || "Nông trại"}
             </p>
           </div>
-
-          <label className="block">
-            <span className="mb-2 block font-semibold">
-              Lý do cập nhật <b className="text-red-600">*</b>
-            </span>
-            <textarea
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              rows={3}
-              maxLength={500}
-              disabled={loading}
-              placeholder="Nội dung này được lưu trong lịch sử thao tác."
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-red-400"
-            />
-          </label>
 
           <button
             type="button"
@@ -125,6 +118,26 @@ function AdminSubOrderStatusContent({
             />
           </div>
 
+          <label className="block">
+            <span className="mb-2 block font-semibold">
+              {Number(status) === 4 ? "Lý do hủy" : "Lý do cập nhật"}{" "}
+              <b className="text-red-600">*</b>
+            </span>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              rows={3}
+              maxLength={500}
+              disabled={loading}
+              placeholder={
+                Number(status) === 4
+                  ? "Nhập lý do hủy đơn con..."
+                  : "Nội dung này được lưu trong lịch sử thao tác."
+              }
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-red-400"
+            />
+          </label>
+
           {Number(status) === 4 && (
             <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
               Hủy đơn sẽ hoàn kho theo các lô FIFO đã cấp. Đơn MoMo đã thanh
@@ -153,10 +166,18 @@ function AdminSubOrderStatusContent({
               disabled={
                 loading || status === "" || options.length === 0 || !reason.trim()
               }
-              className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                Number(status) === 4
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-indigo-600 hover:bg-indigo-700"
+              }`}
             >
               {loading && <Loader2 size={18} className="animate-spin" />}
-              {loading ? "Đang xử lý..." : "Xác nhận cập nhật"}
+              {loading
+                ? "Đang xử lý..."
+                : Number(status) === 4
+                  ? "Xác nhận hủy"
+                  : "Xác nhận cập nhật"}
             </button>
           </div>
         </form>

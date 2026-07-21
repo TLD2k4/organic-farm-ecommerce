@@ -16,6 +16,7 @@ class SellerOrderService
     public function __construct(
         private InventoryService $inventoryService,
         private RevenueMetricsService $revenueMetrics,
+        private OrderAggregateService $orderAggregateService,
     ) {
     }
 
@@ -107,7 +108,8 @@ class SellerOrderService
             'order.address',
             'order.payment',
             'farm',
-            'items.product',
+            'items.product.approvedCertificate',
+            'items.product.farm',
             'items.orderItemLots.harvestLot',
         ])
             ->where('id', $subOrderId)
@@ -161,7 +163,7 @@ class SellerOrderService
                 currentStatus: (int) $subOrder->status,
                 newStatus: $newStatus
             );
-            $this->ensureCanCancelPaidMomoOrder(
+            $this->ensureMomoPaymentAllowsTransition(
                 subOrder: $subOrder,
                 newStatus: $newStatus
             );
@@ -192,7 +194,8 @@ class SellerOrderService
             |--------------------------------------------------------------------------
             */
             if ($newStatus === 3) {
-                // Hoàn thành -> đã thanh toán
+                // COD được ghi nhận đã thu tiền khi giao hoàn tất.
+                // MoMo chỉ đi tới đây sau khi callback đã xác nhận thanh toán.
                 $subOrder->payment_status = 1;
 
                 if (Schema::hasColumn('sub_orders', 'completed_at')) {
@@ -201,14 +204,15 @@ class SellerOrderService
             }
 
             if ($newStatus === 4) {
-                // Hủy khi đã thanh toán -> hoàn tiền
-                // Hủy khi chưa thanh toán -> thất bại
-                $subOrder->payment_status = ((int) $subOrder->payment_status === 1)
-                    ? 3
-                    : 2;
+                // Đơn đã thanh toán bị chặn từ trước; hủy ở đây luôn là chưa thanh toán.
+                $subOrder->payment_status = 2;
             }
 
             $subOrder->save();
+
+            if ($newStatus === 4) {
+                $this->orderAggregateService->syncAmounts($subOrder->order);
+            }
 
             $this->syncParentOrderStatus($subOrder->order);
             $this->syncParentPaymentStatus($subOrder->order);
@@ -316,35 +320,36 @@ class SellerOrderService
     }
 
 
-    private function ensureCanCancelPaidMomoOrder(
-    SubOrder $subOrder,
-    int $newStatus
-): void {
-    if ($newStatus !== 4) {
-        return;
+    private function ensureMomoPaymentAllowsTransition(
+        SubOrder $subOrder,
+        int $newStatus
+    ): void {
+        $subOrder->loadMissing('order.payment');
+
+        $payment = $subOrder->order?->payment;
+
+        if (strtoupper((string) $payment?->payment_method) !== 'MOMO') {
+            return;
+        }
+
+        $isPaid = (int) ($payment?->status ?? 0) === 1;
+
+        if (!$isPaid && in_array($newStatus, [1, 2, 3], true)) {
+            throw ValidationException::withMessages([
+                'payment' => [
+                    'Đơn MoMo chưa thanh toán thành công nên chưa thể chuẩn bị, giao hoặc hoàn thành.',
+                ],
+            ]);
+        }
+
+        if ($isPaid && $newStatus === 4) {
+            throw ValidationException::withMessages([
+                'status' => [
+                    'Không thể hủy đơn MoMo đã thanh toán. Vui lòng xử lý hoàn tiền trước.',
+                ],
+            ]);
+        }
     }
-
-    $subOrder->loadMissing('order.payment');
-
-    $paymentMethod = $subOrder->order?->payment?->payment_method;
-    $parentPaymentStatus = (int) ($subOrder->order?->payment?->status ?? 0);
-    $subPaymentStatus = (int) $subOrder->payment_status;
-
-    $isPaidMomo =
-        $paymentMethod === 'MOMO'
-        && (
-            $parentPaymentStatus === 1 ||
-            $subPaymentStatus === 1
-        );
-
-    if ($isPaidMomo) {
-        throw ValidationException::withMessages([
-            'status' => [
-                'Không thể hủy đơn MoMo đã thanh toán. Vui lòng xử lý hoàn tiền trước.'
-            ],
-        ]);
-    }
-}
 
     /**
      * Đồng bộ trạng thái Order cha
@@ -465,6 +470,7 @@ class SellerOrderService
                         'slug' => $item->product->slug,
                         'thumbnail' => $item->product->thumbnail,
                         'status' => (int) $item->product->status,
+                        'is_publicly_visible' => $item->product->isPubliclyVisible(),
                     ] : null,
 
                     'allocated_lots' => $item->orderItemLots
@@ -519,50 +525,58 @@ class SellerOrderService
     }
 
     /**
- * Đồng bộ trạng thái thanh toán của Order cha
- */
+     * Đồng bộ trạng thái thanh toán của Order cha.
+     */
     private function syncParentPaymentStatus(Order $order): void
     {
-        $order->load([
-            'subOrders',
-            'payment',
-        ]);
+        // Luôn đọc lại trực tiếp từ database để tránh dùng collection subOrders
+        // đã được eager-load trước khi đơn con hiện tại đổi trạng thái.
+        $payment = $order->payment()->first();
 
-        if (!$order->payment) {
+        if (!$payment) {
             return;
         }
 
-        $statuses = $order->subOrders
-            ->pluck('status')
-            ->map(fn ($status) => (int) $status);
+        $subOrders = $order->subOrders()
+            ->select(['status', 'payment_status'])
+            ->get();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Tất cả sub order bị hủy
-        |--------------------------------------------------------------------------
-        */
-        if ($statuses->every(fn ($status) => $status === 4)) {
-            $order->payment->update([
-                'status' => ((int) $order->payment->status === 1)
-                    ? 3 // Đã thanh toán rồi thì hoàn tiền
-                    : 2, // COD chưa trả thì xem như thất bại
-            ]);
+        if ($subOrders->isEmpty()) {
+            return;
+        }
+
+        $allCancelled = $subOrders->every(
+            fn (SubOrder $subOrder) => (int) $subOrder->status === 4
+        );
+
+        if ($allCancelled) {
+            if ((int) $payment->status !== 1) {
+                $payment->update(['status' => 2]);
+            }
 
             return;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Tất cả sub order đã kết thúc, có ít nhất 1 đơn hoàn thành
-        |--------------------------------------------------------------------------
-        */
-        if (
-            $statuses->every(fn ($status) => in_array($status, [3, 4], true))
-            && $statuses->contains(3)
-        ) {
-            $order->payment->update([
+        // MoMo chỉ được đổi sang Đã thanh toán từ callback của cổng MoMo.
+        if (strtoupper((string) $payment->payment_method) === 'MOMO') {
+            return;
+        }
+
+        $activeSubOrders = $subOrders->reject(
+            fn (SubOrder $subOrder) => (int) $subOrder->status === 4
+        );
+
+        // COD: tất cả đơn con còn hiệu lực phải Hoàn thành và đã ghi nhận thu tiền.
+        $allActiveCompletedAndPaid = $activeSubOrders->isNotEmpty()
+            && $activeSubOrders->every(
+                fn (SubOrder $subOrder) => (int) $subOrder->status === 3
+                    && (int) $subOrder->payment_status === 1
+            );
+
+        if ($allActiveCompletedAndPaid) {
+            $payment->update([
                 'status' => 1,
-                'paid_at' => $order->payment->paid_at ?? now(),
+                'paid_at' => $payment->paid_at ?? now(),
             ]);
         }
     }

@@ -294,18 +294,11 @@ class OrderBuilderService
             ]);
         }
 
-        if ((int) $product->status !== 1) {
+        if (!$product->isPubliclyVisible()) {
             throw ValidationException::withMessages([
                 'product' => [
-                    'Sản phẩm "' . $product->name . '" hiện không được bán.'
-                ]
-            ]);
-        }
-
-        if (!$product->certificate) {
-            throw ValidationException::withMessages([
-                'product' => [
-                    'Sản phẩm "' . $product->name . '" chưa có chứng nhận hợp lệ.'
+                    'Sản phẩm "' . $product->name
+                    . '" hiện không còn đủ điều kiện công khai để đặt hàng.'
                 ]
             ]);
         }

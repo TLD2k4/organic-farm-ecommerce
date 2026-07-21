@@ -22,7 +22,7 @@ public function up(): void
             ->constrained('certifications')
             ->restrictOnDelete();
 
-        $table->string('certificate_number', 100)->unique();
+        $table->string('certificate_number', 100);
         $table->string('certificate_file');
 
         $table->date('issued_date');

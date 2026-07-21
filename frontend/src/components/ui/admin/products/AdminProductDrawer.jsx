@@ -7,6 +7,7 @@ import {
   FileCheck2,
   FileText,
   ImageIcon,
+  History,
   LockKeyhole,
   LockKeyholeOpen,
   Package,
@@ -105,6 +106,7 @@ function getFileUrl(path) {
 export default function AdminProductDrawer({
   open,
   productId,
+  highlightCertificateId = null,
   actionLoading = false,
   onClose,
   onApproveProduct,
@@ -122,6 +124,20 @@ export default function AdminProductDrawer({
       getById(productId).catch(() => {});
     }
   }, [open, productId, getById]);
+
+  useEffect(() => {
+    if (!open || !product || !highlightCertificateId) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById(`certificate-${highlightCertificateId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [open, product, highlightCertificateId]);
 
   if (!open) {
     return null;
@@ -374,6 +390,67 @@ export default function AdminProductDrawer({
 
               <section>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
+                    <History size={19} className="text-sky-600" />
+                    Lịch sử kiểm duyệt sản phẩm
+                  </h3>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                    {product.audit_history?.length || 0} thao tác
+                  </span>
+                </div>
+
+                {product.audit_history?.length ? (
+                  <div className="space-y-3">
+                    {product.audit_history.map((entry) => (
+                      <article
+                        key={entry.id}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="font-extrabold text-slate-900">
+                              {entry.action_text} sản phẩm
+                            </p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {entry.from_status_text} → {entry.to_status_text}
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-xs font-semibold text-slate-500">
+                            {formatDate(entry.created_at)}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                          <SmallInfo
+                            label="Người thao tác"
+                            value={entry.actor?.name || "Tài khoản đã xóa"}
+                          />
+                          <SmallInfo
+                            label="Email"
+                            value={entry.actor?.email || "—"}
+                          />
+                        </div>
+
+                        {entry.reason && (
+                          <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                            <p className="font-bold">Lý do</p>
+                            <p className="mt-1 whitespace-pre-wrap wrap-break-word">
+                              {entry.reason}
+                            </p>
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                    Chưa có thao tác kiểm duyệt nào được ghi nhận.
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-extrabold text-slate-900">
                     Lịch sử hồ sơ chứng chỉ
                   </h3>
@@ -395,8 +472,13 @@ export default function AdminProductDrawer({
 
                       return (
                         <article
+                          id={`certificate-${certificate.id}`}
                           key={certificate.id}
-                          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                          className={`rounded-2xl border bg-white p-4 shadow-sm transition ${
+                            Number(highlightCertificateId) === Number(certificate.id)
+                              ? "border-sky-400 ring-2 ring-sky-100"
+                              : "border-slate-200"
+                          }`}
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { getImageUrl } from "@/utils/image";
 import { getAdminProductLink } from "@/utils/adminEntityLink";
+import { getRankBadgeClass } from "@/utils/rank";
 
 const formatNumber = (value, maximumFractionDigits = 0) => {
   return new Intl.NumberFormat("vi-VN", {
@@ -80,30 +81,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
                 >
                   <td className="px-4 py-4">
                     <span
-                      className={`
-                          inline-flex
-                          h-8
-                          min-w-8
-                          items-center
-                          justify-center
-
-                          rounded-full
-
-                          px-2
-
-                          text-sm
-                          font-bold
-
-                          ${
-                            index === 0
-                              ? "bg-amber-100 text-amber-700"
-                              : index === 1
-                                ? "bg-slate-200 text-slate-700"
-                                : index === 2
-                                  ? "bg-orange-100 text-orange-700"
-                                  : "bg-slate-100 text-slate-600"
-                          }
-                        `}
+                      className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-black ${getRankBadgeClass(index + 1)}`}
                     >
                       {index + 1}
                     </span>
@@ -128,7 +106,7 @@ export default function TopProductsTable({ products = [], loading = false }) {
                           <Link
                             to={productLink.to}
                             title={productLink.title}
-                            className={`block max-w-65 wrap-break-word font-semibold hover:underline ${productLink.isPublic ? "text-slate-900 hover:text-green-700" : "text-slate-900 hover:text-sky-600"}`}
+                            className={`block max-w-65 wrap-break-word font-semibold hover:underline ${productLink.isPublic ? "text-slate-900 entity-name-link entity-name-link-public" : "text-slate-900 entity-name-link entity-name-link-management"}`}
                           >
                             {product.product_name}
                           </Link>

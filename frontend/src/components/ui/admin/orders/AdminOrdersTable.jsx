@@ -58,7 +58,7 @@ export default function AdminOrdersTable({ orders, loading, keyword, onView }) {
                 className="border-t border-slate-100 transition hover:bg-slate-50"
               >
                 <td className="px-4 py-4">
-                  <button type="button" onClick={() => onView(order)} className="font-bold text-slate-900 hover:text-sky-600 hover:underline">{highlight(order.order_code, keyword)}</button>
+                  <button type="button" onClick={() => onView(order)} className="font-bold text-slate-900 entity-name-link entity-name-link-management hover:underline">{highlight(order.order_code, keyword)}</button>
                   <p className="text-xs text-slate-500">#{order.id}</p>
                 </td>
 

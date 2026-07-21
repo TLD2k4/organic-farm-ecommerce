@@ -61,6 +61,7 @@ export default function AdminProductsPage() {
   const [rejectContext, setRejectContext] = useState(null);
 
   const debouncedKeyword = useDebounce(params.keyword, 500);
+  const highlightedCertificateId = Number(searchParams.get("certificate")) || null;
 
   useEffect(() => {
     const requestedId = Number(searchParams.get("view"));
@@ -114,9 +115,10 @@ export default function AdminProductsPage() {
     setSelectedProductId(null);
     clearProduct();
 
-    if (searchParams.has("view")) {
+    if (searchParams.has("view") || searchParams.has("certificate")) {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete("view");
+      nextParams.delete("certificate");
       setSearchParams(nextParams, { replace: true });
     }
   };
@@ -334,6 +336,7 @@ export default function AdminProductsPage() {
       <AdminProductDrawer
         open={openDrawer}
         productId={selectedProductId}
+        highlightCertificateId={highlightedCertificateId}
         actionLoading={actionLoading}
         onClose={closeDrawer}
         onApproveProduct={handleApproveProduct}

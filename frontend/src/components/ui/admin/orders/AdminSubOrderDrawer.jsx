@@ -1,4 +1,4 @@
-import { RefreshCcw, X } from "lucide-react";
+import { Ban, RefreshCcw, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import StatusBadge from "@/components/common/StatusBadge";
@@ -23,11 +23,15 @@ export default function AdminSubOrderDrawer({
 }) {
   if (!open) return null;
 
-  const canUpdate =
-    subOrder &&
-    !subOrder.deleted_at &&
-    Array.isArray(subOrder.allowed_next_statuses) &&
-    subOrder.allowed_next_statuses.length > 0;
+  const allowedStatuses = Array.isArray(subOrder?.allowed_next_statuses)
+    ? subOrder.allowed_next_statuses
+    : [];
+  const canAdvance = allowedStatuses.some(
+    (option) => Number(option.value) !== 4,
+  );
+  const canCancel = allowedStatuses.some(
+    (option) => Number(option.value) === 4,
+  );
 
   return (
     <div className="fixed inset-0 z-60">
@@ -47,14 +51,24 @@ export default function AdminSubOrderDrawer({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {canUpdate && (
+            {canAdvance && (
               <button
                 type="button"
                 onClick={() => onUpdateStatus(subOrder)}
                 className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700"
               >
                 <RefreshCcw size={17} />
-                Cập nhật
+                Cập nhật trạng thái
+              </button>
+            )}
+            {canCancel && (
+              <button
+                type="button"
+                onClick={() => onUpdateStatus(subOrder, 4)}
+                className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700"
+              >
+                <Ban size={17} />
+                Hủy đơn con
               </button>
             )}
             <button
@@ -100,6 +114,12 @@ export default function AdminSubOrderDrawer({
               </div>
 
               {subOrder.cancellation && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm"><p className="font-black text-red-700">Thông tin hủy đơn con</p><p className="mt-2 font-semibold text-slate-700">Bởi {subOrder.cancellation.by?.name || "Tài khoản đã xóa"} · {subOrder.cancellation.at}</p><p className="mt-1 text-slate-600">Lý do: {subOrder.cancellation.reason || "Không ghi lý do"}</p></div>}
+
+              {!canCancel && subOrder.cancel_block_reason && !subOrder.cancellation && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                  Không thể hủy đơn con: {subOrder.cancel_block_reason}
+                </div>
+              )}
 
               <div className="grid gap-4 lg:grid-cols-3">
                 <Card title="Đơn tổng">
@@ -240,7 +260,7 @@ function ProductNameLink({ item }) {
       to={productLink.to}
       title={productLink.title}
       className={`font-semibold hover:underline ${
-        productLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"
+        productLink.isPublic ? "entity-name-link entity-name-link-public" : "entity-name-link entity-name-link-management"
       }`}
     >
       {item.product_name}

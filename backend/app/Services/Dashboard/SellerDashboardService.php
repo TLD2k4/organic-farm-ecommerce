@@ -18,6 +18,7 @@ class SellerDashboardService
     public function getSellerDashboard(int $sellerId, array $filters = []): array
     {
         $farm = $this->getSellerFarm($sellerId);
+        $topLimit = (int) ($filters['top_limit'] ?? 5);
 
         return [
             'farm' => [
@@ -25,6 +26,9 @@ class SellerDashboardService
                 'name' => $farm->name,
             ],
             'today' => now()->format('d/m/Y'),
+            'filters' => [
+                'top_limit' => $topLimit,
+            ],
 
             'stats' => $this->getStats($farm),
             'revenue_chart' => $this->getRevenueChart($farm),
@@ -33,8 +37,9 @@ class SellerDashboardService
             'expiring_lots' => $this->getExpiringLots($farm),
 
             // Data cho dashboard nông trại
-            'harvest_lots' => $this->getTopHarvestLots($farm),
+            'harvest_lots' => $this->getTopHarvestLots($farm, $topLimit),
             'low_stock_products' => $this->getLowStockProducts($farm),
+            'top_stock_products' => $this->getTopStockProducts($farm, $topLimit),
             'warning_products' => $this->getWarningProducts($farm),
         ];
     }
@@ -265,19 +270,19 @@ class SellerDashboardService
             ->toArray();
     }
 
-    private function getTopHarvestLots(Farm $farm): array
+    private function getTopHarvestLots(Farm $farm, int $limit): array
     {
         return HarvestLot::with([
                 'productCertificate.certification',
-                'productCertificate.product',
+                'productCertificate.product.approvedCertificate',
             ])
             ->whereHas('productCertificate.product', function ($query) use ($farm) {
                 $query->where('farm_id', $farm->id);
             })
             ->orderByDesc('id')
-            ->limit(5)
+            ->limit($limit)
             ->get()
-            ->map(function ($lot) {
+            ->map(function ($lot) use ($farm) {
                 $certificate = $lot->productCertificate;
                 $product = $certificate?->product;
 
@@ -295,6 +300,10 @@ class SellerDashboardService
 
                     'product_id' => $product?->id,
                     'product_name' => $product?->name,
+                    'product_slug' => $product?->slug,
+                    'product_is_publicly_visible' => $product
+                        ? $this->isProductPubliclyVisible($product, $farm)
+                        : false,
                     'thumbnail' => $product?->thumbnail,
 
                     'certificate_name' => $certificate?->certification?->name,
@@ -316,22 +325,57 @@ class SellerDashboardService
 
     private function getLowStockProducts(Farm $farm): array
     {
-        return Product::where('farm_id', $farm->id)
+        return Product::with('approvedCertificate')
+            ->where('farm_id', $farm->id)
             ->where('status', 1)
             ->where('stock_quantity', '<=', 20)
             ->orderBy('stock_quantity')
             ->limit(4)
             ->get()
-            ->map(function ($product) {
+            ->map(function (Product $product) use ($farm) {
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
+                    'slug' => $product->slug,
+                    'is_publicly_visible' => $this->isProductPubliclyVisible($product, $farm),
                     'thumbnail' => $product->thumbnail,
                     'stock_quantity' => (float) $product->stock_quantity,
                     'unit' => $product->unit,
                 ];
             })
             ->toArray();
+    }
+
+    private function getTopStockProducts(Farm $farm, int $limit): array
+    {
+        // Xếp hạng tồn kho là danh sách sản phẩm đang công khai thật sự.
+        // Farm bị đình chỉ, sản phẩm tạm ẩn/chờ duyệt hoặc thiếu chứng chỉ
+        // hợp lệ đều không được trộn vào bảng xếp hạng này.
+        if ($farm->trashed() || (int) $farm->status !== Farm::STATUS_ACTIVE) {
+            return [];
+        }
+
+        return Product::with('approvedCertificate')
+            ->where('farm_id', $farm->id)
+            ->publiclyVisible()
+            ->where('stock_quantity', '>', 0)
+            ->orderByDesc('stock_quantity')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get()
+            ->map(function (Product $product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'slug' => $product->slug,
+                    'thumbnail' => $product->thumbnail,
+                    'stock_quantity' => (float) $product->stock_quantity,
+                    'unit' => $product->unit,
+                    'is_publicly_visible' => $product->isPubliclyVisible(),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private function getWarningProducts(Farm $farm): array
@@ -341,7 +385,7 @@ class SellerDashboardService
             ->orderByDesc('id')
             ->limit(5)
             ->get()
-            ->map(function ($product) {
+            ->map(function (Product $product) use ($farm) {
                 $approvedCertificate = $product->approvedCertificate;
 
                 $latestCertificate = $product->certificates
@@ -382,6 +426,8 @@ class SellerDashboardService
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
+                    'slug' => $product->slug,
+                    'is_publicly_visible' => $this->isProductPubliclyVisible($product, $farm),
                     'thumbnail' => $product->thumbnail,
                     'stock_quantity' => (float) $product->stock_quantity,
 
@@ -394,6 +440,11 @@ class SellerDashboardService
                 ];
             })
             ->toArray();
+    }
+
+    private function isProductPubliclyVisible(Product $product, Farm $farm): bool
+    {
+        return $product->isPubliclyVisible();
     }
 
     private function getExpiringLots(Farm $farm): array
@@ -500,7 +551,7 @@ class SellerDashboardService
     {
         return match ($status) {
             0 => 'Chờ xác nhận',
-            1 => 'Đã xác nhận',
+            1 => 'Đang chuẩn bị',
             2 => 'Đang giao',
             3 => 'Hoàn thành',
             4 => 'Đã hủy',

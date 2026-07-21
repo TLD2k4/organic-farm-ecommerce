@@ -161,11 +161,11 @@ export default function AdminProductsTable({
 
                       <div className="min-w-0">
                         {productLink?.isPublic ? (
-                          <Link to={productLink.to} title={productLink.title} className="block max-w-64 truncate font-bold text-slate-900 hover:text-green-700 hover:underline">
+                          <Link to={productLink.to} title={productLink.title} className="block max-w-64 truncate font-bold text-slate-900 entity-name-link entity-name-link-public hover:underline">
                             {highlight(product.name, keyword)}
                           </Link>
                         ) : (
-                          <button type="button" title={productLink?.title} onClick={() => onView(product)} className="block max-w-64 truncate text-left font-bold text-slate-900 hover:text-sky-600 hover:underline">
+                          <button type="button" title={productLink?.title} onClick={() => onView(product)} className="block max-w-64 truncate text-left font-bold text-slate-900 entity-name-link entity-name-link-management hover:underline">
                             {highlight(product.name, keyword)}
                           </button>
                         )}
@@ -184,7 +184,7 @@ export default function AdminProductsTable({
                   <td className="px-4 py-4">
                     <div className="max-w-64">
                       {farmLink ? (
-                        <Link to={farmLink.to} title={farmLink.title} className={`block truncate font-semibold hover:underline ${farmLink.isPublic ? "text-slate-800 hover:text-green-700" : "text-slate-800 hover:text-sky-600"}`}>
+                        <Link to={farmLink.to} title={farmLink.title} className={`block truncate font-semibold hover:underline ${farmLink.isPublic ? "text-slate-800 entity-name-link entity-name-link-public" : "text-slate-800 entity-name-link entity-name-link-management"}`}>
                           {highlight(product.farm?.name || "—", keyword)}
                         </Link>
                       ) : (

@@ -304,7 +304,7 @@ function ProductLine({ item }) {
       )}
       <div>
         {productLink ? (
-          <Link to={productLink.to} title={productLink.title} className={`font-semibold hover:underline ${productLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"}`}>{item.product_name}</Link>
+          <Link to={productLink.to} title={productLink.title} className={`font-semibold hover:underline ${productLink.isPublic ? "entity-name-link entity-name-link-public" : "entity-name-link entity-name-link-management"}`}>{item.product_name}</Link>
         ) : (
           <p className="font-semibold">{item.product_name}</p>
         )}

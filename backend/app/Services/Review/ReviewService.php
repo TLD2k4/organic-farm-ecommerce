@@ -608,9 +608,6 @@ class ReviewService
 
     private function isProductPubliclyVisible(Product $product): bool
     {
-        return (int) $product->status === 1
-            && $product->farm
-            && (int) $product->farm->status === Farm::STATUS_ACTIVE
-            && $product->approvedCertificate !== null;
+        return $product->isPubliclyVisible();
     }
 }

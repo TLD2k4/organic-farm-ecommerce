@@ -75,6 +75,8 @@ class AdminOrderController extends Controller
         $data = $this->adminOrderService->updateSubOrderStatus(
             subOrderId: $id,
             newStatus: (int) $request->validated('status'),
+            reason: $request->validated('reason'),
+            actorId: (int) $request->user()->id,
         );
 
         $this->auditLogService->record(
@@ -92,8 +94,10 @@ class AdminOrderController extends Controller
         );
 
         $message = 'Đơn ' . $subOrder->sub_order_code
-            . ' đã chuyển trạng thái từ ' . $currentStatus
-            . ' sang ' . $request->validated('status')
+            . ' đã chuyển trạng thái từ '
+            . $this->subOrderStatusText($currentStatus)
+            . ' sang '
+            . $this->subOrderStatusText((int) $request->validated('status'))
             . '. Lý do: ' . $request->validated('reason');
 
         $subOrder->order?->user?->notify(new MarketplaceNotification(
@@ -165,4 +169,16 @@ class AdminOrderController extends Controller
             'data' => $data,
         ]);
     }
+    private function subOrderStatusText(int $status): string
+    {
+        return match ($status) {
+            0 => 'Chờ xác nhận',
+            1 => 'Đang chuẩn bị',
+            2 => 'Đang giao',
+            3 => 'Hoàn thành',
+            4 => 'Đã hủy',
+            default => 'Không xác định',
+        };
+    }
+
 }

@@ -14,22 +14,31 @@ class HarvestLotService
     public function getVendorLots(array $filters, int $sellerId): LengthAwarePaginator
     {
         $farm = $this->getSellerFarm($sellerId);
+        $showDeleted = (int) ($filters['deleted'] ?? 0) === 1;
 
         $query = HarvestLot::query()
+            ->when($showDeleted, fn ($query) => $query->onlyTrashed())
+            ->withCount('orderItemLots')
             ->with([
-                'productCertificate.certification',
-                'productCertificate.product.category',
-                'productCertificate.product.farm',
+                'productCertificateIncludingDeleted.certification',
+                'productCertificateIncludingDeleted.productIncludingDeleted.category',
+                'productCertificateIncludingDeleted.productIncludingDeleted.farm',
+                'productCertificateIncludingDeleted.productIncludingDeleted.approvedCertificate',
             ])
-            ->whereHas('productCertificate.product', function ($query) use ($farm) {
-                $query->where('farm_id', $farm->id);
-            })
+            ->whereHas(
+                'productCertificateIncludingDeleted.productIncludingDeleted',
+                function ($query) use ($farm) {
+                    $query->where('farm_id', $farm->id);
+                }
+            )
             ->orderBy('id', 'desc');
 
         if (!empty($filters['product_id'])) {
-            $query->whereHas('productCertificate', function ($query) use ($filters) {
-                $query->where('product_id', $filters['product_id']);
-            });
+            $query->whereHas(
+                'productCertificateIncludingDeleted',
+                fn ($certificateQuery) => $certificateQuery
+                    ->where('product_id', $filters['product_id'])
+            );
         }
 
         if (!empty($filters['status'])) {
@@ -58,12 +67,12 @@ class HarvestLotService
             $query->where(function ($keywordQuery) use ($keyword) {
                 $keywordQuery
                     ->where('lot_code', 'like', "%{$keyword}%")
-                    ->orWhereHas('productCertificate.product', function ($productQuery) use ($keyword) {
+                    ->orWhereHas('productCertificateIncludingDeleted.productIncludingDeleted', function ($productQuery) use ($keyword) {
                         $productQuery
                             ->where('name', 'like', "%{$keyword}%")
                             ->orWhere('slug', 'like', "%{$keyword}%");
                     })
-                    ->orWhereHas('productCertificate', function ($certificateQuery) use ($keyword) {
+                    ->orWhereHas('productCertificateIncludingDeleted', function ($certificateQuery) use ($keyword) {
                         $certificateQuery
                             ->where('certificate_number', 'like', "%{$keyword}%")
                             ->orWhereHas('certification', function ($certificationQuery) use ($keyword) {
@@ -81,83 +90,126 @@ class HarvestLotService
     public function getVendorLotStats(int $sellerId): array
     {
         $farm = $this->getSellerFarm($sellerId);
-        $today = today()->toDateString();
-        $warningDate = today()->addDays(7)->toDateString();
+        $baseQuery = HarvestLot::query()
+            ->whereHas(
+                'productCertificateIncludingDeleted.productIncludingDeleted',
+                fn ($productQuery) => $productQuery->where('farm_id', $farm->id)
+            );
 
-        $stats = HarvestLot::query()
-            ->whereHas('productCertificate.product', function ($query) use ($farm) {
-                $query->where('farm_id', $farm->id);
-            })
-            ->selectRaw('COUNT(*) as total')
-            ->selectRaw(
-                'SUM(CASE WHEN status = 1 AND quantity_remaining > 0 AND expiry_date >= ? THEN 1 ELSE 0 END) as active',
-                [$today]
+        $sellableRelation = function ($certificateQuery) use ($farm) {
+            $certificateQuery
+                ->where('status', 1)
+                ->whereDate('expiry_date', '>=', today())
+                ->whereHas('product', function ($productQuery) use ($farm) {
+                    $productQuery
+                        ->where('farm_id', $farm->id)
+                        ->where('status', 1);
+                });
+        };
+
+        $farmIsActive = !$farm->trashed()
+            && (int) $farm->status === Farm::STATUS_ACTIVE;
+
+        $active = 0;
+        $warning = 0;
+
+        if ($farmIsActive) {
+            $active = (clone $baseQuery)
+                ->whereHas('productCertificate', $sellableRelation)
+                ->where('status', 1)
+                ->where('quantity_remaining', '>', 0)
+                ->whereDate('expiry_date', '>=', today())
+                ->count();
+
+            $warning = (clone $baseQuery)
+                ->whereHas('productCertificate', $sellableRelation)
+                ->where('status', 1)
+                ->where('quantity_remaining', '>', 0)
+                ->whereBetween('expiry_date', [today(), today()->addDays(7)])
+                ->count();
+        }
+
+        $deleted = HarvestLot::onlyTrashed()
+            ->whereHas(
+                'productCertificateIncludingDeleted.productIncludingDeleted',
+                fn ($productQuery) => $productQuery->where('farm_id', $farm->id)
             )
-            ->selectRaw(
-                'SUM(CASE WHEN status = 1 AND quantity_remaining > 0 AND expiry_date BETWEEN ? AND ? THEN 1 ELSE 0 END) as warning',
-                [$today, $warningDate]
-            )
-            ->selectRaw(
-                'SUM(CASE WHEN quantity_remaining <= 0 THEN 1 ELSE 0 END) as out_of_stock'
-            )
-            ->first();
+            ->count();
 
         return [
-            'total' => (int) ($stats?->total ?? 0),
-            'active' => (int) ($stats?->active ?? 0),
-            'warning' => (int) ($stats?->warning ?? 0),
-            'out_of_stock' => (int) ($stats?->out_of_stock ?? 0),
+            'total' => (clone $baseQuery)->count(),
+            'deleted' => $deleted,
+            'active' => $active,
+            'warning' => $warning,
+            'out_of_stock' => (clone $baseQuery)
+                ->where('quantity_remaining', '<=', 0)
+                ->count(),
         ];
     }
 
     public function getVendorLotOptions(int $sellerId): array
-{
-    $farm = $this->getSellerFarm($sellerId);
+    {
+        $farm = $this->getSellerFarm($sellerId);
 
-    $products = Product::with(['category', 'approvedCertificate.certification'])
-        ->where('farm_id', $farm->id)
-        ->where('status', 1)
-        ->whereHas('approvedCertificate')
-        ->orderBy('name')
-        ->get()
-        ->map(function ($product) {
-            $certificate = $product->approvedCertificate;
+        $products = Product::with(['category', 'approvedCertificate.certification'])
+            ->where('farm_id', $farm->id)
+            ->where('status', 1)
+            ->whereHas('approvedCertificate')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Product $product) {
+                $certificate = $product->approvedCertificate;
 
-            return [
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'thumbnail' => $product->thumbnail,
+                    'unit' => $product->unit,
+                    'stock_quantity' => (float) $product->stock_quantity,
+                    'category_name' => $product->category?->name,
+                    'certificate' => $certificate ? [
+                        'id' => $certificate->id,
+                        'certification_name' => $certificate->certification?->name,
+                        'certificate_number' => $certificate->certificate_number,
+                        'expiry_date' => optional($certificate->expiry_date)->format('Y-m-d'),
+                    ] : null,
+                ];
+            })
+            ->values();
+
+        $filterProducts = Product::withTrashed()
+            ->withoutGlobalScope('farm_not_deleted')
+            ->where('farm_id', $farm->id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'deleted_at'])
+            ->map(fn (Product $product) => [
                 'id' => $product->id,
                 'name' => $product->name,
-                'thumbnail' => $product->thumbnail,
-                'unit' => $product->unit,
-                'stock_quantity' => (float) $product->stock_quantity,
-                'category_name' => $product->category?->name,
+                'is_deleted' => $product->trashed(),
+            ])
+            ->values();
 
-                'certificate' => $certificate ? [
-                    'id' => $certificate->id,
-                    'certification_name' => $certificate->certification?->name,
-                    'certificate_number' => $certificate->certificate_number,
-                    'expiry_date' => optional($certificate->expiry_date)->format('Y-m-d'),
-                ] : null,
-            ];
-        })
-        ->values();
+        return [
+            'products' => $products,
+            'filter_products' => $filterProducts,
+        ];
+    }
 
-    return [
-        'products' => $products,
-    ];
-}
     public function getVendorLotDetail(int $lotId, int $sellerId): HarvestLot
     {
         return $this->findSellerLot($lotId, $sellerId)
+            ->loadCount('orderItemLots')
             ->load([
-                'productCertificate.certification',
-                'productCertificate.product.category',
-                'productCertificate.product.farm',
+                'productCertificateIncludingDeleted.certification',
+                'productCertificateIncludingDeleted.productIncludingDeleted.category',
+                'productCertificateIncludingDeleted.productIncludingDeleted.farm',
+                'productCertificateIncludingDeleted.productIncludingDeleted.approvedCertificate',
             ]);
     }
 
     public function createVendorLot(array $data, int $sellerId): HarvestLot
     {
-        $farm = $this->getSellerFarm($sellerId);
+        $farm = $this->getActiveSellerFarm($sellerId);
 
         $product = Product::with('approvedCertificate')
             ->where('id', $data['product_id'])
@@ -203,7 +255,7 @@ class HarvestLotService
 
 public function updateVendorLot(array $data, int $lotId, int $sellerId): HarvestLot
 {
-    $lot = $this->findSellerLot($lotId, $sellerId)
+    $lot = $this->findSellerLotForMutation($lotId, $sellerId)
         ->load('productCertificate.product');
 
     $certificate = $lot->productCertificate;
@@ -331,12 +383,15 @@ public function updateVendorLot(array $data, int $lotId, int $sellerId): Harvest
 
     public function deleteVendorLot(int $lotId, int $sellerId): void
     {
-        $lot = $this->findSellerLot($lotId, $sellerId)
+        $lot = $this->findSellerLotForMutation($lotId, $sellerId)
             ->load('productCertificate.product');
 
-        if ((float) $lot->quantity_sold > 0) {
+        if ((float) $lot->quantity_sold > 0 || $lot->orderItemLots()->exists()) {
             throw ValidationException::withMessages([
-                'lot' => ['Không thể xóa lô đã phát sinh bán hàng. Có thể tạm ẩn lô thay vì xóa.'],
+                'lot' => [
+                    'Không thể xóa lô đã phát sinh bán hàng hoặc đã được phân bổ cho đơn hàng. '
+                    . 'Hãy chuyển lô sang Tạm ẩn để giữ lịch sử truy xuất nguồn gốc.',
+                ],
             ]);
         }
 
@@ -344,8 +399,77 @@ public function updateVendorLot(array $data, int $lotId, int $sellerId): Harvest
 
         DB::transaction(function () use ($lot, $productId) {
             $lot->delete();
-
             $this->syncProductStock($productId);
+        });
+    }
+
+    public function restoreVendorLot(int $lotId, int $sellerId): HarvestLot
+    {
+        $lot = $this->findSellerTrashedLotForMutation($lotId, $sellerId)
+            ->loadCount('orderItemLots')
+            ->load(
+                'productCertificateIncludingDeleted.productIncludingDeleted'
+            );
+
+        $certificate = $lot->productCertificateIncludingDeleted;
+        $product = $certificate?->productIncludingDeleted;
+
+        if (!$certificate || $certificate->trashed()) {
+            throw ValidationException::withMessages([
+                'lot' => ['Không thể khôi phục lô vì hồ sơ chứng chỉ đã bị xóa.'],
+            ]);
+        }
+
+        if (!$product || $product->trashed()) {
+            throw ValidationException::withMessages([
+                'lot' => [
+                    'Sản phẩm của lô đang ở mục Đã xóa. Hãy khôi phục sản phẩm trước, sau đó khôi phục lô.',
+                ],
+            ]);
+        }
+
+        if ((float) $lot->quantity_sold > 0 || (int) $lot->order_item_lots_count > 0) {
+            throw ValidationException::withMessages([
+                'lot' => ['Không thể khôi phục lô có lịch sử phân bổ hoặc bán hàng không hợp lệ.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($lot, $product, $sellerId) {
+            $lot->restore();
+
+            // Khôi phục ở trạng thái Tạm ẩn để Seller kiểm tra lại trước khi bán.
+            $lot->update(['status' => 2]);
+            $this->syncProductStock($product->id);
+
+            return $this->getVendorLotDetail(
+                lotId: $lot->id,
+                sellerId: $sellerId
+            );
+        });
+    }
+
+    public function forceDeleteVendorLot(int $lotId, int $sellerId): void
+    {
+        $lot = $this->findSellerTrashedLotForMutation($lotId, $sellerId)
+            ->loadCount('orderItemLots')
+            ->load('productCertificateIncludingDeleted.productIncludingDeleted');
+
+        if ((float) $lot->quantity_sold > 0 || (int) $lot->order_item_lots_count > 0) {
+            throw ValidationException::withMessages([
+                'lot' => [
+                    'Không thể xóa vĩnh viễn lô đã phát sinh bán hàng hoặc đã được phân bổ cho đơn hàng.',
+                ],
+            ]);
+        }
+
+        $productId = $lot->productCertificateIncludingDeleted?->product_id;
+
+        DB::transaction(function () use ($lot, $productId) {
+            $lot->forceDelete();
+
+            if ($productId) {
+                $this->syncProductStock((int) $productId);
+            }
         });
     }
 
@@ -360,14 +484,65 @@ public function updateVendorLot(array $data, int $lotId, int $sellerId): Harvest
         return $farm;
     }
 
+    private function getActiveSellerFarm(int $sellerId): Farm
+    {
+        $farm = $this->getSellerFarm($sellerId);
+
+        if ($farm->trashed() || (int) $farm->status !== Farm::STATUS_ACTIVE) {
+            throw ValidationException::withMessages([
+                'farm' => [
+                    'Gian hàng phải đang hoạt động mới được thay đổi lô thu hoạch. '
+                    . 'Bạn vẫn có thể xem dữ liệu và xử lý các đơn hàng đã phát sinh.',
+                ],
+            ]);
+        }
+
+        return $farm;
+    }
+
     private function findSellerLot(int $lotId, int $sellerId): HarvestLot
     {
         $farm = $this->getSellerFarm($sellerId);
 
-        return HarvestLot::where('id', $lotId)
-            ->whereHas('productCertificate.product', function ($query) use ($farm) {
-                $query->where('farm_id', $farm->id);
+        return HarvestLot::withTrashed()
+            ->where('id', $lotId)
+            ->whereHas(
+                'productCertificateIncludingDeleted.productIncludingDeleted',
+                fn ($query) => $query->where('farm_id', $farm->id)
+            )
+            ->firstOrFail();
+    }
+
+    private function findSellerLotForMutation(int $lotId, int $sellerId): HarvestLot
+    {
+        $farm = $this->getActiveSellerFarm($sellerId);
+
+        return HarvestLot::query()
+            ->where('id', $lotId)
+            ->whereHas('productCertificate', function ($certificateQuery) use ($farm) {
+                $certificateQuery
+                    ->whereNull('deleted_at')
+                    ->whereHas('product', function ($productQuery) use ($farm) {
+                        $productQuery
+                            ->where('farm_id', $farm->id)
+                            ->whereNull('products.deleted_at');
+                    });
             })
+            ->firstOrFail();
+    }
+
+    private function findSellerTrashedLotForMutation(
+        int $lotId,
+        int $sellerId
+    ): HarvestLot {
+        $farm = $this->getActiveSellerFarm($sellerId);
+
+        return HarvestLot::onlyTrashed()
+            ->where('id', $lotId)
+            ->whereHas(
+                'productCertificateIncludingDeleted.productIncludingDeleted',
+                fn ($query) => $query->where('farm_id', $farm->id)
+            )
             ->firstOrFail();
     }
 
