@@ -1,6 +1,7 @@
 import { Eye, Lock, Unlock, RotateCcw, Trash2, Skull } from "lucide-react";
 
 import { useState } from "react";
+import toast from "react-hot-toast";
 
 import useUser from "@/hooks/useUser";
 
@@ -31,7 +32,33 @@ export default function UserActions({
   };
 
   const handleToggleStatus = async () => {
-    const reason = await requestReason({ title: user.status ? `Khóa ${user.name}` : `Mở khóa ${user.name}`, description: "Người dùng sẽ thấy người thao tác, thời gian và lý do thay đổi trạng thái.", placeholder: user.status ? "Nhập lý do khóa tài khoản..." : "Nhập lý do mở khóa...", confirmLabel: user.status ? "Khóa tài khoản" : "Mở khóa", danger: Boolean(user.status) });
+    const isLocking = Boolean(user.status);
+    const hasActiveFarm =
+      isLocking &&
+      user.farm &&
+      !user.farm.deleted_at &&
+      Number(user.farm.status) === 1;
+
+    if (hasActiveFarm) {
+      toast.error(
+        "Tài khoản đang có nông trại hoạt động. Hãy đình chỉ nông trại trước rồi mới khóa tài khoản.",
+      );
+      return;
+    }
+
+    const description = isLocking
+      ? "Khóa tài khoản sẽ thu hồi toàn bộ phiên đăng nhập. Đơn hàng và dữ liệu lịch sử vẫn được giữ nguyên; hệ thống không tự đổi trạng thái nông trại, sản phẩm hoặc đơn hàng."
+      : "Mở khóa chỉ cho phép tài khoản đăng nhập trở lại; hệ thống không tự mở lại nông trại hoặc sản phẩm đã bị đình chỉ.";
+
+    const reason = await requestReason({
+      title: isLocking ? `Khóa ${user.name}` : `Mở khóa ${user.name}`,
+      description,
+      placeholder: isLocking
+        ? "Nhập lý do khóa tài khoản..."
+        : "Nhập lý do mở khóa...",
+      confirmLabel: isLocking ? "Khóa tài khoản" : "Mở khóa",
+      danger: isLocking,
+    });
     if (!reason) return;
 
     try {

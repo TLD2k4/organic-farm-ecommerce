@@ -158,7 +158,12 @@ export default function SellerReviews() {
 
   const goToProduct = (product) => {
     if (!product?.id) return;
-    navigate(`/seller/products?view=${product.id}`);
+
+    navigate(
+      product.is_publicly_visible && product.slug
+        ? `/products/${product.slug}`
+        : `/seller/products?view=${product.id}`,
+    );
   };
 
   const handleToggleStatus = (review) => {
@@ -554,7 +559,7 @@ function SellerReviewCard({
           </div>
 
           <div className="min-w-0">
-            <h3 className="break-words font-bold text-slate-950 hover:text-green-700">
+            <h3 className={`entity-name-link break-words font-bold text-slate-950 ${product?.is_publicly_visible && product?.slug ? "entity-name-link-public" : "entity-name-link-management"}`}>
               {highlight(product?.name || "Sản phẩm", keyword)}
             </h3>
 

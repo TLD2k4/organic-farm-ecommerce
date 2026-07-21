@@ -90,8 +90,7 @@ class HomeService
             ])
             ->withCount([
                 'products as products_count' => function ($query) {
-                    $query->where('status', 1)
-                        ->whereHas('certificate');
+                    $query->publiclyVisible();
                 },
             ])
             ->orderBy('id')
@@ -130,8 +129,7 @@ class HomeService
                 'quantity'
             )
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
-            ->where('status', 1)
-            ->whereHas('certificate');
+            ->publiclyVisible();
     }
 
     private function getFeaturedProducts(int $limit): array
@@ -180,8 +178,7 @@ class HomeService
             ])
             ->withCount([
                 'products as products_count' => function ($query) {
-                    $query->where('status', 1)
-                        ->whereHas('certificate');
+                    $query->publiclyVisible();
                 },
             ])
 
@@ -267,8 +264,8 @@ class HomeService
         return [
             'farms_count' => Farm::where('status', 1)->count(),
 
-            'products_count' => Product::where('status', 1)
-                ->whereHas('certificate')
+            'products_count' => Product::query()
+                ->publiclyVisible()
                 ->count(),
 
             'categories_count' => Category::where('status', 1)->count(),

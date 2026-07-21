@@ -4,6 +4,7 @@ namespace App\Services\Dashboard;
 
 use App\Models\Farm;
 use App\Models\OrderItem;
+use App\Models\Product;
 use App\Models\User;
 use App\Services\Revenue\RevenueMetricsService;
 use Carbon\Carbon;
@@ -49,6 +50,7 @@ class SellerRevenueService
                 'previous_from' => $previousFrom->format('Y-m-d'),
                 'previous_to' => $previousTo->format('Y-m-d'),
                 'group_by' => $chartGroup,
+                'limit' => $limit,
             ],
 
             'summary' => [
@@ -275,6 +277,7 @@ class SellerRevenueService
             ->select([
                 'products.id',
                 'products.name',
+                'products.slug',
                 'products.thumbnail',
                 'products.unit',
             ])
@@ -284,19 +287,25 @@ class SellerRevenueService
             ->groupBy(
                 'products.id',
                 'products.name',
+                'products.slug',
                 'products.thumbnail',
                 'products.unit'
             )
-            ->orderByDesc('revenue')
             ->orderByDesc('sold_quantity')
+            ->orderByDesc('revenue')
             ->limit($limit)
             ->get()
             ->map(function ($product) use ($totalRevenue) {
                 $revenue = (float) $product->revenue;
+                $productModel = Product::with(['approvedCertificate', 'farm'])
+                    ->find($product->id);
+                $isPubliclyVisible = $productModel?->isPubliclyVisible() ?? false;
 
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
+                    'slug' => $product->slug,
+                    'is_publicly_visible' => (bool) $isPubliclyVisible,
                     'thumbnail' => $product->thumbnail,
                     'thumbnail_url' => $product->thumbnail,
                     'unit' => $product->unit,

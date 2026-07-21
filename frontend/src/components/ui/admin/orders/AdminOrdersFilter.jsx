@@ -2,19 +2,19 @@ import ResponsiveSelect from "@/components/common/ResponsiveSelect";
 
 const orderStatusOptions = [
   { value: "", label: "Tất cả trạng thái đơn" },
-  { value: "0", label: "Chờ xử lý" },
+  { value: "0", label: "Chờ xác nhận" },
   { value: "1", label: "Đang xử lý" },
   { value: "2", label: "Đang giao" },
-  { value: "3", label: "Đã giao" },
+  { value: "3", label: "Hoàn thành" },
   { value: "4", label: "Đã hủy" },
 ];
 
 const subOrderStatusOptions = [
   { value: "", label: "Tất cả trạng thái đơn" },
-  { value: "0", label: "Chờ xử lý" },
-  { value: "1", label: "Chuẩn bị hàng" },
+  { value: "0", label: "Chờ xác nhận" },
+  { value: "1", label: "Đang chuẩn bị" },
   { value: "2", label: "Đang giao" },
-  { value: "3", label: "Hoàn tất" },
+  { value: "3", label: "Hoàn thành" },
   { value: "4", label: "Đã hủy" },
 ];
 

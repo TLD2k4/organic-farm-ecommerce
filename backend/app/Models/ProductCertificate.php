@@ -35,6 +35,18 @@ class ProductCertificate extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Dùng cho màn hình quản trị/lịch sử cần đọc cả sản phẩm đã xóa mềm.
+     * Quan hệ product() mặc định vẫn giữ nguyên để không làm lộ dữ liệu đã xóa
+     * ở các truy vấn công khai hoặc nghiệp vụ đang hoạt động.
+     */
+    public function productIncludingDeleted()
+    {
+        return $this->belongsTo(Product::class, 'product_id')
+            ->withoutGlobalScope('farm_not_deleted')
+            ->withTrashed();
+    }
+
     public function certification()
     {
         return $this->belongsTo(Certification::class);

@@ -1,2 +1,8 @@
 .env.mysql.production
 backend/.env.docker.production
+frontend/.env
+frontend/.env.production
+backend/vendor/
+frontend/node_modules/
+frontend/dist/
+backend/storage/logs/laravel.log

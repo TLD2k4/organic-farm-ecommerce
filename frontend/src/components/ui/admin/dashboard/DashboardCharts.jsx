@@ -55,6 +55,9 @@ function prepareChartData(data) {
     cancelled_orders: Number(item.cancelled_orders || 0),
     sub_orders: Number(item.sub_orders || 0),
     processing_sub_orders: Number(item.processing_sub_orders || 0),
+    pending_sub_orders: Number(item.pending_sub_orders || 0),
+    preparing_sub_orders: Number(item.preparing_sub_orders || 0),
+    shipping_sub_orders: Number(item.shipping_sub_orders || 0),
     completed_sub_orders: Number(item.completed_sub_orders || 0),
     cancelled_sub_orders: Number(item.cancelled_sub_orders || 0),
   }));
@@ -78,6 +81,12 @@ function prepareChartData(data) {
         sub_orders: sum.sub_orders + item.sub_orders,
         processing_sub_orders:
           sum.processing_sub_orders + item.processing_sub_orders,
+        pending_sub_orders:
+          sum.pending_sub_orders + item.pending_sub_orders,
+        preparing_sub_orders:
+          sum.preparing_sub_orders + item.preparing_sub_orders,
+        shipping_sub_orders:
+          sum.shipping_sub_orders + item.shipping_sub_orders,
         completed_sub_orders:
           sum.completed_sub_orders + item.completed_sub_orders,
         cancelled_sub_orders:
@@ -90,6 +99,9 @@ function prepareChartData(data) {
         cancelled_orders: 0,
         sub_orders: 0,
         processing_sub_orders: 0,
+        pending_sub_orders: 0,
+        preparing_sub_orders: 0,
+        shipping_sub_orders: 0,
         completed_sub_orders: 0,
         cancelled_sub_orders: 0,
       },
@@ -152,7 +164,7 @@ export default function DashboardCharts({ data = [], loading = false }) {
       </section>
 
       <section className="min-w-0 overflow-hidden rounded-3xl border border-indigo-100 bg-white p-4 shadow-[0_18px_50px_-28px_rgba(79,70,229,0.4)] sm:p-6">
-        <header className="mb-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Vận hành đơn hàng</p><h2 className="mt-2 text-xl font-black text-slate-950">Trạng thái đơn theo gian hàng</h2><p className="mt-1 text-xs font-semibold text-slate-500">{groupedByWeek ? "90 ngày được tự động gộp theo từng nhóm 7 ngày." : "Tính theo đơn con để phản ánh đúng từng gian hàng."}</p></div><div className="rounded-2xl bg-indigo-50 px-3 py-2 text-right"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-500">Hoàn thành</p><p className="text-lg font-black text-indigo-800">{subOrderCompletionRate}%</p></div></div><div className="mt-3 flex flex-wrap gap-2"><LegendPill color="#6366f1" label="Đang xử lý" /><LegendPill color="#10b981" label="Hoàn thành" /><LegendPill color="#fb7185" label="Đã hủy" /></div></header>
+        <header className="mb-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Vận hành đơn hàng</p><h2 className="mt-2 text-xl font-black text-slate-950">Trạng thái đơn theo gian hàng</h2><p className="mt-1 text-xs font-semibold text-slate-500">{groupedByWeek ? "90 ngày được tự động gộp theo từng nhóm 7 ngày." : "Tính theo đơn con để phản ánh đúng từng gian hàng."}</p></div><div className="rounded-2xl bg-indigo-50 px-3 py-2 text-right"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-500">Hoàn thành</p><p className="text-lg font-black text-indigo-800">{subOrderCompletionRate}%</p></div></div><div className="mt-3 flex flex-wrap gap-2"><LegendPill color="#f59e0b" label="Chờ xác nhận" /><LegendPill color="#3b82f6" label="Đang chuẩn bị" /><LegendPill color="#8b5cf6" label="Đang giao" /><LegendPill color="#10b981" label="Hoàn thành" /><LegendPill color="#fb7185" label="Đã hủy" /></div></header>
         <div className="h-85 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 14, right: 6, left: -22, bottom: 0 }}>
@@ -160,7 +172,9 @@ export default function DashboardCharts({ data = [], loading = false }) {
               <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={24} tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 700 }} dy={8} />
               <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 700 }} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f1f5f9", opacity: 0.7 }} />
-              <Bar stackId="order-status" dataKey="processing_sub_orders" name="Đang xử lý" fill="#6366f1" maxBarSize={32} />
+              <Bar stackId="order-status" dataKey="pending_sub_orders" name="Chờ xác nhận" fill="#f59e0b" maxBarSize={32} />
+              <Bar stackId="order-status" dataKey="preparing_sub_orders" name="Đang chuẩn bị" fill="#3b82f6" maxBarSize={32} />
+              <Bar stackId="order-status" dataKey="shipping_sub_orders" name="Đang giao" fill="#8b5cf6" maxBarSize={32} />
               <Bar stackId="order-status" dataKey="completed_sub_orders" name="Hoàn thành" fill="#10b981" maxBarSize={32} />
               <Bar stackId="order-status" dataKey="cancelled_sub_orders" name="Đã hủy" fill="#fb7185" radius={[7, 7, 0, 0]} maxBarSize={32} />
             </BarChart>

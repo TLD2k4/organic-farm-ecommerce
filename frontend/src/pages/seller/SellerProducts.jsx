@@ -67,6 +67,7 @@ function SellerProducts() {
     keyword: "",
     category_id: "",
     status: "",
+    deleted: "0",
     page: 1,
     per_page: 8,
   });
@@ -97,6 +98,7 @@ function SellerProducts() {
       keyword: debouncedKeyword,
       category_id: filters.category_id,
       status: filters.status,
+      deleted: filters.deleted,
       page: filters.page,
       per_page: filters.per_page,
     }),
@@ -104,6 +106,7 @@ function SellerProducts() {
       debouncedKeyword,
       filters.category_id,
       filters.status,
+      filters.deleted,
       filters.page,
       filters.per_page,
     ],
@@ -167,7 +170,7 @@ function SellerProducts() {
     }
   };
 
-  const fetchProducts = async (customFilters = filters, options = {}) => {
+  const fetchProducts = useCallback(async (customFilters, options = {}) => {
     const silent = options.silent || false;
 
     if (!silent) {
@@ -186,7 +189,7 @@ function SellerProducts() {
         setLoading(false);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchOptions();
@@ -194,7 +197,7 @@ function SellerProducts() {
 
   useEffect(() => {
     fetchProducts(requestFilters);
-  }, [requestFilters]);
+  }, [fetchProducts, requestFilters]);
 
   useEffect(() => {
     if (!modalOpen && !detailOpen && !renewOpen) return undefined;
@@ -216,6 +219,7 @@ function SellerProducts() {
       keyword: "",
       category_id: "",
       status: "",
+      deleted: filters.deleted,
       page: 1,
       per_page: 8,
     };
@@ -344,7 +348,21 @@ function SellerProducts() {
   };
 
   const handleDelete = async (product) => {
-    const ok = await confirmAction({ title: `Xóa ${product.name}`, description: "Sản phẩm sẽ được xóa khỏi danh sách quản lý; dữ liệu đơn đã phát sinh vẫn được giữ.", confirmLabel: "Xóa sản phẩm", danger: true });
+    if (!product.can_delete) {
+      toast.error(
+        product.delete_block_reason ||
+          "Sản phẩm đã phát sinh dữ liệu bán hàng nên chỉ được tạm ẩn.",
+      );
+      return;
+    }
+
+    const ok = await confirmAction({
+      title: `Xóa ${product.name}`,
+      description:
+        "Sản phẩm sẽ chuyển sang mục Đã xóa và bị ẩn khỏi khu vực công khai. Hồ sơ chứng chỉ, lô thu hoạch và mã lô vẫn được giữ để có thể khôi phục nguyên vẹn.",
+      confirmLabel: "Xóa sản phẩm",
+      danger: true,
+    });
 
     if (!ok) return;
 
@@ -352,14 +370,74 @@ function SellerProducts() {
 
     try {
       await productService.deleteSellerProduct(product.id);
-
-      toast.success("Xóa sản phẩm thành công.");
+      toast.success("Đã chuyển sản phẩm sang mục Đã xóa.");
 
       await fetchProducts(requestFilters, {
         silent: true,
       });
     } catch (err) {
       toast.error(getErrorMessage(err, "Không thể xóa sản phẩm."));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleRestore = async (product) => {
+    const ok = await confirmAction({
+      title: `Khôi phục ${product.name}`,
+      description:
+        "Sản phẩm, hồ sơ chứng chỉ và các lô thu hoạch cũ sẽ được sử dụng lại. Sản phẩm từng công khai sẽ được khôi phục ở trạng thái Tạm ẩn để kiểm tra trước khi mở bán.",
+      confirmLabel: "Khôi phục",
+    });
+
+    if (!ok) return;
+
+    setActionLoadingId(product.id);
+
+    try {
+      await productService.restoreSellerProduct(product.id);
+      toast.success("Khôi phục sản phẩm thành công.");
+
+      await fetchProducts(requestFilters, {
+        silent: true,
+      });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không thể khôi phục sản phẩm."));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleForceDelete = async (product) => {
+    if (!product.can_force_delete) {
+      toast.error(
+        product.delete_block_reason ||
+          "Sản phẩm có dữ liệu lịch sử nên không thể xóa vĩnh viễn.",
+      );
+      return;
+    }
+
+    const ok = await confirmAction({
+      title: `Xóa vĩnh viễn ${product.name}`,
+      description:
+        "Thao tác này xóa hẳn sản phẩm, hồ sơ chứng chỉ và toàn bộ lô chưa từng bán. Sau đó tên, mã chứng chỉ và mã lô có thể được dùng lại nếu không bị dữ liệu khác giữ. Không thể hoàn tác.",
+      confirmLabel: "Xóa vĩnh viễn",
+      danger: true,
+    });
+
+    if (!ok) return;
+
+    setActionLoadingId(product.id);
+
+    try {
+      await productService.forceDeleteSellerProduct(product.id);
+      toast.success("Xóa vĩnh viễn sản phẩm thành công.");
+
+      await fetchProducts(requestFilters, {
+        silent: true,
+      });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không thể xóa vĩnh viễn sản phẩm."));
     } finally {
       setActionLoadingId(null);
     }
@@ -481,20 +559,56 @@ function SellerProducts() {
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
-            Quản lý sản phẩm
+            {filters.deleted === "1" ? "Sản phẩm đã xóa" : "Quản lý sản phẩm"}
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Quản lý sản phẩm nông sản, hình ảnh, trạng thái và chứng chỉ.
+            {filters.deleted === "1"
+              ? "Khôi phục hoặc xóa vĩnh viễn sản phẩm chưa có lịch sử bán hàng."
+              : "Quản lý sản phẩm nông sản, hình ảnh, trạng thái và chứng chỉ."}
           </p>
         </div>
 
-        <button
-          onClick={openCreateModal}
-          className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white shadow-sm transition hover:bg-green-700 sm:w-auto"
-        >
-          <Plus size={18} />
-          Thêm sản phẩm
-        </button>
+        {filters.deleted !== "1" && (
+          <button
+            onClick={openCreateModal}
+            className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 text-sm font-extrabold text-white shadow-sm transition hover:bg-green-700 sm:w-auto"
+          >
+            <Plus size={18} />
+            Thêm sản phẩm
+          </button>
+        )}
+      </div>
+
+      <div className="flex w-full max-w-full gap-2 overflow-x-auto rounded-2xl border border-slate-100 bg-white p-2 shadow-sm">
+        {[
+          { value: "0", label: `Đang quản lý (${stats.total_products ?? 0})` },
+          { value: "1", label: `Đã xóa (${stats.deleted_products ?? 0})` },
+        ].map((tab) => {
+          const active = filters.deleted === tab.value;
+
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  deleted: tab.value,
+                  status: "",
+                  category_id: "",
+                  page: 1,
+                }))
+              }
+              className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-extrabold transition ${
+                active
+                  ? "bg-green-600 text-white shadow-sm"
+                  : "bg-slate-50 text-slate-600 hover:bg-green-50 hover:text-green-700"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-4">
@@ -532,7 +646,7 @@ function SellerProducts() {
       </div>
 
       <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-5">
-        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_auto]">
+        <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.3fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_auto]">
           <div className="relative sm:col-span-2 xl:col-span-1">
             <Search
               size={18}
@@ -614,12 +728,16 @@ function SellerProducts() {
                 onEdit={openEditModal}
                 onToggle={handleToggleStatus}
                 onDelete={handleDelete}
+                onRestore={handleRestore}
+                onForceDelete={handleForceDelete}
               />
             ))}
 
           {!loading && products.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-12 text-center font-bold text-slate-400">
-              Chưa có sản phẩm nào.
+              {filters.deleted === "1"
+                ? "Chưa có sản phẩm đã xóa."
+                : "Chưa có sản phẩm nào."}
             </div>
           )}
         </div>
@@ -694,6 +812,7 @@ function SellerProducts() {
                       key={product.id}
                       className={[
                         "border-t border-slate-100",
+                        product.is_deleted ? "bg-red-50/40" : "",
                         isActioning ? "bg-slate-50 opacity-70" : "",
                       ].join(" ")}
                     >
@@ -709,10 +828,10 @@ function SellerProducts() {
                           />
 
                           <div className="min-w-0">
-                            {product.slug && product.is_sellable ? (
-                              <Link to={`/products/${product.slug}`} className="block max-w-55 break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{highlight(product.name, filters.keyword)}</Link>
+                            {product.slug && product.is_publicly_visible && !product.is_deleted ? (
+                              <Link to={`/products/${product.slug}`} className="entity-name-link entity-name-link-public block max-w-55 break-words font-extrabold text-slate-900">{highlight(product.name, filters.keyword)}</Link>
                             ) : (
-                              <button type="button" onClick={() => openDetail(product)} className="max-w-55 break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{highlight(product.name, filters.keyword)}</button>
+                              <button type="button" onClick={() => openDetail(product)} className="entity-name-link entity-name-link-management max-w-55 break-words text-left font-extrabold text-slate-900">{highlight(product.name, filters.keyword)}</button>
                             )}
                             <p className="text-xs font-semibold text-slate-400">
                               {highlight(product.code, filters.keyword)}
@@ -722,7 +841,17 @@ function SellerProducts() {
                       </td>
 
                       <td className="px-3 py-3 font-semibold text-slate-600">
-                        {highlight(product.category_name || "Chưa có", filters.keyword)}
+                        {product.category_slug ? (
+                          <Link
+                            to={`/products?category_slug=${product.category_slug}`}
+                            title="Xem sản phẩm công khai thuộc danh mục"
+                            className="entity-name-link entity-name-link-public"
+                          >
+                            {highlight(product.category_name || "Chưa có", filters.keyword)}
+                          </Link>
+                        ) : (
+                          highlight(product.category_name || "Chưa có", filters.keyword)
+                        )}
                       </td>
 
                       <td className="px-3 py-3">
@@ -799,40 +928,68 @@ function SellerProducts() {
                             <Eye size={16} />
                           </button>
 
-                          <button
-                            title="Sửa sản phẩm"
-                            disabled={isActioning}
-                            onClick={() => openEditModal(product)}
-                            className="rounded-lg border border-slate-200 p-2 text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <Pencil size={16} />
-                          </button>
+                          {!product.is_deleted ? (
+                            <>
+                              <button
+                                title="Sửa sản phẩm"
+                                disabled={isActioning}
+                                onClick={() => openEditModal(product)}
+                                className="rounded-lg border border-slate-200 p-2 text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Pencil size={16} />
+                              </button>
 
-                          <button
-                            title="Ẩn / hiện"
-                            disabled={isActioning}
-                            onClick={() => handleToggleStatus(product)}
-                            className="rounded-lg border border-slate-200 p-2 text-purple-600 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isActioning ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <MoreHorizontal size={16} />
-                            )}
-                          </button>
+                              <button
+                                title="Ẩn / hiện"
+                                disabled={isActioning}
+                                onClick={() => handleToggleStatus(product)}
+                                className="rounded-lg border border-slate-200 p-2 text-purple-600 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {isActioning ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <MoreHorizontal size={16} />
+                                )}
+                              </button>
 
-                          <button
-                            title="Xóa"
-                            disabled={isActioning}
-                            onClick={() => handleDelete(product)}
-                            className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {isActioning ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={16} />
-                            )}
-                          </button>
+                              <button
+                                title={product.can_delete ? "Xóa sản phẩm" : product.delete_block_reason || "Chỉ được tạm ẩn"}
+                                disabled={isActioning || !product.can_delete}
+                                onClick={() => handleDelete(product)}
+                                className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {isActioning ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={16} />
+                                )}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                title="Khôi phục sản phẩm"
+                                disabled={isActioning}
+                                onClick={() => handleRestore(product)}
+                                className="rounded-lg border border-green-200 bg-green-50 p-2 text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {isActioning ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <RotateCcw size={16} />
+                                )}
+                              </button>
+
+                              <button
+                                title={product.can_force_delete ? "Xóa vĩnh viễn" : product.delete_block_reason || "Không thể xóa vĩnh viễn"}
+                                disabled={isActioning || !product.can_force_delete}
+                                onClick={() => handleForceDelete(product)}
+                                className="rounded-lg border border-red-200 bg-red-50 p-2 text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -845,7 +1002,9 @@ function SellerProducts() {
                     colSpan="8"
                     className="px-3 py-12 text-center font-bold text-slate-400"
                   >
-                    Chưa có sản phẩm nào.
+                    {filters.deleted === "1"
+                      ? "Chưa có sản phẩm đã xóa."
+                      : "Chưa có sản phẩm nào."}
                   </td>
                 </tr>
               )}
@@ -958,12 +1117,14 @@ function ProductMobileCard({
   onEdit,
   onToggle,
   onDelete,
+  onRestore,
+  onForceDelete,
 }) {
   return (
     <article
       className={`min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
-        isActioning ? "opacity-70" : ""
-      }`}
+        product.is_deleted ? "bg-red-50/30" : ""
+      } ${isActioning ? "opacity-70" : ""}`}
     >
       <div className="flex min-w-0 flex-col gap-3 border-b border-slate-100 p-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
         <div className="flex min-w-0 items-center gap-3">
@@ -977,16 +1138,26 @@ function ProductMobileCard({
           />
 
           <div className="min-w-0">
-            {product.slug && product.is_sellable ? (
-              <Link to={`/products/${product.slug}`} className="break-words font-extrabold text-slate-900 hover:text-green-700 hover:underline">{highlight(product.name, keyword)}</Link>
+            {product.slug && product.is_publicly_visible && !product.is_deleted ? (
+              <Link to={`/products/${product.slug}`} className="entity-name-link entity-name-link-public break-words font-extrabold text-slate-900">{highlight(product.name, keyword)}</Link>
             ) : (
-              <button type="button" onClick={() => onDetail(product)} className="break-words text-left font-extrabold text-slate-900 hover:text-sky-600 hover:underline">{highlight(product.name, keyword)}</button>
+              <button type="button" onClick={() => onDetail(product)} className="entity-name-link entity-name-link-management break-words text-left font-extrabold text-slate-900">{highlight(product.name, keyword)}</button>
             )}
             <p className="mt-1 text-xs font-semibold text-slate-400">
               {highlight(product.code, keyword)}
             </p>
             <p className="mt-1 break-words text-sm font-semibold text-slate-500">
-              {highlight(product.category_name || "Chưa có danh mục", keyword)}
+              {product.category_slug ? (
+                <Link
+                  to={`/products?category_slug=${product.category_slug}`}
+                  title="Xem sản phẩm công khai thuộc danh mục"
+                  className="entity-name-link entity-name-link-public"
+                >
+                  {highlight(product.category_name || "Chưa có danh mục", keyword)}
+                </Link>
+              ) : (
+                highlight(product.category_name || "Chưa có danh mục", keyword)
+              )}
             </p>
           </div>
         </div>
@@ -1029,40 +1200,71 @@ function ProductMobileCard({
         >
           <Eye size={16} /> Xem
         </button>
-        <button
-          type="button"
-          disabled={isActioning}
-          onClick={() => onEdit(product)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600 disabled:opacity-40"
-        >
-          <Pencil size={16} /> Sửa
-        </button>
-        <button
-          type="button"
-          disabled={isActioning}
-          onClick={() => onToggle(product)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-100 bg-purple-50 text-sm font-bold text-purple-600 disabled:opacity-40"
-        >
-          {isActioning ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <MoreHorizontal size={16} />
-          )}
-          Ẩn/hiện
-        </button>
-        <button
-          type="button"
-          disabled={isActioning}
-          onClick={() => onDelete(product)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-600 disabled:opacity-40"
-        >
-          {isActioning ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Trash2 size={16} />
-          )}
-          Xóa
-        </button>
+
+        {!product.is_deleted ? (
+          <>
+            <button
+              type="button"
+              disabled={isActioning}
+              onClick={() => onEdit(product)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600 disabled:opacity-40"
+            >
+              <Pencil size={16} /> Sửa
+            </button>
+            <button
+              type="button"
+              disabled={isActioning}
+              onClick={() => onToggle(product)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-purple-100 bg-purple-50 text-sm font-bold text-purple-600 disabled:opacity-40"
+            >
+              {isActioning ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <MoreHorizontal size={16} />
+              )}
+              Ẩn/hiện
+            </button>
+            <button
+              type="button"
+              title={product.can_delete ? "Xóa sản phẩm" : product.delete_block_reason || "Chỉ được tạm ẩn"}
+              disabled={isActioning || !product.can_delete}
+              onClick={() => onDelete(product)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isActioning ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Trash2 size={16} />
+              )}
+              Xóa
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={isActioning}
+              onClick={() => onRestore(product)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-green-100 bg-green-50 text-sm font-bold text-green-700 disabled:opacity-40"
+            >
+              {isActioning ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <RotateCcw size={16} />
+              )}
+              Khôi phục
+            </button>
+            <button
+              type="button"
+              title={product.can_force_delete ? "Xóa vĩnh viễn" : product.delete_block_reason || "Không thể xóa vĩnh viễn"}
+              disabled={isActioning || !product.can_force_delete}
+              onClick={() => onForceDelete(product)}
+              className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 text-sm font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-40 min-[480px]:col-span-2"
+            >
+              <Trash2 size={16} /> Xóa vĩnh viễn
+            </button>
+          </>
+        )}
       </div>
     </article>
   );
@@ -1315,11 +1517,13 @@ function ProductDetailModal({
   const certificates = product?.certificates || [];
 
   const canRenew =
+    !product?.is_deleted &&
     [1, 3].includes(Number(product?.status)) &&
     renewableCertificate &&
     !pendingCertificate;
 
   const canResubmit =
+    !product?.is_deleted &&
     [0, 2].includes(Number(product?.status)) &&
     rejectedCertificate &&
     !pendingCertificate;
@@ -1382,7 +1586,17 @@ function ProductDetailModal({
                       {product.name}
                     </h3>
                     <p className="mt-1 text-sm font-semibold text-slate-400">
-                      {product.code} · {product.category_name}
+                      {product.code} ·{" "}
+                      {product.category_slug ? (
+                        <Link
+                          to={`/products?category_slug=${product.category_slug}`}
+                          className="entity-name-link entity-name-link-public"
+                        >
+                          {product.category_name}
+                        </Link>
+                      ) : (
+                        product.category_name
+                      )}
                     </p>
                   </div>
 
@@ -1401,6 +1615,9 @@ function ProductDetailModal({
                     label="Tồn kho"
                     value={`${product.stock_quantity} ${product.unit}`}
                   />
+                  {product.is_deleted && (
+                    <InfoBox label="Ngày xóa" value={product.deleted_at || "—"} />
+                  )}
                 </div>
 
                 <div className="mt-4">

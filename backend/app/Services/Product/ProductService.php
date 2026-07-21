@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Models\ProductImage;
 use App\Models\ProductCertificate;
+use App\Models\HarvestLot;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,11 +28,7 @@ class ProductService
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
-            ->where('status', 1)
-            ->whereHas('farm', function ($farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate');
+            ->publiclyVisible();
 
         if (!empty($filters['vendor_id'])) {
             $query->where('farm_id', $filters['vendor_id']);
@@ -39,12 +36,12 @@ class ProductService
 
         if (!empty($filters['category_slug'])) {
             $category = Category::query()
+                ->visible()
                 ->where('slug', $filters['category_slug'])
-                ->where('status', 1)
                 ->firstOrFail();
 
             $categoryIds = Category::query()
-                ->where('status', 1)
+                ->visible()
                 ->where(function ($categoryQuery) use ($category) {
                     $categoryQuery
                         ->where('id', $category->id)
@@ -56,12 +53,12 @@ class ProductService
             $query->whereIn('category_id', $categoryIds);
         } elseif (!empty($filters['category_id'])) {
             $category = Category::query()
+                ->visible()
                 ->whereKey($filters['category_id'])
-                ->where('status', 1)
                 ->firstOrFail();
 
             $categoryIds = Category::query()
-                ->where('status', 1)
+                ->visible()
                 ->where(function ($categoryQuery) use ($category) {
                     $categoryQuery
                         ->where('id', $category->id)
@@ -157,11 +154,7 @@ class ProductService
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
-            ->where('status', 1)
-            ->whereHas('farm', function ($farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate')
+            ->publiclyVisible()
             ->findOrFail($id);
     }
 
@@ -169,15 +162,30 @@ class ProductService
     {
         $farm = $this->getSellerFarm($sellerId);
 
-        $query = Product::with([
-            'farm',
-            'category',
-            'images',
-            'approver:id,name,email',
-            'adminLocker:id,name,email',
-            'certificates.certification',
-            'certificates.approver:id,name,email',
-        ])
+        $showDeleted = (int) ($filters['deleted'] ?? 0) === 1;
+
+        $query = Product::query()
+            ->when($showDeleted, fn ($q) => $q->onlyTrashed())
+            ->with([
+                'farm',
+                'category',
+                'images',
+                'approver:id,name,email',
+                'adminLocker:id,name,email',
+                'certificates' => fn ($q) => $q
+                    ->withTrashed()
+                    ->with([
+                        'certification',
+                        'approver:id,name,email',
+                    ]),
+            ])
+            ->withCount([
+                'orderItems',
+                'harvestLots',
+                'harvestLots as sold_lots_count' => fn ($q) => $q
+                    ->where('quantity_sold', '>', 0),
+                'reviews as review_history_count' => fn ($q) => $q->withTrashed(),
+            ])
             ->where('farm_id', $farm->id);
 
         if (!empty($filters['keyword'])) {
@@ -207,8 +215,7 @@ class ProductService
                     ->whereDoesntHave('certificate');
             } elseif ($status === '1') {
                 // Đang bán thật sự = product active + chứng chỉ approved còn hạn
-                $query->where('status', 1)
-                    ->whereHas('certificate');
+                $query->publiclyVisible();
             } else {
                 $query->where('status', (int) $status);
             }
@@ -223,11 +230,13 @@ class ProductService
         return [
             'stats' => [
                 'total_products' => Product::where('farm_id', $farm->id)->count(),
+                'deleted_products' => Product::onlyTrashed()
+                    ->where('farm_id', $farm->id)
+                    ->count(),
 
                 // Đang bán thật sự = product active + chứng chỉ approved còn hạn
                 'active_products' => Product::where('farm_id', $farm->id)
-                    ->where('status', 1)
-                    ->whereHas('certificate')
+                    ->publiclyVisible()
                     ->count(),
 
                 'pending_products' => Product::where('farm_id', $farm->id)
@@ -267,15 +276,27 @@ class ProductService
     {
         $farm = $this->getSellerFarm($sellerId);
 
-        $product = Product::with([
-            'farm',
-            'category',
-            'images',
-            'approver:id,name,email',
-            'adminLocker:id,name,email',
-            'certificates.certification',
-            'certificates.approver:id,name,email',
-        ])
+        $product = Product::withTrashed()
+            ->with([
+                'farm',
+                'category',
+                'images',
+                'approver:id,name,email',
+                'adminLocker:id,name,email',
+                'certificates' => fn ($q) => $q
+                    ->withTrashed()
+                    ->with([
+                        'certification',
+                        'approver:id,name,email',
+                    ]),
+            ])
+            ->withCount([
+                'orderItems',
+                'harvestLots',
+                'harvestLots as sold_lots_count' => fn ($q) => $q
+                    ->where('quantity_sold', '>', 0),
+                'reviews as review_history_count' => fn ($q) => $q->withTrashed(),
+            ])
             ->where('id', $productId)
             ->where('farm_id', $farm->id)
             ->firstOrFail();
@@ -295,6 +316,10 @@ class ProductService
         );
 
         return DB::transaction(function () use ($data, $farm) {
+            $this->assertCertificateNumberAvailable(
+                (string) $data['certificate_number']
+            );
+
             $detailImages = $data['detail_images'] ?? [];
 
             unset($data['detail_images']);
@@ -448,7 +473,84 @@ class ProductService
     {
         $product = $this->findSellerProductForMutation($productId, $sellerId);
 
-        $product->delete();
+        DB::transaction(function () use ($product) {
+            $lockedProduct = Product::query()
+                ->whereKey($product->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->assertVendorProductCanBeDeleted($lockedProduct);
+
+            // Chỉ xóa mềm sản phẩm. Hồ sơ chứng chỉ và lô vẫn được giữ nguyên
+            // để khi khôi phục không mất mã chứng chỉ, mã lô và lịch sử kho.
+            $lockedProduct->delete();
+        });
+    }
+
+    public function restoreVendorProduct(int $productId, int $sellerId): array
+    {
+        $product = $this->findSellerTrashedProductForMutation(
+            $productId,
+            $sellerId
+        );
+
+        return DB::transaction(function () use ($product) {
+            $lockedProduct = Product::onlyTrashed()
+                ->whereKey($product->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $previousStatus = (int) $lockedProduct->status;
+
+            $lockedProduct->restore();
+
+            // Sản phẩm từng công khai được khôi phục ở trạng thái Tạm ẩn,
+            // tránh tự mở bán ngay khi Seller vừa khôi phục.
+            if ($previousStatus === 1) {
+                $lockedProduct->update(['status' => 3]);
+            }
+
+            return $this->formatVendorProduct(
+                $this->loadVendorProductForResponse($lockedProduct->fresh()),
+                true
+            );
+        });
+    }
+
+    public function forceDeleteVendorProduct(int $productId, int $sellerId): void
+    {
+        $product = $this->findSellerTrashedProductForMutation(
+            $productId,
+            $sellerId
+        );
+
+        DB::transaction(function () use ($product) {
+            $lockedProduct = Product::onlyTrashed()
+                ->whereKey($product->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->assertVendorProductCanBeForceDeleted($lockedProduct);
+
+            $certificateIds = ProductCertificate::withTrashed()
+                ->where('product_id', $lockedProduct->id)
+                ->pluck('id');
+
+            if ($certificateIds->isNotEmpty()) {
+                HarvestLot::withTrashed()
+                    ->whereIn('product_certificate_id', $certificateIds)
+                    ->forceDelete();
+
+                ProductCertificate::withTrashed()
+                    ->whereIn('id', $certificateIds)
+                    ->forceDelete();
+            }
+
+            // Giỏ hàng không phải lịch sử giao dịch nên có thể xóa cùng sản phẩm.
+            $lockedProduct->cartItems()->delete();
+            $lockedProduct->images()->delete();
+            $lockedProduct->forceDelete();
+        });
     }
 
     public function toggleVendorProductStatus(int $productId, int $sellerId): array
@@ -526,6 +628,10 @@ class ProductService
         }
 
         return DB::transaction(function () use ($product, $data, $renewableCertificate) {
+            $this->assertCertificateNumberAvailable(
+                (string) $data['certificate_number']
+            );
+
             return ProductCertificate::create([
                 'product_id' => $product->id,
 
@@ -586,6 +692,10 @@ class ProductService
         }
 
         return DB::transaction(function () use ($product, $data, $rejectedCertificate) {
+            $this->assertCertificateNumberAvailable(
+                (string) $data['certificate_number']
+            );
+
             $certificate = ProductCertificate::create([
                 'product_id' => $product->id,
                 'certification_id' => $rejectedCertificate->certification_id,
@@ -605,6 +715,31 @@ class ProductService
 
             return $certificate->load(['certification', 'approver']);
         });
+    }
+
+    /**
+     * Chỉ hồ sơ bị từ chối (status = 2) mới được phép dùng lại số chứng chỉ.
+     * Hồ sơ đang chờ, đã duyệt, hết hạn hoặc đã thay thế đều giữ số để
+     * bảo toàn lịch sử và ngăn một số chứng chỉ được dùng cho nhiều hồ sơ.
+     */
+    private function assertCertificateNumberAvailable(string $certificateNumber): void
+    {
+        $certificateNumber = trim($certificateNumber);
+
+        $existingCertificate = ProductCertificate::withTrashed()
+            ->select('id')
+            ->where('certificate_number', $certificateNumber)
+            ->where('status', '!=', 2)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existingCertificate !== null) {
+            throw ValidationException::withMessages([
+                'certificate_number' => [
+                    'Số chứng chỉ đang chờ duyệt hoặc đã từng được duyệt nên không thể dùng lại.',
+                ],
+            ]);
+        }
     }
 
     private function getSellerFarm(int $sellerId): Farm
@@ -652,21 +787,109 @@ class ProductService
             ->firstOrFail();
     }
 
+    private function findSellerTrashedProductForMutation(
+        int $productId,
+        int $sellerId
+    ): Product {
+        $farm = $this->getActiveSellerFarm($sellerId);
+
+        return Product::onlyTrashed()
+            ->where('id', $productId)
+            ->where('farm_id', $farm->id)
+            ->firstOrFail();
+    }
+
+    private function assertVendorProductCanBeDeleted(Product $product): void
+    {
+        if ($product->admin_locked_at) {
+            throw ValidationException::withMessages([
+                'product' => [
+                    'Sản phẩm đang bị quản trị viên đình chỉ. Người bán không thể xóa sản phẩm này.',
+                ],
+            ]);
+        }
+
+        $hasOrderHistory = $product->orderItems()->exists();
+        $hasSoldLots = HarvestLot::query()
+            ->whereHas('productCertificate', function ($query) use ($product) {
+                $query->where('product_id', $product->id);
+            })
+            ->where('quantity_sold', '>', 0)
+            ->exists();
+
+        if ($hasOrderHistory || $hasSoldLots) {
+            throw ValidationException::withMessages([
+                'product' => [
+                    'Sản phẩm đã phát sinh đơn hàng hoặc đã bán từ lô thu hoạch nên không thể xóa. Hãy chuyển sản phẩm sang Tạm ẩn để giữ lịch sử giao dịch và tồn kho.',
+                ],
+            ]);
+        }
+    }
+
+    private function assertVendorProductCanBeForceDeleted(Product $product): void
+    {
+        $hasOrderHistory = $product->orderItems()->exists();
+        $hasSoldLots = HarvestLot::withTrashed()
+            ->whereHas('productCertificate', function ($query) use ($product) {
+                $query->withTrashed()
+                    ->where('product_id', $product->id);
+            })
+            ->where('quantity_sold', '>', 0)
+            ->exists();
+        $hasReviewHistory = $product->reviews()->withTrashed()->exists();
+
+        if ($hasOrderHistory || $hasSoldLots || $hasReviewHistory) {
+            throw ValidationException::withMessages([
+                'product' => [
+                    'Không thể xóa vĩnh viễn vì sản phẩm đã có đơn hàng, số lượng đã bán hoặc đánh giá/bình luận cần được lưu làm lịch sử. Bạn chỉ có thể khôi phục hoặc tiếp tục để sản phẩm trong mục Đã xóa.',
+                ],
+            ]);
+        }
+    }
+
+    private function loadVendorProductForResponse(Product $product): Product
+    {
+        return $product->load([
+            'farm',
+            'category',
+            'images',
+            'approver:id,name,email',
+            'adminLocker:id,name,email',
+            'certificates' => fn ($q) => $q
+                ->withTrashed()
+                ->with([
+                    'certification',
+                    'approver:id,name,email',
+                ]),
+        ])->loadCount([
+            'orderItems',
+            'harvestLots',
+            'harvestLots as sold_lots_count' => fn ($q) => $q
+                ->where('quantity_sold', '>', 0),
+            'reviews as review_history_count' => fn ($q) => $q->withTrashed(),
+        ]);
+    }
+
     private function ensureProductNameNotExistsInFarm(
         int $farmId,
         string $name,
         ?int $ignoreId = null
     ): void {
-        $exists = Product::where('farm_id', $farmId)
+        $existingProduct = Product::withTrashed()
+            ->where('farm_id', $farmId)
             ->where('name', $name)
             ->when($ignoreId, function ($query) use ($ignoreId) {
                 $query->where('id', '!=', $ignoreId);
             })
-            ->exists();
+            ->first();
 
-        if ($exists) {
+        if ($existingProduct) {
             throw ValidationException::withMessages([
-                'name' => ['Gian hàng đã có sản phẩm cùng tên.'],
+                'name' => [
+                    $existingProduct->trashed()
+                        ? 'Sản phẩm cùng tên đang ở mục Đã xóa. Hãy khôi phục sản phẩm cũ hoặc xóa vĩnh viễn trước khi tạo lại.'
+                        : 'Gian hàng đã có sản phẩm cùng tên.',
+                ],
             ]);
         }
     }
@@ -690,6 +913,27 @@ class ProductService
         }
 
         return $slug;
+    }
+
+    private function getVendorProductDeleteBlockReason(Product $product): ?string
+    {
+        if ($product->admin_locked_at) {
+            return 'Sản phẩm đang bị quản trị viên đình chỉ.';
+        }
+
+        if ((int) ($product->order_items_count ?? 0) > 0) {
+            return 'Sản phẩm đã phát sinh đơn hàng; chỉ được tạm ẩn.';
+        }
+
+        if ((int) ($product->sold_lots_count ?? 0) > 0) {
+            return 'Lô thu hoạch của sản phẩm đã phát sinh bán; chỉ được tạm ẩn.';
+        }
+
+        if ($product->trashed() && (int) ($product->review_history_count ?? 0) > 0) {
+            return 'Sản phẩm có đánh giá hoặc bình luận nên không thể xóa vĩnh viễn.';
+        }
+
+        return null;
     }
 
     private function formatVendorProduct(Product $product, bool $isDetail = false): array
@@ -730,19 +974,26 @@ class ProductService
         $statusText = $this->getProductStatusText((int) $product->status);
         $statusClass = $this->getProductStatusClass((int) $product->status);
 
+        if ($product->trashed()) {
+            $statusText = 'Đã xóa';
+            $statusClass = 'danger';
+        }
+
         $isCertificateExpired = false;
-        $isSellable = false;
+        $isSellable = $product->isPubliclyVisible();
         $farmIsPublic = $product->farm
             && !$product->farm->trashed()
             && (int) $product->farm->status === Farm::STATUS_ACTIVE;
 
-        if ((int) $product->status === 1) {
-            if ($currentCertificate && $farmIsPublic) {
-                $isSellable = true;
+        if (!$product->trashed() && (int) $product->status === 1) {
+            if ($currentCertificate && $farmIsPublic && $isSellable) {
                 $statusText = 'Đang bán';
                 $statusClass = 'active';
-            } elseif ($currentCertificate) {
+            } elseif ($currentCertificate && !$farmIsPublic) {
                 $statusText = 'Nông trại chưa hoạt động';
+                $statusClass = 'pending';
+            } elseif ($currentCertificate) {
+                $statusText = 'Chưa đủ điều kiện công khai';
                 $statusClass = 'pending';
             } elseif ($pendingCertificate && $expiredCertificate) {
                 $statusText = 'Chờ duyệt gia hạn';
@@ -765,6 +1016,7 @@ class ProductService
             'farm_id' => $product->farm_id,
             'category_id' => $product->category_id,
             'category_name' => $product->category?->name,
+            'category_slug' => $product->category?->slug,
 
             'name' => $product->name,
             'slug' => $product->slug,
@@ -807,7 +1059,24 @@ class ProductService
             ] : null,
 
             'is_sellable' => $isSellable,
+            'is_publicly_visible' => $isSellable,
             'is_certificate_expired' => $isCertificateExpired,
+            'is_deleted' => $product->trashed(),
+            'deleted_at' => optional($product->deleted_at)->format('d/m/Y H:i'),
+            'order_history_count' => (int) ($product->order_items_count ?? 0),
+            'harvest_lot_count' => (int) ($product->harvest_lots_count ?? 0),
+            'sold_lot_count' => (int) ($product->sold_lots_count ?? 0),
+            'review_history_count' => (int) ($product->review_history_count ?? 0),
+            'can_delete' => !$product->trashed()
+                && !$product->admin_locked_at
+                && (int) ($product->order_items_count ?? 0) === 0
+                && (int) ($product->sold_lots_count ?? 0) === 0,
+            'can_restore' => $product->trashed(),
+            'can_force_delete' => $product->trashed()
+                && (int) ($product->order_items_count ?? 0) === 0
+                && (int) ($product->sold_lots_count ?? 0) === 0
+                && (int) ($product->review_history_count ?? 0) === 0,
+            'delete_block_reason' => $this->getVendorProductDeleteBlockReason($product),
 
             // Chứng chỉ còn hạn đang dùng
             'current_certificate' => $currentCertificate
@@ -980,11 +1249,7 @@ class ProductService
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
-            ->where('status', 1)
-            ->whereHas('farm', function ($farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate');
+            ->publiclyVisible();
 
         if (method_exists(Product::class, 'images')) {
             $query->with('images');
@@ -1011,11 +1276,7 @@ class ProductService
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
-            ->where('status', 1)
-            ->whereHas('farm', function ($farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate');
+            ->publiclyVisible();
 
         if (method_exists(Product::class, 'images')) {
             $query->with('images');
@@ -1055,11 +1316,7 @@ class ProductService
             ])
             ->withSum('completedOrderItems as sold_quantity', 'quantity')
             ->withAvg('visibleRatingReviews as rating_avg', 'rating')
-            ->where('status', 1)
-            ->whereHas('farm', function ($farmQuery) {
-                $farmQuery->where('status', Farm::STATUS_ACTIVE);
-            })
-            ->whereHas('certificate')
+            ->publiclyVisible()
 
             // Không lấy chính sản phẩm đang xem
             ->where('id', '!=', $product->id)

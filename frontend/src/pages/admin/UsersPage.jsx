@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import useUser from "@/hooks/useUser";
 import useDebounce from "@/hooks/useDebounce";
@@ -10,6 +11,7 @@ import UsersFilter from "@/components/ui/admin/users/UsersFilter";
 import UserDrawer from "@/components/ui/admin/users/UserDrawer";
 
 export default function UsersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { users, meta, loading, getAll } = useUser();
 
   const [selectedUserId, setSelectedUserId] = useState(null);
@@ -24,6 +26,15 @@ export default function UsersPage() {
   });
 
   const debouncedKeyword = useDebounce(params.keyword, 500);
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+
+    if (Number.isInteger(requestedId) && requestedId > 0) {
+      setSelectedUserId(requestedId);
+      setOpenDrawer(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     getAll({
@@ -81,6 +92,12 @@ export default function UsersPage() {
         onClose={() => {
           setOpenDrawer(false);
           setSelectedUserId(null);
+
+          if (searchParams.has("view")) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("view");
+            setSearchParams(nextParams, { replace: true });
+          }
         }}
       />
     </div>

@@ -11,6 +11,7 @@ import ReportFilter from "@/components/ui/admin/reports/ReportFilter";
 import ReportSummary from "@/components/ui/admin/reports/ReportSummary";
 import ReportCharts from "@/components/ui/admin/reports/ReportCharts";
 import TopProductsTable from "@/components/ui/admin/reports/TopProductsTable";
+import TopStockProductsTable from "@/components/ui/admin/reports/TopStockProductsTable";
 import TopCategoriesTable from "@/components/ui/admin/reports/TopCategoriesTable";
 import TopFarmsTable from "@/components/ui/admin/reports/TopFarmsTable";
 
@@ -162,6 +163,12 @@ export default function ReportsPage() {
 
       {/* TOP PRODUCTS */}
       <TopProductsTable products={report.top_products} loading={loading} />
+
+      {/* TOP STOCK */}
+      <TopStockProductsTable
+        products={report.top_stock_products}
+        loading={loading}
+      />
 
       {/* TOP CATEGORY + FARM */}
       <div className="grid min-w-0 grid-cols-1 gap-5">

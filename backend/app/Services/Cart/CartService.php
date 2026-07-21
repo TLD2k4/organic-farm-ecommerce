@@ -190,15 +190,11 @@ class CartService
             ]);
         }
 
-        if ((int) $product->status !== 1) {
+        if (!$product->isPubliclyVisible()) {
             throw ValidationException::withMessages([
-                'product_id' => ['Sản phẩm hiện không được bán.'],
-            ]);
-        }
-
-        if (!$product->certificate) {
-            throw ValidationException::withMessages([
-                'product_id' => ['Sản phẩm chưa có chứng nhận hợp lệ.'],
+                'product_id' => [
+                    'Sản phẩm hiện không còn đủ điều kiện công khai để bán.'
+                ],
             ]);
         }
 
@@ -266,9 +262,7 @@ class CartService
                 'product_slug' => $product->slug,
                 'product_name' => $product->name,
                 'product_image' => $product->thumbnail,
-                'is_publicly_visible' => (int) $product->status === 1
-                    && (int) ($product->farm?->status ?? 0) === 1
-                    && $product->certificate !== null,
+                'is_publicly_visible' => $product->isPubliclyVisible(),
                 'farm_id' => $product->farm_id,
                 'farm_name' => $product->farm?->name,
                 'farm_slug' => $product->farm?->slug,
@@ -315,8 +309,7 @@ class CartService
 
     private function isProductAvailable(Product $product, float $quantity): bool
     {
-        return (int) $product->status === 1
-            && $product->certificate !== null
+        return $product->isPubliclyVisible()
             && (float) $product->stock_quantity >= $quantity
             && $this->sellerPolicyAccessService
                 ->availability($product->farm)['accepting_orders'];
@@ -327,12 +320,8 @@ class CartService
         float $quantity,
         array $orderAvailability
     ): string {
-        if ((int) $product->status !== 1) {
-            return 'Sản phẩm hiện không được bán.';
-        }
-
-        if (!$product->certificate) {
-            return 'Sản phẩm chưa có chứng nhận hợp lệ.';
+        if (!$product->isPubliclyVisible()) {
+            return 'Sản phẩm hiện không còn đủ điều kiện công khai để bán.';
         }
 
         if (!$orderAvailability['accepting_orders']) {

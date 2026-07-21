@@ -48,6 +48,13 @@ class Category extends Model
     {
         return $query
             ->where('status', 1)
-            ->whereNull('deleted_at');
+            ->whereNull('deleted_at')
+            ->where(function ($visibilityQuery) {
+                $visibilityQuery
+                    ->whereNull('parent_id')
+                    ->orWhereHas('parent', function ($parentQuery) {
+                        $parentQuery->where('status', 1);
+                    });
+            });
     }
 }

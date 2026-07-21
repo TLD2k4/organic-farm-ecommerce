@@ -25,8 +25,10 @@ class SellerReviewService
                 'user.roles',
                 'orderItem.product.farm',
                 'orderItem.product.category',
+                'orderItem.product.approvedCertificate',
                 'product.farm',
                 'product.category',
+                'product.approvedCertificate',
                 'orderItem.subOrder.order.user:id,name,email',
                 'moderator:id,name,email',
                 'replies.user.roles',
@@ -384,6 +386,7 @@ class SellerReviewService
                 'thumbnail' => $product->thumbnail ?? null,
                 'thumbnail_url' => $product->thumbnail ?? null,
                 'unit' => $product->unit ?? null,
+                'is_publicly_visible' => $product->isPubliclyVisible(),
             ] : null,
             'replies' => $review->replies
                 ->where('status', 1)

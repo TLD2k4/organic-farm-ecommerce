@@ -2,6 +2,7 @@
 
 namespace App\Services\Report;
 
+use App\Models\Product;
 use App\Services\Revenue\RevenueMetricsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,8 @@ class AdminReportService
                 $endDate,
                 $limit,
             ),
+
+            'top_stock_products' => $this->getTopStockProducts($limit),
 
             'top_categories' => $this->getTopCategories(
                 $startDate,
@@ -269,11 +272,20 @@ class AdminReportService
             if (isset($series[$key])) {
                 $series[$key]['sub_orders']++;
 
-                match ((int) $subOrder->status) {
+                $status = (int) $subOrder->status;
+
+                match ($status) {
+                    0 => $series[$key]['pending_sub_orders']++,
+                    1 => $series[$key]['preparing_sub_orders']++,
+                    2 => $series[$key]['shipping_sub_orders']++,
                     3 => $series[$key]['completed_sub_orders']++,
                     4 => $series[$key]['cancelled_sub_orders']++,
-                    default => $series[$key]['processing_sub_orders']++,
+                    default => null,
                 };
+
+                if (in_array($status, [0, 1, 2], true)) {
+                    $series[$key]['processing_sub_orders']++;
+                }
             }
         }
 
@@ -406,13 +418,11 @@ class AdminReportService
                     'product_slug' => $item->product_slug,
                     'current_product_exists' =>
                     $item->current_product_id !== null,
-                    'is_publicly_visible' =>
-                    $item->product_slug !== null
-                    && (int) $item->product_status === 1
-                    && $item->product_deleted_at === null
-                    && (int) $item->farm_status === 1
-                    && $item->farm_deleted_at === null
-                    && $item->valid_certificate_product_id !== null,
+                    'is_publicly_visible' => $item->current_product_id !== null
+                        && Product::query()
+                            ->whereKey($item->current_product_id)
+                            ->publiclyVisible()
+                            ->exists(),
                     'unit' => $item->unit,
 
                     'quantity_sold' =>
@@ -423,6 +433,39 @@ class AdminReportService
 
                     'order_count' =>
                     (int) $item->order_count,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Xếp hạng tồn kho hiện tại, không phụ thuộc khoảng ngày của báo cáo.
+     * Chỉ lấy sản phẩm đang bán, farm đang hoạt động và có chứng chỉ hợp lệ.
+     */
+    private function getTopStockProducts(int $limit): array
+    {
+        return Product::query()
+            ->publiclyVisible()
+            ->with('farm:id,name,slug')
+            ->where('stock_quantity', '>', 0)
+            ->orderByDesc('stock_quantity')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get()
+            ->map(function (Product $product) {
+                return [
+                    'product_id' => (int) $product->id,
+                    'product_name' => $product->name,
+                    'product_slug' => $product->slug,
+                    'product_image' => $product->thumbnail,
+                    'stock_quantity' => (float) $product->stock_quantity,
+                    'unit' => $product->unit,
+                    'farm_id' => (int) $product->farm_id,
+                    'farm_name' => $product->farm?->name,
+                    'farm_slug' => $product->farm?->slug,
+                    'current_product_exists' => true,
+                    'is_publicly_visible' => true,
                 ];
             })
             ->values()
@@ -473,6 +516,10 @@ class AdminReportService
             ->select([
                 'c.id',
                 'c.name',
+                'c.slug',
+                'c.image',
+                'c.status',
+                'c.deleted_at',
             ])
             ->selectRaw(
                 'SUM(oi.quantity) as quantity_sold'
@@ -486,14 +533,22 @@ class AdminReportService
             ->groupBy([
                 'c.id',
                 'c.name',
+                'c.slug',
+                'c.image',
+                'c.status',
+                'c.deleted_at',
             ])
             ->orderByDesc('revenue')
             ->limit($limit)
             ->get()
             ->map(function ($item) {
                 return [
-                    'category_id' => $item->id,
+                    'category_id' => (int) $item->id,
                     'category_name' => $item->name,
+                    'category_slug' => $item->slug,
+                    'category_image' => $item->image,
+                    'status' => (int) $item->status,
+                    'deleted_at' => $item->deleted_at,
 
                     'quantity_sold' =>
                     (float) $item->quantity_sold,
@@ -630,6 +685,9 @@ class AdminReportService
                 'completed_orders' => 0,
                 'cancelled_orders' => 0,
                 'processing_sub_orders' => 0,
+                'pending_sub_orders' => 0,
+                'preparing_sub_orders' => 0,
+                'shipping_sub_orders' => 0,
                 'completed_sub_orders' => 0,
                 'cancelled_sub_orders' => 0,
                 'new_users' => 0,

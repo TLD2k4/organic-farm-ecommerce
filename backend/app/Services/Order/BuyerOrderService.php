@@ -31,9 +31,15 @@ class BuyerOrderService
 
         $order->payment->update([
             'status' => 0,
+            'paid_at' => null,
             'transaction_code' => 'PAY' . now()->format('YmdHis') . random_int(1000, 9999),
         ]);
-        return $this->momoPaymentService->createPayment($order->fresh('payment'));
+
+        $this->resetActiveSubOrderPaymentStatuses($order);
+
+        return $this->momoPaymentService->createPayment(
+            $order->fresh('payment')
+        );
     }
 
     public function changePendingPaymentMethod(int $userId, int $orderId, string $paymentMethod): array
@@ -59,7 +65,7 @@ class BuyerOrderService
             'paid_at' => null,
             'transaction_code' => 'PAY' . now()->format('YmdHis') . random_int(1000, 9999),
         ]);
-        $order->subOrders()->update(['payment_status' => 0]);
+        $this->resetActiveSubOrderPaymentStatuses($order);
 
         $momo = $paymentMethod === 'MOMO'
             ? $this->momoPaymentService->createPayment($order->fresh('payment'))
@@ -79,11 +85,50 @@ class BuyerOrderService
             throw ValidationException::withMessages(['payment' => ['Đơn hàng chưa có thông tin thanh toán.']]);
         }
         if ((int) $order->payment->status === 1) {
-            throw ValidationException::withMessages(['payment' => ['Thanh toán online đã thành công nên không thể đổi phương thức.']]);
+            throw ValidationException::withMessages([
+                'payment' => [
+                    'Thanh toán online đã thành công nên không thể đổi phương thức.',
+                ],
+            ]);
         }
-        if ((int) $order->status !== 0 || $order->subOrders->contains(fn ($subOrder) => (int) $subOrder->status !== 0)) {
-            throw ValidationException::withMessages(['order' => ['Chỉ được đổi phương thức khi toàn bộ đơn vẫn chờ xác nhận.']]);
+
+        if ((int) $order->payment->status === 3) {
+            throw ValidationException::withMessages([
+                'payment' => [
+                    'Đơn hàng đã hoàn tiền nên không thể thay đổi phương thức thanh toán.',
+                ],
+            ]);
         }
+
+        $activeSubOrders = $order->subOrders
+            ->reject(fn ($subOrder) => (int) $subOrder->status === 4)
+            ->values();
+
+        if ($activeSubOrders->isEmpty()) {
+            throw ValidationException::withMessages([
+                'order' => ['Đơn hàng không còn đơn theo gian hàng nào để thanh toán.'],
+            ]);
+        }
+
+        if (
+            (int) $order->status !== 0
+            || $activeSubOrders->contains(
+                fn ($subOrder) => (int) $subOrder->status !== 0
+            )
+        ) {
+            throw ValidationException::withMessages([
+                'order' => [
+                    'Chỉ được đổi hoặc thanh toán lại khi các đơn theo gian hàng còn hiệu lực vẫn đang chờ xác nhận.',
+                ],
+            ]);
+        }
+    }
+
+    private function resetActiveSubOrderPaymentStatuses(Order $order): void
+    {
+        $order->subOrders()
+            ->where('status', '!=', 4)
+            ->update(['payment_status' => 0]);
     }
 
     /**
@@ -481,8 +526,9 @@ class BuyerOrderService
                 'name' => $subOrder->farm->name,
                 'slug' => $subOrder->farm->slug,
                 'status' => (int) $subOrder->farm->status,
-                'is_publicly_visible' =>
-                    (int) $subOrder->farm->status === Farm::STATUS_ACTIVE,
+                'is_publicly_visible' => !$subOrder->farm->trashed()
+                    && (int) $subOrder->farm->status === Farm::STATUS_ACTIVE
+                    && filled($subOrder->farm->slug),
             ] : null,
 
             'items_total' => (float) $subOrder->items_total,
@@ -533,11 +579,7 @@ class BuyerOrderService
             return null;
         }
 
-        $farm = $product->farm;
-        $isPubliclyVisible = (int) $product->status === 1
-            && $farm
-            && (int) $farm->status === Farm::STATUS_ACTIVE
-            && $product->approvedCertificate !== null;
+        $isPubliclyVisible = $product->isPubliclyVisible();
 
         return [
             'id' => $product->id,

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import sellerOrderService from "../../services/sellerOrderService";
 import ResponsiveSelect from "../../components/common/ResponsiveSelect";
@@ -18,6 +18,8 @@ const STATUS_TABS = [
 ];
 
 export default function SellerOrders() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const handledViewId = useRef(null);
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [pagination, setPagination] = useState({
@@ -130,13 +132,22 @@ export default function SellerOrders() {
     }));
   };
 
-  const handleViewDetail = async (orderId) => {
+  const handleViewDetail = useCallback(async (orderId, { syncUrl = true } = {}) => {
+    const numericId = Number(orderId);
+    if (!numericId) return;
+
+    if (syncUrl) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("view", String(numericId));
+      setSearchParams(nextParams, { replace: true });
+    }
+
     try {
       setSelectedOrder(null);
       setDetailLoading(true);
       setShowDetailModal(true);
 
-      const response = await sellerOrderService.getOrder(orderId);
+      const response = await sellerOrderService.getOrder(numericId);
       setSelectedOrder(response.data ?? response);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không thể tải chi tiết đơn hàng."));
@@ -144,7 +155,24 @@ export default function SellerOrders() {
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, [searchParams, setSearchParams]);
+
+  const closeDetail = useCallback(() => {
+    setShowDetailModal(false);
+    setSelectedOrder(null);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("view");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const viewId = Number(searchParams.get("view"));
+    if (!viewId || handledViewId.current === viewId) return;
+
+    handledViewId.current = viewId;
+    handleViewDetail(viewId, { syncUrl: false });
+  }, [handleViewDetail, searchParams]);
 
   const openActionModal = (order, status) => {
     setActionOrder(order);
@@ -193,6 +221,14 @@ export default function SellerOrders() {
   const getNextActions = (order) => {
     const status = Number(order.status);
     const paymentStatus = Number(order.payment_status ?? 0);
+    const isMomo = String(order.payment_method || "").toUpperCase() === "MOMO";
+
+    // MoMo chưa thanh toán chỉ được hủy; chưa được chuẩn bị/giao/hoàn thành.
+    if (isMomo && paymentStatus !== 1) {
+      return [0, 1].includes(status)
+        ? [{ status: 4, label: "Hủy đơn", variant: "danger" }]
+        : [];
+    }
 
     // Đơn đã thanh toán thì không cho seller hủy trực tiếp
     // vì chưa có chức năng hoàn tiền
@@ -256,10 +292,7 @@ export default function SellerOrders() {
           <DetailDrawer
             order={selectedOrder}
             loading={detailLoading}
-            onClose={() => {
-              setShowDetailModal(false);
-              setSelectedOrder(null);
-            }}
+            onClose={closeDetail}
             actions={selectedOrder ? getNextActions(selectedOrder) : []}
             onAction={(status) => openActionModal(selectedOrder, status)}
           />
@@ -539,7 +572,7 @@ function OrdersTable({
                   className="group transition hover:bg-emerald-50/40"
                 >
                   <td className="whitespace-nowrap px-5 py-4">
-                    <button type="button" onClick={() => onViewDetail(order.id)} className="font-black text-gray-900 hover:text-emerald-600 hover:underline">
+                    <button type="button" onClick={() => onViewDetail(order.id)} className="entity-name-link entity-name-link-management font-black text-gray-900">
                       {highlight(order.sub_order_code, keyword)}
                     </button>
                     <div className="mt-1 text-xs font-medium text-gray-400">
@@ -653,7 +686,7 @@ function OrderMobileCard({ order, keyword, onViewDetail, actions, openActionModa
     <article className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="flex min-w-0 flex-col gap-3 border-b border-gray-100 p-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
         <div className="min-w-0">
-          <button type="button" onClick={() => onViewDetail(order.id)} className="break-words text-left font-black text-gray-900 hover:text-emerald-600 hover:underline">
+          <button type="button" onClick={() => onViewDetail(order.id)} className="entity-name-link entity-name-link-management break-words text-left font-black text-gray-900">
             {highlight(order.sub_order_code, keyword)}
           </button>
           <p className="mt-1 break-words text-xs font-medium text-gray-400">
@@ -856,7 +889,25 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
 
                       <div className="min-w-0 flex-1">
                         {item.product?.id ? (
-                          <Link to={`/seller/products?view=${item.product.id}`} className="line-clamp-2 text-base font-black text-gray-900 hover:text-emerald-600 hover:underline">{item.product_name}</Link>
+                          <Link
+                            to={
+                              item.product.is_publicly_visible && item.product.slug
+                                ? `/products/${item.product.slug}`
+                                : `/seller/products?view=${item.product.id}`
+                            }
+                            title={
+                              item.product.is_publicly_visible
+                                ? "Mở trang sản phẩm công khai"
+                                : "Mở chi tiết sản phẩm Seller"
+                            }
+                            className={`line-clamp-2 text-base font-black text-gray-900 hover:underline ${
+                              item.product.is_publicly_visible
+                                ? "entity-name-link entity-name-link-public"
+                                : "entity-name-link entity-name-link-management"
+                            }`}
+                          >
+                            {item.product_name}
+                          </Link>
                         ) : (
                           <h4 className="line-clamp-2 text-base font-black text-gray-900">{item.product_name}</h4>
                         )}
@@ -869,12 +920,14 @@ function DetailDrawer({ order, loading, onClose, actions, onAction }) {
                         {item.allocated_lots?.length > 0 ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {item.allocated_lots.map((lot) => (
-                              <span
+                              <Link
                                 key={`${lot.harvest_lot_id}-${lot.lot_code}`}
-                                className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700"
+                                to={`/seller/harvest-lots?view=${lot.harvest_lot_id}`}
+                                title="Mở chi tiết lô"
+                                className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 hover:bg-emerald-100 hover:underline"
                               >
                                 {lot.lot_code}: {formatQuantity(lot.quantity)} {item.unit || "kg"}
-                              </span>
+                              </Link>
                             ))}
                           </div>
                         ) : (

@@ -75,7 +75,7 @@ export default function RecentFarms({ farms = [], loading = false }) {
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       {farmLink ? (
-                        <Link to={farmLink.to} title={farmLink.title} className={`block truncate font-semibold hover:underline ${farmLink.isPublic ? "text-slate-900 hover:text-green-700" : "text-slate-900 hover:text-sky-600"}`}>
+                        <Link to={farmLink.to} title={farmLink.title} className={`block truncate font-semibold hover:underline ${farmLink.isPublic ? "text-slate-900 entity-name-link entity-name-link-public" : "text-slate-900 entity-name-link entity-name-link-management"}`}>
                           {farm.name}
                         </Link>
                       ) : (

@@ -52,6 +52,14 @@ const productService = {
     return axiosClient.delete(`/vendor/products/${id}`);
   },
 
+  restoreSellerProduct(id) {
+    return axiosClient.patch(`/vendor/products/${id}/restore`);
+  },
+
+  forceDeleteSellerProduct(id) {
+    return axiosClient.delete(`/vendor/products/${id}/force`);
+  },
+
   toggleStatus(id) {
     return axiosClient.patch(`/vendor/products/${id}/toggle-status`);
   },
