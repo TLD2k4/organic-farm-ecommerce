@@ -17,12 +17,12 @@ export default function AdminOrderStats({ stats = {}, mode = "orders" }) {
       icon: PackageOpen,
     },
     {
-      label: "Chờ xử lý",
+      label: "Chờ xác nhận",
       value: stats.pending ?? 0,
       icon: Clock3,
     },
     {
-      label: mode === "orders" ? "Đang xử lý" : "Chuẩn bị hàng",
+      label: mode === "orders" ? "Đang xử lý" : "Đang chuẩn bị",
       value: mode === "orders" ? stats.processing ?? 0 : stats.preparing ?? 0,
       icon: PackageCheck,
     },
@@ -32,7 +32,7 @@ export default function AdminOrderStats({ stats = {}, mode = "orders" }) {
       icon: Truck,
     },
     {
-      label: "Hoàn tất",
+      label: "Hoàn thành",
       value: stats.completed ?? 0,
       icon: PackageCheck,
     },
@@ -42,7 +42,7 @@ export default function AdminOrderStats({ stats = {}, mode = "orders" }) {
       icon: Ban,
     },
     {
-      label: "Doanh thu hoàn tất",
+      label: "Doanh thu hoàn thành",
       value: formatMoney(stats.completed_revenue ?? 0),
       icon: CircleDollarSign,
     },

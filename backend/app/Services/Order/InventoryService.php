@@ -79,13 +79,15 @@ class InventoryService
     {
         DB::transaction(function () use ($orderItem) {
             foreach ($orderItem->orderItemLots as $itemLot) {
-                $lot = HarvestLot::lockForUpdate()
+                $lot = HarvestLot::withTrashed()
+                    ->lockForUpdate()
                     ->find($itemLot->harvest_lot_id);
 
                 if (!$lot) {
                     continue;
                 }
 
+                $previousStatus = (int) $lot->status;
                 $restoredQuantity = round((float) $itemLot->quantity, 2);
                 $lot->quantity_remaining = round(
                     (float) $lot->quantity_remaining + $restoredQuantity,
@@ -102,7 +104,12 @@ class InventoryService
 
                 if ($lot->expiry_date->lt(today())) {
                     $lot->status = 4;
+                } elseif (in_array($previousStatus, [2, 4], true)) {
+                    // Hoàn kho không được tự mở lại lô mà Seller đã tạm ẩn
+                    // hoặc lô đã được đánh dấu hết hạn.
+                    $lot->status = $previousStatus;
                 } elseif ($lot->quantity_remaining > 0) {
+                    // Chỉ lô trước đó đang bán/hết hàng mới tự quay lại Đang bán.
                     $lot->status = 1;
                 } else {
                     $lot->status = 3;

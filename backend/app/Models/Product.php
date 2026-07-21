@@ -52,6 +52,76 @@ class Product extends Model
         });
     }
 
+
+    /**
+     * Một nguồn chuẩn cho toàn bộ khu vực công khai.
+     *
+     * Sản phẩm chỉ công khai khi bản thân sản phẩm, gian hàng, danh mục
+     * (và danh mục cha nếu có), chứng chỉ hiện hành và loại chứng nhận
+     * đều còn hoạt động.
+     */
+    public function scopePubliclyVisible($query)
+    {
+        return $query
+            ->where('products.status', 1)
+            ->whereHas('farm', function ($farmQuery) {
+                $farmQuery->where('status', Farm::STATUS_ACTIVE);
+            })
+            ->whereHas('category', function ($categoryQuery) {
+                $categoryQuery->visible();
+            })
+            ->whereHas('certificate', function ($certificateQuery) {
+                $certificateQuery->whereHas('certification', function ($certificationQuery) {
+                    $certificationQuery->where('status', 1);
+                });
+            });
+    }
+
+    /**
+     * Kiểm tra một model đã load có thật sự được mở trang công khai không.
+     */
+    public function isPubliclyVisible(): bool
+    {
+        if ($this->trashed() || (int) $this->status !== 1) {
+            return false;
+        }
+
+        $this->loadMissing([
+            'farm',
+            'category.parent',
+            'approvedCertificate.certification',
+        ]);
+
+        if (!$this->farm
+            || $this->farm->trashed()
+            || (int) $this->farm->status !== Farm::STATUS_ACTIVE
+        ) {
+            return false;
+        }
+
+        if (!$this->category
+            || $this->category->trashed()
+            || (int) $this->category->status !== 1
+        ) {
+            return false;
+        }
+
+        if ($this->category->parent_id !== null) {
+            $parent = $this->category->parent;
+
+            if (!$parent || $parent->trashed() || (int) $parent->status !== 1) {
+                return false;
+            }
+        }
+
+        $certificate = $this->approvedCertificate;
+
+        return $certificate !== null
+            && $certificate->certification !== null
+            && !$certificate->certification->trashed()
+            && (int) $certificate->certification->status === 1;
+    }
+
     public function farm()
     {
         return $this->belongsTo(Farm::class);
@@ -75,9 +145,10 @@ class Product extends Model
     public function certificate()
     {
         return $this->hasOne(ProductCertificate::class)
-            ->where('status', 1)
-            ->where('expiry_date', '>=', today())
-            ->latestOfMany();
+            ->ofMany(['id' => 'max'], function ($query) {
+                $query->where('status', 1)
+                    ->whereDate('expiry_date', '>=', today());
+            });
     }
 
     public function approver() // thêm ở đây
@@ -93,9 +164,10 @@ class Product extends Model
     public function approvedCertificate()
     {
         return $this->hasOne(ProductCertificate::class)
-            ->where('status', 1)
-            ->where('expiry_date', '>=', today())
-            ->latestOfMany();
+            ->ofMany(['id' => 'max'], function ($query) {
+                $query->where('status', 1)
+                    ->whereDate('expiry_date', '>=', today());
+            });
     }
 
     public function harvestLots()

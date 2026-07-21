@@ -137,7 +137,11 @@ class UserController extends Controller
 
         $this->auditLogService->record(
             $request->user(), 'user', (int) $id, 'force_delete',
-            'deleted', 'purged', $validated['reason']
+            'deleted', 'purged', $validated['reason'],
+            [
+                'user_name' => $user->name,
+                'user_email' => $user->email,
+            ]
         );
 
         return response()->json([

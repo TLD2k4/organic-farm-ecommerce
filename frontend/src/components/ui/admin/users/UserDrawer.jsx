@@ -229,8 +229,8 @@ export default function UserDrawer({ open, onClose, userId }) {
                           title={farmLink.title}
                           className={`hover:underline ${
                             farmLink.isPublic
-                              ? "hover:text-green-700"
-                              : "hover:text-sky-600"
+                              ? "entity-name-link entity-name-link-public"
+                              : "entity-name-link entity-name-link-management"
                           }`}
                         >
                           {user.farm.name}

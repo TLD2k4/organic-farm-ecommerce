@@ -3,12 +3,22 @@
 namespace App\Http\Requests\Product;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class RenewProductCertificateRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('certificate_number')) {
+            $this->merge([
+                'certificate_number' => trim((string) $this->input('certificate_number')),
+            ]);
+        }
     }
 
     public function rules(): array
@@ -22,7 +32,8 @@ class RenewProductCertificateRequest extends FormRequest
                 'required',
                 'string',
                 'max:100',
-                'unique:product_certificates,certificate_number',
+                Rule::unique('product_certificates', 'certificate_number')
+                    ->where(fn ($query) => $query->where('status', '!=', 2)),
             ],
 
             'certificate_file' => ['required', 'string', 'max:255'],
@@ -44,7 +55,7 @@ class RenewProductCertificateRequest extends FormRequest
             'certification_id.prohibited' => 'Không được đổi loại chứng chỉ. Muốn đổi chứng chỉ phải tạo sản phẩm mới.',
 
             'certificate_number.required' => 'Số chứng chỉ không được để trống.',
-            'certificate_number.unique' => 'Số chứng chỉ đã tồn tại.',
+            'certificate_number.unique' => 'Số chứng chỉ đang chờ duyệt hoặc đã từng được duyệt nên không thể dùng lại.',
             'certificate_number.max' => 'Số chứng chỉ không được vượt quá 100 ký tự.',
 
             'certificate_file.required' => 'File chứng chỉ không được để trống.',

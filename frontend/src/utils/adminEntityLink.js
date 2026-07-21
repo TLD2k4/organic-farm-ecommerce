@@ -11,9 +11,15 @@ export function getAdminProductLink(product) {
 
   const id = product?.id ?? product?.product_id;
   const slug = product?.slug ?? product?.product_slug;
+  const hasCanonicalVisibility = Object.prototype.hasOwnProperty.call(
+    product,
+    "is_publicly_visible",
+  );
   const isPublic = Boolean(
     slug &&
-      (isTrue(product?.is_publicly_visible) || isTrue(product?.is_sellable)),
+      (hasCanonicalVisibility
+        ? isTrue(product.is_publicly_visible)
+        : isTrue(product?.is_sellable)),
   );
 
   if (isPublic) {
@@ -28,7 +34,9 @@ export function getAdminProductLink(product) {
     return {
       to: `/admin/products?view=${id}`,
       isPublic: false,
-      title: "Sản phẩm chưa công khai — mở chi tiết quản trị",
+      title:
+        product?.public_visibility_reason ||
+        "Sản phẩm chưa công khai — mở chi tiết quản trị",
     };
   }
 
@@ -57,6 +65,34 @@ export function getAdminFarmLink(farm) {
       to: `/admin/farms?view=${id}`,
       isPublic: false,
       title: "Nông trại chưa công khai — mở chi tiết quản trị",
+    };
+  }
+
+  return null;
+}
+
+export function getAdminCategoryLink(category) {
+  if (!category) return null;
+
+  const id = category?.id ?? category?.category_id;
+  const slug = category?.slug ?? category?.category_slug;
+  const isPublic = Boolean(
+    slug && Number(category?.status) === 1 && !category?.deleted_at,
+  );
+
+  if (isPublic) {
+    return {
+      to: `/products?category_slug=${encodeURIComponent(slug)}`,
+      isPublic: true,
+      title: "Xem các sản phẩm công khai thuộc danh mục",
+    };
+  }
+
+  if (id) {
+    return {
+      to: `/admin/categories?view=${id}`,
+      isPublic: false,
+      title: "Danh mục chưa công khai — mở chi tiết quản trị",
     };
   }
 

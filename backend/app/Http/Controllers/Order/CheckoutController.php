@@ -28,11 +28,17 @@ class CheckoutController extends Controller
             'subOrders',
         ]);
 
+        $paymentRetryRequired = (bool) (
+            $result['payment_retry_required'] ?? false
+        );
+
         return response()->json([
             'success' => true,
-            'message' => $request->payment_method === 'MOMO'
-                ? 'Tạo đơn hàng thành công. Vui lòng thanh toán qua MoMo.'
-                : 'Đặt hàng thành công.',
+            'message' => match (true) {
+                $request->payment_method !== 'MOMO' => 'Đặt hàng thành công.',
+                $paymentRetryRequired => 'Đơn hàng đã được tạo và đang chờ thanh toán. Chưa thể mở MoMo lúc này; bạn có thể thanh toán lại trong hồ sơ đơn hàng.',
+                default => 'Tạo đơn hàng thành công. Vui lòng thanh toán qua MoMo.',
+            },
             'data' => [
                 'order_id' => $order->id,
                 'order_code' => $order->order_code,
@@ -45,6 +51,7 @@ class CheckoutController extends Controller
                 'payment_url' => $result['payment_url'],
                 'deeplink' => $result['deeplink'],
                 'qr_code_url' => $result['qr_code_url'],
+                'payment_retry_required' => $paymentRetryRequired,
 
                 'sub_orders' => $order->subOrders,
             ],

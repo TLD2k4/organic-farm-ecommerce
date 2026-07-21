@@ -1,4 +1,4 @@
-import { Eye, RefreshCcw } from "lucide-react";
+import { Ban, Eye, RefreshCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import StatusBadge from "@/components/common/StatusBadge";
@@ -62,10 +62,15 @@ export default function AdminSubOrdersTable({
           <tbody>
             {subOrders.map((subOrder) => {
               const farmLink = getAdminFarmLink(subOrder.farm);
-              const canUpdate =
-                !subOrder.deleted_at &&
-                Array.isArray(subOrder.allowed_next_statuses) &&
-                subOrder.allowed_next_statuses.length > 0;
+              const allowedStatuses = Array.isArray(subOrder.allowed_next_statuses)
+                ? subOrder.allowed_next_statuses
+                : [];
+              const canAdvance = allowedStatuses.some(
+                (option) => Number(option.value) !== 4,
+              );
+              const canCancel = allowedStatuses.some(
+                (option) => Number(option.value) === 4,
+              );
 
               return (
                 <tr
@@ -73,7 +78,7 @@ export default function AdminSubOrdersTable({
                   className="border-t border-slate-100 transition hover:bg-slate-50"
                 >
                   <td className="px-4 py-4">
-                    <button type="button" onClick={() => onView(subOrder)} className="font-bold hover:text-sky-600 hover:underline">{highlight(subOrder.sub_order_code, keyword)}</button>
+                    <button type="button" onClick={() => onView(subOrder)} className="font-bold entity-name-link entity-name-link-management hover:underline">{highlight(subOrder.sub_order_code, keyword)}</button>
                     <p className="text-xs text-slate-500">
                       Đơn tổng: {highlight(subOrder.order_code, keyword)}
                     </p>
@@ -81,7 +86,7 @@ export default function AdminSubOrdersTable({
 
                   <td className="px-4 py-4">
                     {farmLink ? (
-                      <Link to={farmLink.to} title={farmLink.title} className={`block max-w-55 truncate font-semibold hover:underline ${farmLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"}`}>{highlight(subOrder.farm?.name || "—", keyword)}</Link>
+                      <Link to={farmLink.to} title={farmLink.title} className={`block max-w-55 truncate font-semibold hover:underline ${farmLink.isPublic ? "entity-name-link entity-name-link-public" : "entity-name-link entity-name-link-management"}`}>{highlight(subOrder.farm?.name || "—", keyword)}</Link>
                     ) : (
                       <p className="max-w-55 truncate font-semibold">{highlight(subOrder.farm?.name || "—", keyword)}</p>
                     )}
@@ -143,7 +148,7 @@ export default function AdminSubOrdersTable({
                         <Eye size={16} />
                       </button>
 
-                      {canUpdate && (
+                      {canAdvance && (
                         <button
                           type="button"
                           title="Cập nhật trạng thái"
@@ -151,6 +156,17 @@ export default function AdminSubOrdersTable({
                           className="cursor-pointer rounded-lg bg-indigo-500 p-2 text-white transition hover:bg-indigo-600"
                         >
                           <RefreshCcw size={16} />
+                        </button>
+                      )}
+
+                      {canCancel && (
+                        <button
+                          type="button"
+                          title="Hủy đơn con"
+                          onClick={() => onUpdateStatus(subOrder, 4)}
+                          className="cursor-pointer rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
+                        >
+                          <Ban size={16} />
                         </button>
                       )}
                     </div>

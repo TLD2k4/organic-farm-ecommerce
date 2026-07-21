@@ -2,6 +2,7 @@
 
 namespace App\Services\Product;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Certification;
 use App\Models\Farm;
@@ -690,6 +691,54 @@ class AdminProductService
         ]);
     }
 
+    private function getPublicVisibilityReason(
+        Product $product,
+        ?ProductCertificate $currentCertificate
+    ): string {
+        if ($product->trashed()) {
+            return 'Sản phẩm đã bị xóa.';
+        }
+
+        if ((int) $product->status !== self::PRODUCT_ACTIVE) {
+            return 'Sản phẩm chưa ở trạng thái đang bán.';
+        }
+
+        if (!$product->farm || $product->farm->trashed()) {
+            return 'Nông trại không còn tồn tại công khai.';
+        }
+
+        if ((int) $product->farm->status !== Farm::STATUS_ACTIVE) {
+            return 'Nông trại chưa hoạt động công khai.';
+        }
+
+        if (!$product->category || $product->category->trashed()) {
+            return 'Danh mục của sản phẩm không còn tồn tại công khai.';
+        }
+
+        if ((int) $product->category->status !== 1) {
+            return 'Danh mục của sản phẩm đang bị ẩn.';
+        }
+
+        if ($product->category->parent_id !== null
+            && (!$product->category->parent || (int) $product->category->parent->status !== 1)
+        ) {
+            return 'Danh mục cha của sản phẩm đang bị ẩn hoặc đã xóa.';
+        }
+
+        if ($currentCertificate === null) {
+            return 'Sản phẩm chưa có chứng chỉ đã duyệt còn hiệu lực.';
+        }
+
+        if (!$currentCertificate->certification
+            || $currentCertificate->certification->trashed()
+            || (int) $currentCertificate->certification->status !== 1
+        ) {
+            return 'Loại chứng nhận của sản phẩm không còn hoạt động.';
+        }
+
+        return 'Sản phẩm chưa đủ điều kiện hiển thị công khai.';
+    }
+
     private function normalizeReason(string $reason): string
     {
         return preg_replace(
@@ -729,13 +778,7 @@ class AdminProductService
                 !$certificate->trashed()
             );
 
-        $isSellable =
-            !$product->trashed() &&
-            (int) $product->status === self::PRODUCT_ACTIVE &&
-            $currentCertificate !== null &&
-            $product->farm &&
-            !$product->farm->trashed() &&
-            (int) $product->farm->status === Farm::STATUS_ACTIVE;
+        $isSellable = $product->isPubliclyVisible();
 
         $data = [
             'id' => $product->id,
@@ -768,7 +811,17 @@ class AdminProductService
                 (int) $product->status
             ),
 
+            // Một nguồn chuẩn cho frontend quyết định mở trang công khai
+            // hay chi tiết quản trị. Hồ sơ gia hạn đang chờ không làm sản phẩm
+            // công khai nếu chứng chỉ cũ đã hết hạn.
             'is_sellable' => $isSellable,
+            'is_publicly_visible' => $isSellable,
+            'public_visibility_reason' => $isSellable
+                ? null
+                : $this->getPublicVisibilityReason(
+                    $product,
+                    $currentCertificate
+                ),
             'pending_certificate_count' =>
                 (int) ($product->pending_certificate_count ?? 0),
 
@@ -861,9 +914,85 @@ class AdminProductService
                     $this->formatCertificate($certificate)
                 )
                 ->values();
+
+            $data['audit_history'] = $this->getProductAuditHistory(
+                $product->id
+            );
         }
 
         return $data;
+    }
+
+    private function getProductAuditHistory(int $productId): array
+    {
+        return AuditLog::query()
+            ->with('actor:id,name,email')
+            ->where('subject_type', 'product')
+            ->where('subject_id', $productId)
+            ->latest('id')
+            ->get()
+            ->map(function (AuditLog $log) {
+                return [
+                    'id' => $log->id,
+                    'subject_type' => 'product',
+                    'subject_type_label' => 'Sản phẩm',
+                    'subject_id' => (int) $log->subject_id,
+                    'action' => $log->action,
+                    'action_text' => match ($log->action) {
+                        'approve' => 'Duyệt',
+                        'reject' => 'Từ chối',
+                        'suspend' => 'Đình chỉ',
+                        'reopen' => 'Mở lại',
+                        'lock' => 'Khóa',
+                        'unlock' => 'Mở khóa',
+                        'soft_delete' => 'Xóa mềm',
+                        'restore' => 'Khôi phục',
+                        'force_delete' => 'Xóa vĩnh viễn',
+                        default => $log->action,
+                    },
+                    'from_status' => $log->from_status,
+                    'from_status_text' => $this->auditStatusText(
+                        false,
+                        $log->from_status
+                    ),
+                    'to_status' => $log->to_status,
+                    'to_status_text' => $this->auditStatusText(
+                        false,
+                        $log->to_status
+                    ),
+                    'reason' => $log->reason,
+                    'created_at' => optional($log->created_at)
+                        ->format('Y-m-d H:i:s'),
+                    'actor' => $log->actor ? [
+                        'id' => $log->actor->id,
+                        'name' => $log->actor->name,
+                        'email' => $log->actor->email,
+                    ] : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function auditStatusText(
+        bool $isCertificate,
+        int|string|null $status
+    ): string {
+        if ($status === null || $status === '') {
+            return '—';
+        }
+
+        if (!is_numeric($status)) {
+            return match ((string) $status) {
+                'deleted' => 'Đã xóa mềm',
+                'purged' => 'Đã xóa vĩnh viễn',
+                default => (string) $status,
+            };
+        }
+
+        return $isCertificate
+            ? $this->getCertificateStatusText((int) $status)
+            : $this->getProductStatusText((int) $status);
     }
 
     private function formatCertificate(

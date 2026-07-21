@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Package,
@@ -9,6 +9,9 @@ import {
   MoreHorizontal,
   TrendingUp,
   CircleGauge,
+  Boxes,
+  Clock3,
+  TriangleAlert,
 } from "lucide-react";
 import {
   Area,
@@ -23,6 +26,8 @@ import {
   YAxis,
 } from "recharts";
 import dashboardService from "../../services/dashboardService";
+import { getRankBadgeClass } from "../../utils/rank";
+import ResponsiveSelect from "../../components/common/ResponsiveSelect";
 
 function SellerDashboard() {
   const navigate = useNavigate();
@@ -30,24 +35,27 @@ function SellerDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [topLimit, setTopLimit] = useState(5);
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const res = await dashboardService.getSellerDashboard();
+      const res = await dashboardService.getSellerDashboard({
+        top_limit: topLimit,
+      });
       setDashboard(res.data);
     } catch (err) {
       setError(err.error || "Không thể tải dữ liệu dashboard.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [topLimit]);
 
   useEffect(() => {
     fetchDashboard();
-  }, []);
+  }, [fetchDashboard]);
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -64,6 +72,7 @@ function SellerDashboard() {
   const orderStatus = dashboard.order_status || {};
   const harvestLots = dashboard.harvest_lots || [];
   const lowStockProducts = dashboard.low_stock_products || [];
+  const topStockProducts = dashboard.top_stock_products || [];
   const recentOrders = dashboard.recent_orders || [];
   const warningProducts = dashboard.warning_products || [];
 
@@ -93,7 +102,7 @@ function SellerDashboard() {
         <div className="min-w-0">
           <h1 className="break-words text-xl font-extrabold text-slate-950 sm:text-2xl">
             Xin chào,{" "}
-            <Link to="/seller/farm" className="hover:text-green-700 hover:underline">
+            <Link to="/seller/farm" className="entity-name-link entity-name-link-management">
               {dashboard.farm?.name || "Nông dân An Tâm"}
             </Link>! 👋
           </h1>
@@ -102,12 +111,27 @@ function SellerDashboard() {
           </p>
         </div>
 
-        <div className="w-fit shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">
-          Hôm nay: {dashboard.today || "19/06/2026"}
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <div className="w-full sm:w-44">
+            <ResponsiveSelect
+              value={topLimit}
+              onChange={(value) => setTopLimit(Number(value))}
+              options={[
+                { value: 5, label: "Hiển thị Top 5" },
+                { value: 10, label: "Hiển thị Top 10" },
+                { value: 15, label: "Hiển thị Top 15" },
+                { value: 20, label: "Hiển thị Top 20" },
+              ]}
+            />
+          </div>
+
+          <div className="w-fit rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">
+            Hôm nay: {dashboard.today || "19/06/2026"}
+          </div>
         </div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[460px]:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={<Package size={28} />}
           iconClass="bg-green-100 text-green-700"
@@ -149,6 +173,34 @@ function SellerDashboard() {
           value={stats.available_lots ?? 0}
           sub="Đang bán và còn hạn sử dụng"
         />
+
+        <StatCard
+          icon={<Boxes size={28} />}
+          iconClass="bg-sky-100 text-sky-700"
+          title="Tồn kho khả dụng"
+          value={`${Number(stats.total_stock || 0).toLocaleString("vi-VN", {
+            maximumFractionDigits: 2,
+          })} kg`}
+          sub="Chỉ tính lô đang bán, còn hạn"
+        />
+
+        <StatCard
+          icon={<Clock3 size={28} />}
+          iconClass="bg-amber-100 text-amber-700"
+          title="Đơn chờ xác nhận"
+          value={stats.pending_orders ?? 0}
+          sub="Cần Seller xử lý sớm"
+          subClass="text-amber-600"
+        />
+
+        <StatCard
+          icon={<TriangleAlert size={28} />}
+          iconClass="bg-red-100 text-red-600"
+          title="Lô sắp hết hạn"
+          value={stats.expiring_lots ?? 0}
+          sub="Còn tối đa 7 ngày sử dụng"
+          subClass="text-red-500"
+        />
       </div>
 
       <SellerPerformanceCharts
@@ -161,12 +213,17 @@ function SellerDashboard() {
 
         <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="break-words text-lg font-extrabold">
-              Tồn kho theo lô thu hoạch
-              <span className="ml-2 text-sm font-bold text-slate-400">
-                Top 5
-              </span>
-            </h2>
+            <div>
+              <h2 className="break-words text-lg font-extrabold">
+                Lô thu hoạch mới nhất
+                <span className="ml-2 text-sm font-bold text-slate-400">
+                  Tối đa {topLimit} lô
+                </span>
+              </h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                Theo dõi từng lô, hạn sử dụng và lượng còn lại để vận hành kho.
+              </p>
+            </div>
 
             <button
               onClick={() => navigate("/seller/harvest-lots")}
@@ -194,7 +251,13 @@ function SellerDashboard() {
                 {harvestLots.map((lot) => (
                   <tr key={lot.id} className="border-t border-slate-100">
                     <td className="px-3 py-3 font-extrabold text-slate-700">
-                      {lot.lot_code}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/seller/harvest-lots?view=${lot.id}`)}
+                        className="entity-name-link entity-name-link-management text-left"
+                      >
+                        {lot.lot_code}
+                      </button>
                     </td>
 
                     <td className="px-3 py-3">
@@ -210,8 +273,23 @@ function SellerDashboard() {
                         <div className="min-w-0">
                           <button
                             type="button"
-                            onClick={() => navigate(`/seller/products?view=${lot.product_id}`)}
-                            className="max-w-44 break-words text-left font-extrabold text-slate-800 hover:text-green-700 hover:underline"
+                            onClick={() =>
+                              navigate(
+                                lot.product_is_publicly_visible && lot.product_slug
+                                  ? `/products/${lot.product_slug}`
+                                  : `/seller/products?view=${lot.product_id}`,
+                              )
+                            }
+                            title={
+                              lot.product_is_publicly_visible
+                                ? "Mở trang sản phẩm công khai"
+                                : "Mở chi tiết sản phẩm Seller"
+                            }
+                            className={`max-w-44 break-words text-left font-extrabold text-slate-800 hover:underline ${
+                              lot.product_is_publicly_visible
+                                ? "entity-name-link entity-name-link-public"
+                                : "entity-name-link entity-name-link-management"
+                            }`}
                           >
                             {lot.product_name}
                           </button>
@@ -256,7 +334,7 @@ function SellerDashboard() {
                     <td className="px-3 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => navigate("/seller/harvest-lots")}
+                        onClick={() => navigate(`/seller/harvest-lots?view=${lot.id}`)}
                         aria-label={`Xem quản lý lô ${lot.lot_code}`}
                         title={`Xem quản lý lô ${lot.lot_code}`}
                         className="rounded-lg p-1 hover:bg-slate-100"
@@ -282,6 +360,110 @@ function SellerDashboard() {
           </div>
         </div>
       </div>
+
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-extrabold text-slate-950">
+              <Boxes size={20} className="text-sky-600" />
+              Sản phẩm còn tồn kho nhiều nhất
+            </h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Top {topLimit} sản phẩm theo tồn kho khả dụng của chính nông trại.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/seller/products")}
+            className="text-sm font-extrabold text-green-700 hover:underline"
+          >
+            Xem tất cả sản phẩm
+          </button>
+        </div>
+
+        {topStockProducts.length === 0 ? (
+          <div className="px-4 py-12 text-center font-bold text-slate-400">
+            Chưa có sản phẩm đang bán còn tồn kho.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-170 text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Hạng</th>
+                  <th className="px-4 py-3">Sản phẩm</th>
+                  <th className="px-4 py-3 text-right">Số lượng còn lại</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topStockProducts.map((item, index) => {
+                  const rank = index + 1;
+                  const nameContent = item.is_publicly_visible && item.slug ? (
+                    <Link
+                      to={`/products/${item.slug}`}
+                      title="Mở trang sản phẩm công khai"
+                      className="entity-name-link entity-name-link-public font-extrabold text-slate-900"
+                    >
+                      {item.name}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      title="Sản phẩm chưa công khai — mở chi tiết Seller"
+                      onClick={() =>
+                  navigate(
+                    item.is_publicly_visible && item.slug
+                      ? `/products/${item.slug}`
+                      : `/seller/products?view=${item.id}`,
+                  )
+                }
+                      className="entity-name-link entity-name-link-management text-left font-extrabold text-slate-900"
+                    >
+                      {item.name}
+                    </button>
+                  );
+
+                  return (
+                    <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-4">
+                        <span
+                          className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-black ${getRankBadgeClass(rank)}`}
+                        >
+                          {rank}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex min-w-60 items-center gap-3">
+                          <img
+                            src={item.thumbnail || "/placeholder-product.png"}
+                            alt={item.name}
+                            className="h-12 w-12 shrink-0 rounded-xl border border-slate-100 object-cover"
+                            onError={(event) => {
+                              event.currentTarget.src = "/placeholder-product.png";
+                            }}
+                          />
+                          <div className="min-w-0">
+                            {nameContent}
+                            <p className="mt-0.5 text-xs font-semibold text-slate-400">
+                              SP{String(item.id).padStart(6, "0")}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-right font-extrabold text-sky-700">
+                        {Number(item.stock_quantity || 0).toLocaleString("vi-VN", {
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        {item.unit || "kg"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
         <div className="grid min-w-0 gap-5 lg:grid-cols-2">
@@ -322,7 +504,13 @@ function SellerDashboard() {
                 className="flex min-w-0 flex-col gap-2 border-b border-slate-100 py-3 last:border-b-0 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between"
               >
                 <div className="min-w-0">
-                  <p className="font-extrabold text-blue-600">{order.code}</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/seller/orders?view=${order.id}`)}
+                    className="font-extrabold text-blue-600 hover:underline"
+                  >
+                    {order.code}
+                  </button>
                   <p className="text-xs font-semibold text-slate-400">
                     {order.created_at}
                   </p>
@@ -375,8 +563,23 @@ function SellerDashboard() {
                 <div className="min-w-0">
                   <button
                     type="button"
-                    onClick={() => navigate(`/seller/products?view=${item.id}`)}
-                    className="break-words text-left font-extrabold text-slate-900 hover:text-green-700 hover:underline"
+                    onClick={() =>
+                      navigate(
+                        item.is_publicly_visible && item.slug
+                          ? `/products/${item.slug}`
+                          : `/seller/products?view=${item.id}`,
+                      )
+                    }
+                    title={
+                      item.is_publicly_visible
+                        ? "Mở trang sản phẩm công khai"
+                        : "Mở chi tiết sản phẩm Seller"
+                    }
+                    className={`break-words text-left font-extrabold text-slate-900 hover:underline ${
+                      item.is_publicly_visible
+                        ? "entity-name-link entity-name-link-public"
+                        : "entity-name-link entity-name-link-management"
+                    }`}
                   >
                     {item.name}
                   </button>
@@ -548,7 +751,7 @@ function ProductMiniItem({ image, name, sub, rightText, danger, onClick }) {
           <button
             type="button"
             onClick={onClick}
-            className="break-words text-left font-extrabold text-slate-900 hover:text-green-700 hover:underline"
+            className="entity-name-link entity-name-link-public break-words text-left font-extrabold text-slate-900"
           >
             {name}
           </button>

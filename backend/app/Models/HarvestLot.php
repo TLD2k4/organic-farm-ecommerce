@@ -36,6 +36,16 @@ class HarvestLot extends Model
         return $this->belongsTo(ProductCertificate::class, 'product_certificate_id');
     }
 
+    /**
+     * Quan hệ lịch sử để Seller/Admin vẫn xem được lô khi chứng chỉ hoặc sản
+     * phẩm cha đã bị xóa mềm. Không dùng quan hệ này cho API công khai.
+     */
+    public function productCertificateIncludingDeleted()
+    {
+        return $this->belongsTo(ProductCertificate::class, 'product_certificate_id')
+            ->withTrashed();
+    }
+
     // public function getProductAttribute()
     // {
     //     return $this->productCertificate?->product;

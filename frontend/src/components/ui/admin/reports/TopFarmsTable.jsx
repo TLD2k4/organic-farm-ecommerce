@@ -1,8 +1,9 @@
-import { Building2, Trophy } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { getImageUrl } from "@/utils/image";
 import { getAdminFarmLink } from "@/utils/adminEntityLink";
+import { getRankBadgeClass } from "@/utils/rank";
 
 const formatNumber = (value) => {
   return new Intl.NumberFormat("vi-VN").format(Number(value || 0));
@@ -81,22 +82,11 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
                   className="border-t border-slate-100 transition hover:bg-slate-50"
                 >
                   <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      {index < 3 && (
-                        <Trophy
-                          size={16}
-                          className={
-                            index === 0
-                              ? "text-amber-500"
-                              : index === 1
-                                ? "text-slate-500"
-                                : "text-orange-500"
-                          }
-                        />
-                      )}
-
-                      <span className="font-bold">#{index + 1}</span>
-                    </div>
+                    <span
+                      className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-black ${getRankBadgeClass(index + 1)}`}
+                    >
+                      {index + 1}
+                    </span>
                   </td>
 
                   <td className="px-4 py-4">
@@ -118,7 +108,7 @@ export default function TopFarmsTable({ farms = [], loading = false }) {
                           <Link
                             to={farmLink.to}
                             title={farmLink.title}
-                            className={`block max-w-57.5 wrap-break-word font-semibold hover:underline ${farmLink.isPublic ? "hover:text-green-700" : "hover:text-sky-600"}`}
+                            className={`block max-w-57.5 wrap-break-word font-semibold hover:underline ${farmLink.isPublic ? "entity-name-link entity-name-link-public" : "entity-name-link entity-name-link-management"}`}
                           >
                             {farm.farm_name}
                           </Link>

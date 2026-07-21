@@ -37,7 +37,7 @@ class FarmService
                             'id',
                             'farm_id',
                         ])
-                        ->where('status', 1)
+                        ->publiclyVisible()
                         ->withCount([
                             'visibleRatingReviews as review_count',
                             'visibleComments as comment_count',
@@ -51,7 +51,7 @@ class FarmService
             ])
             ->withCount([
                 'products as product_count' => function ($query) {
-                    $query->where('status', 1);
+                    $query->publiclyVisible();
                 },
             ])
             ->where(
@@ -154,7 +154,7 @@ class FarmService
             ])
             ->withCount([
                 'products as product_count' => function ($query) {
-                    $query->where('status', 1);
+                    $query->publiclyVisible();
                 },
             ])
             ->firstOrFail();
@@ -191,10 +191,7 @@ class FarmService
                 'farm_id',
                 $farm->id
             )
-            ->where(
-                'status',
-                1
-            )
+            ->publiclyVisible()
             ->with([
                 'category:id,name,slug',
 

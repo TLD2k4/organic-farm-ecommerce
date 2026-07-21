@@ -24,6 +24,14 @@ const harvestLotService = {
   deleteLot(id) {
     return axiosClient.delete(`/vendor/harvest-lots/${id}`);
   },
+
+  restoreLot(id) {
+    return axiosClient.patch(`/vendor/harvest-lots/${id}/restore`);
+  },
+
+  forceDeleteLot(id) {
+    return axiosClient.delete(`/vendor/harvest-lots/${id}/force`);
+  },
 };
 
 export default harvestLotService;

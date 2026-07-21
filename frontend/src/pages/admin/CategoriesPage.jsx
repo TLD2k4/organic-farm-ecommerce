@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 
 import useCategory from "@/hooks/useCategory";
@@ -12,6 +13,7 @@ import CategoryDrawer from "@/components/ui/admin/categories/CategoryDrawer";
 import CategoryFormModal from "@/components/ui/admin/categories/CategoryFormModal";
 
 export default function CategoriesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { categories, meta, loading, adminGetAll } = useCategory();
 
   const [params, setParams] = useState({
@@ -31,10 +33,23 @@ export default function CategoriesPage() {
   const [openDrawer, setOpenDrawer] = useState(false);
   const [openForm, setOpenForm] = useState(false);
 
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("view"));
+
+    if (!Number.isInteger(requestedId) || requestedId <= 0) return;
+
+    setSelectedCategoryId(requestedId);
+    setOpenDrawer(true);
+  }, [searchParams]);
+
   useEffect(() => {
     adminGetAll({
-      ...params,
+      page: params.page,
+      limit: params.limit,
       keyword: debouncedKeyword,
+      status: params.status,
+      deleted: params.deleted,
     });
   }, [
     params.page,
@@ -145,6 +160,12 @@ export default function CategoriesPage() {
         onClose={() => {
           setOpenDrawer(false);
           setSelectedCategoryId(null);
+
+          if (searchParams.has("view")) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("view");
+            setSearchParams(nextParams, { replace: true });
+          }
         }}
       />
 

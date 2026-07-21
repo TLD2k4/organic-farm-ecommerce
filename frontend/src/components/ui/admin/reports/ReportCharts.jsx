@@ -83,6 +83,9 @@ export default function ReportCharts({ data = [], loading = false }) {
     completed_orders: Number(item.completed_orders || 0),
     cancelled_orders: Number(item.cancelled_orders || 0),
     processing_sub_orders: Number(item.processing_sub_orders || 0),
+    pending_sub_orders: Number(item.pending_sub_orders || 0),
+    preparing_sub_orders: Number(item.preparing_sub_orders || 0),
+    shipping_sub_orders: Number(item.shipping_sub_orders || 0),
     completed_sub_orders: Number(item.completed_sub_orders || 0),
     cancelled_sub_orders: Number(item.cancelled_sub_orders || 0),
   }));
@@ -93,7 +96,7 @@ export default function ReportCharts({ data = [], loading = false }) {
         <ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}><defs><linearGradient id="reportRevenue" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.38} /><stop offset="100%" stopColor="#10b981" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} /><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }} minTickGap={20} /><YAxis axisLine={false} tickLine={false} width={58} tick={{ fontSize: 11, fill: "#94a3b8" }} tickFormatter={compact} /><Tooltip content={<ChartTooltip />} cursor={{ stroke: "#94a3b8", strokeDasharray: "4 4" }} /><Area type="monotone" dataKey="revenue" name="Doanh thu" stroke="#10b981" strokeWidth={3} fill="url(#reportRevenue)" activeDot={{ r: 5, strokeWidth: 3, stroke: "white" }} /></AreaChart></ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard icon={PackageCheck} eyebrow="Vận hành" title="Đơn hàng theo thời gian" description={orderView === "volume" ? "So sánh lượt checkout và khối lượng đơn giao cho gian hàng" : "Cơ cấu trạng thái đơn con của từng gian hàng trong kỳ"} accent="bg-sky-200/50" legends={<div className="space-y-2"><div className="flex flex-wrap justify-end gap-2"><ViewButton active={orderView === "volume"} onClick={() => setOrderView("volume")}>Khối lượng</ViewButton><ViewButton active={orderView === "status"} onClick={() => setOrderView("status")}>Trạng thái</ViewButton></div><div className="flex flex-wrap justify-end gap-3">{orderView === "volume" ? <><LegendItem color="#2563eb" label="Đơn tổng" /><LegendItem color="#8b5cf6" label="Đơn theo gian hàng" /></> : <><LegendItem color="#f59e0b" label="Đang xử lý" /><LegendItem color="#10b981" label="Hoàn thành" /><LegendItem color="#f43f5e" label="Đã hủy" /></>}</div></div>}>
+      <ChartCard icon={PackageCheck} eyebrow="Vận hành" title="Đơn hàng theo thời gian" description={orderView === "volume" ? "So sánh lượt checkout và khối lượng đơn giao cho gian hàng" : "Cơ cấu trạng thái đơn con của từng gian hàng trong kỳ"} accent="bg-sky-200/50" legends={<div className="space-y-2"><div className="flex flex-wrap justify-end gap-2"><ViewButton active={orderView === "volume"} onClick={() => setOrderView("volume")}>Khối lượng</ViewButton><ViewButton active={orderView === "status"} onClick={() => setOrderView("status")}>Trạng thái</ViewButton></div><div className="flex flex-wrap justify-end gap-3">{orderView === "volume" ? <><LegendItem color="#2563eb" label="Đơn tổng" /><LegendItem color="#8b5cf6" label="Đơn theo gian hàng" /></> : <><LegendItem color="#f59e0b" label="Chờ xác nhận" /><LegendItem color="#3b82f6" label="Đang chuẩn bị" /><LegendItem color="#8b5cf6" label="Đang giao" /><LegendItem color="#10b981" label="Hoàn thành" /><LegendItem color="#f43f5e" label="Đã hủy" /></>}</div></div>}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }} barGap={4}>
             <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} />
@@ -107,7 +110,9 @@ export default function ReportCharts({ data = [], loading = false }) {
               </>
             ) : (
               <>
-                <Bar stackId="status" dataKey="processing_sub_orders" name="Đang xử lý" fill="#f59e0b" maxBarSize={34} />
+                <Bar stackId="status" dataKey="pending_sub_orders" name="Chờ xác nhận" fill="#f59e0b" maxBarSize={34} />
+                <Bar stackId="status" dataKey="preparing_sub_orders" name="Đang chuẩn bị" fill="#3b82f6" maxBarSize={34} />
+                <Bar stackId="status" dataKey="shipping_sub_orders" name="Đang giao" fill="#8b5cf6" maxBarSize={34} />
                 <Bar stackId="status" dataKey="completed_sub_orders" name="Hoàn thành" fill="#10b981" maxBarSize={34} />
                 <Bar stackId="status" dataKey="cancelled_sub_orders" name="Đã hủy" fill="#f43f5e" radius={[6, 6, 0, 0]} maxBarSize={34} />
               </>

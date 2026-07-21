@@ -200,6 +200,16 @@ Route::middleware('auth:sanctum')->group(function () {
         );
 
         Route::patch(
+            '/vendor/products/{id}/restore',
+            [ProductController::class, 'restoreVendorProduct']
+        );
+
+        Route::delete(
+            '/vendor/products/{id}/force',
+            [ProductController::class, 'forceDeleteVendorProduct']
+        );
+
+        Route::patch(
             '/vendor/products/{id}/toggle-status',
             [ProductController::class, 'toggleVendorProductStatus']
         );
@@ -277,6 +287,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete(
             '/vendor/harvest-lots/{id}',
             [HarvestLotController::class, 'destroy']
+        );
+
+        Route::patch(
+            '/vendor/harvest-lots/{id}/restore',
+            [HarvestLotController::class, 'restore']
+        );
+
+        Route::delete(
+            '/vendor/harvest-lots/{id}/force',
+            [HarvestLotController::class, 'forceDestroy']
         );
     });
 

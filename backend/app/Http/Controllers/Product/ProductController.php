@@ -140,6 +140,7 @@ class ProductController extends Controller
             'keyword' => ['nullable', 'string', 'max:100'],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'status' => ['nullable', 'string', 'in:0,1,2,3,expired_certificate'],
+            'deleted' => ['nullable', 'integer', 'in:0,1'],
             'per_page' => ['nullable', 'integer', 'min:5', 'max:50'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
@@ -218,7 +219,34 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Xóa sản phẩm thành công',
+            'message' => 'Đã chuyển sản phẩm sang mục Đã xóa.',
+        ]);
+    }
+
+    public function restoreVendorProduct(Request $request, int $id)
+    {
+        $product = $this->productService->restoreVendorProduct(
+            productId: $id,
+            sellerId: (int) $request->user()->getAuthIdentifier()
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Khôi phục sản phẩm thành công. Sản phẩm công khai trước đây được đưa về Tạm ẩn để bạn kiểm tra lại trước khi mở bán.',
+            'data' => $product,
+        ]);
+    }
+
+    public function forceDeleteVendorProduct(Request $request, int $id)
+    {
+        $this->productService->forceDeleteVendorProduct(
+            productId: $id,
+            sellerId: (int) $request->user()->getAuthIdentifier()
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Xóa vĩnh viễn sản phẩm thành công. Mã chứng chỉ và mã lô đã được giải phóng nếu không còn bị dữ liệu khác sử dụng.',
         ]);
     }
 
@@ -458,8 +486,7 @@ class ProductController extends Controller
                     ->whereNull('parent_id')
                     ->withCount([
                         'products as products_count' => function ($q) {
-                            $q->where('status', 1)
-                                ->whereHas('certificate');
+                            $q->publiclyVisible();
                         },
                     ])
                     ->with([
@@ -467,8 +494,7 @@ class ProductController extends Controller
                             $q->where('status', 1)
                                 ->withCount([
                                     'products as products_count' => function ($p) {
-                                        $p->where('status', 1)
-                                            ->whereHas('certificate');
+                                        $p->publiclyVisible();
                                     },
                                 ])
                                 ->orderBy('name');
@@ -481,8 +507,7 @@ class ProductController extends Controller
                     ->where('status', 1)
                     ->withCount([
                         'products as products_count' => function ($q) {
-                            $q->where('status', 1)
-                                ->whereHas('certificate');
+                            $q->publiclyVisible();
                         },
                     ])
                     ->having('products_count', '>', 0)

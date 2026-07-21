@@ -10,7 +10,7 @@ class CategoryService
 {
     public function getAll($limit = 10)
     {
-        return Category::with([
+        return Category::visible()->with([
             'activeChildren' => function ($q) {
                 $q->where('status', 1)
                     ->whereNull('deleted_at')
@@ -18,19 +18,17 @@ class CategoryService
             }
         ])
             ->whereNull('parent_id')
-            ->where('status', 1)
             ->orderBy('name')
             ->paginate($limit);
     }
 
     public function getBySlug(string $slug)
     {
-        return Category::with([
+        return Category::visible()->with([
             'activeChildren' => function ($query) {
                 $query->orderBy('name');
             }
         ])
-            ->where('status', 1)
             ->where('slug', $slug)
             ->firstOrFail();
     }

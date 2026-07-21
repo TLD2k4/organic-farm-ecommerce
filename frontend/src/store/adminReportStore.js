@@ -38,6 +38,8 @@ const createInitialReport = () => ({
 
   top_products: [],
 
+  top_stock_products: [],
+
   top_categories: [],
 
   top_farms: [],
@@ -121,6 +123,12 @@ const useAdminReportStore = create((set, get) => ({
             data.top_products,
           )
             ? data.top_products
+            : [],
+
+          top_stock_products: Array.isArray(
+            data.top_stock_products,
+          )
+            ? data.top_stock_products
             : [],
 
           top_categories: Array.isArray(
