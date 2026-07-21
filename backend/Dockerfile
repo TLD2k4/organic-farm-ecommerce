@@ -1,4 +1,4 @@
-FROM php:8.4-cli
+FROM php:8.4-fpm
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -28,4 +28,15 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-EXPOSE 8000
+COPY composer.json composer.lock ./
+
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
+COPY . .
+
+RUN composer dump-autoload --optimize \
+    && chown -R www-data:www-data storage bootstrap/cache public
+
+EXPOSE 9000
+
+CMD ["php-fpm"]
